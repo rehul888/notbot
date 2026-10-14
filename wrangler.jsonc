@@ -20,7 +20,7 @@
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
     // Comma-separated Telegram user IDs that can open the Admin panel
-    "OWNER_IDS": "",
+    "OWNER_IDS": "123456789",
     // Local development only (set in .dev.vars). Must stay empty in production.
     "DEV_FAKE_USER_ID": ""
   }
