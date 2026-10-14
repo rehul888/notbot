@@ -1,129 +1,289 @@
+import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { OrderView } from "../../shared/types";
-import { api } from "../api";
+import { ApiError, api } from "../api";
+import { ArtOrderSuccess } from "../art";
 import { money, num } from "../format";
-import { t } from "../i18n";
+import { t, type Key } from "../i18n";
 import { refreshMe, updateMe } from "../me";
-import { navigate } from "../router";
+import { Confetti, once } from "../motion";
+import { navigate, useRoute } from "../router";
 import { meStore } from "../store";
 import { haptic, requestWriteAccess } from "../tg";
-import { BottomButtons, Skeleton, Switch, errText, toast } from "../ui";
-import { Icon } from "../icons";
+import { BottomButtons, ErrorState, LargeTitle, List, Notice, Num, Row, Screen, errText, toast } from "../ui";
 
-/** After paying. For Stars orders (`?payment=`), waits until the bot has received the payment and placed the order. */
+// Waiting for a Stars payment (spec §5.7): poll every 1.5s for 30s, then every 5s, and stop after 3 minutes.
+const FAST_MS = 1500;
+const SLOW_MS = 5000;
+const SLOW_AFTER_MS = 30_000;
+const STOP_AFTER_MS = 180_000;
+/** Paid, but still no order after this many polls: the order couldn't be placed and the money went to the balance. */
+const PAID_NO_ORDER_POLLS = 6;
+/** Loading an order by id: show the spinner only if it takes longer than this, so a quick load doesn't flash. */
+const SPINNER_AFTER_MS = 400;
+
+/** Entrance delay for `.rise` (spec §7.8 timeline). */
+const at = (ms: number) => `--d:${ms}ms`;
+
+/** t() with nodes (e.g. <Num>) dropped into the sentence, so each language keeps its own word order. */
+function tn(key: Key, vars: Record<string, ComponentChildren>): ComponentChildren {
+  const marks: Record<string, string> = {};
+  for (const k in vars) marks[k] = `\u0001${k}\u0001`;
+  return t(key, marks)
+    .split("\u0001")
+    .map((part, i) => (i % 2 ? <Fragment key={i}>{vars[part]}</Fragment> : part));
+}
+
+/** An order the previous screen already has, so this screen can celebrate straight away instead of loading it. */
+let handoff: OrderView | null = null;
+
+/** Optional: call right before `navigate(`/placed/${order.id}`)` when the order is already in hand (pay from balance). */
+export function primePlaced(order: OrderView) {
+  handoff = order;
+}
+
+function takeHandoff(id: number): OrderView | null {
+  const o = handoff && handoff.id === id ? handoff : null;
+  handoff = null;
+  return o;
+}
+
+/**
+ * After paying. `/placed/:id` shows the order (and celebrates the first time). `/placed/0?payment=X` (Stars) waits
+ * until the bot has received the payment and placed the order, then swaps to `/placed/:id`.
+ */
 export function OrderPlaced({ orderId }: { orderId: number }) {
   const me = meStore.use()!;
-  const [order, setOrder] = useState<OrderView | null>(null);
-  const [waiting, setWaiting] = useState(!orderId);
-  const paymentId = Number(new URLSearchParams(location.hash.split("?")[1] ?? "").get("payment")) || 0;
+  const { query } = useRoute();
+  const paymentId = orderId ? 0 : Number(query.get("payment")) || 0;
 
+  const [order, setOrder] = useState<OrderView | null>(() => (orderId ? takeHandoff(orderId) : null));
+  const [celebrate, setCelebrate] = useState(() => !!order && once(`placed:${order.id}`));
+  const [error, setError] = useState<unknown>(null);
+  /** Bumped to retry a failed load, or to resume payment polling. */
+  const [round, setRound] = useState(0);
+  const [polling, setPolling] = useState(true);
+  const [slow, setSlow] = useState(false);
+  const [spinner, setSpinner] = useState(false);
+  /** Optimistic switch value while the notify setting is being saved. */
+  const [notifyPending, setNotifyPending] = useState<boolean | null>(null);
+
+  // Stars: wait for the payment to turn into an order. Every poll counts toward the cap, paid or not (bug 10).
   useEffect(() => {
+    if (orderId) return;
+    if (!paymentId) {
+      navigate("/orders", { replace: true });
+      return;
+    }
     let live = true;
-    let tries = 0;
-    const load = async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let paidPolls = 0;
+    const started = Date.now();
+    setPolling(true);
+    const slowTimer = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    const poll = async () => {
       try {
-        let id = orderId;
-        if (!id && paymentId) {
-          const p = await api<{ status: string; orderId: number | null }>(`/payments/${paymentId}`);
-          if (p.orderId) id = p.orderId;
-          else if (p.status === "paid" && ++tries > 6) {
-            // Paid but the order couldn't be placed: the money is in the balance (the bot explains why)
-            await refreshMe();
-            navigate("/wallet", { replace: true });
-            return;
-          }
-        }
-        if (id) {
-          const o = await api<OrderView>(`/orders/${id}`);
+        const p = await api<{ status: string; orderId: number | null }>(`/payments/${paymentId}`);
+        if (!live) return;
+        if (p.orderId) {
+          // Fetch the order before swapping routes, so the next screen opens on the celebration, not a loader.
+          const o = await api<OrderView>(`/orders/${p.orderId}`).catch(() => null);
           if (!live) return;
-          setOrder(o);
-          setWaiting(false);
-          if (!orderId) navigate(`/placed/${id}`, { replace: true });
+          if (o) handoff = o;
+          navigate(`/placed/${p.orderId}`, { replace: true });
+          return;
+        }
+        if (p.status === "paid" && ++paidPolls > PAID_NO_ORDER_POLLS) {
+          // Paid, but the order couldn't be placed: the money is in the balance (the bot explains why).
+          await refreshMe().catch(() => {});
+          if (live) navigate("/wallet", { replace: true });
           return;
         }
       } catch {
-        /* keep polling */
+        /* a network blip: keep polling */
       }
-      if (live && tries < 40) setTimeout(load, 1500);
+      if (!live) return;
+      const elapsed = Date.now() - started;
+      if (elapsed >= STOP_AFTER_MS) setPolling(false);
+      else timer = setTimeout(poll, elapsed < SLOW_AFTER_MS ? FAST_MS : SLOW_MS);
     };
-    load();
+    void poll();
     return () => {
       live = false;
+      clearTimeout(timer);
+      clearTimeout(slowTimer);
     };
-  }, [orderId]);
+  }, [orderId, paymentId, round]);
 
+  // Polling stopped: check again when the user comes back to the app.
+  useEffect(() => {
+    if (orderId || polling) return;
+    const wake = () => {
+      if (document.visibilityState === "visible") setRound((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", wake);
+    return () => document.removeEventListener("visibilitychange", wake);
+  }, [orderId, polling]);
+
+  // `/placed/:id`: load the order unless the previous screen handed it over.
+  useEffect(() => {
+    if (!orderId || order) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let fails = 0;
+    setError(null);
+    const spin = setTimeout(() => setSpinner(true), SPINNER_AFTER_MS);
+    const load = async () => {
+      try {
+        const o = await api<OrderView>(`/orders/${orderId}`);
+        if (!live) return;
+        clearTimeout(spin);
+        setOrder(o);
+        setCelebrate(once(`placed:${o.id}`));
+      } catch (e) {
+        if (!live) return;
+        if (++fails >= 3 || (e instanceof ApiError && e.status === 404)) {
+          clearTimeout(spin);
+          setError(e);
+        } else timer = setTimeout(load, FAST_MS);
+      }
+    };
+    void load();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      clearTimeout(spin);
+    };
+  }, [orderId, round]);
+
+  // The success haptic is part of the celebration, timed to the badge pop (spec §7.8).
+  useEffect(() => {
+    if (!celebrate) return;
+    const h = setTimeout(() => haptic.success(), 120);
+    return () => clearTimeout(h);
+  }, [celebrate]);
+
+  const notifyOn = notifyPending ?? (me.notify && me.canMessage);
   const toggleNotify = async (on: boolean) => {
+    if (notifyPending !== null) return;
+    setNotifyPending(on);
     try {
       if (on && !me.canMessage) {
         const ok = await requestWriteAccess();
-        if (!ok) return toast(t("profile.notifyDenied"));
+        if (!ok) {
+          toast(t("profile.notifyDenied"));
+          return;
+        }
         await updateMe({ notify: true, canMessage: true });
       } else await updateMe({ notify: on });
-      haptic.success();
     } catch (e) {
-      toast(errText(e));
+      toast(errText(e), "error");
+    } finally {
+      setNotifyPending(null);
     }
   };
 
-  return (
-    <div class="screen no-tabs" style="align-items:center;padding-top:20px;padding-bottom:140px">
-      <div aria-hidden="true" style="position:relative;width:200px;height:150px;flex:none">
-        <span style="position:absolute;left:30px;top:5px;width:140px;height:140px;border-radius:999px;background:var(--sel)" />
-        <span style="position:absolute;left:62px;top:37px;width:76px;height:76px;border-radius:999px;background:var(--lime);border:1.5px solid var(--ink);box-shadow:4px 8px 0 rgba(26,48,102,.12);display:flex;align-items:center;justify-content:center;color:var(--ink)">
-          {waiting ? <span class="skel" style="width:30px;height:30px;border-radius:99px" /> : <Icon name="check" size={38} stroke={2.4} />}
-        </span>
-        <span style="position:absolute;left:14px;top:22px;width:38px;height:38px;border-radius:12px;background:#fff;border:1px solid #e3e3e8;transform:rotate(-10deg);display:flex;align-items:center;justify-content:center;color:var(--brand)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.9c0 5.6-7.5 10-7.5 10z" /></svg>
-        </span>
-        <span style="position:absolute;right:12px;bottom:16px;width:36px;height:36px;border-radius:11px;background:var(--pink);transform:rotate(9deg);display:flex;align-items:center;justify-content:center;color:var(--ink)">
-          <Icon name="plane" size={18} stroke={1.8} />
-        </span>
-      </div>
+  const buttons = (
+    <BottomButtons
+      main={{ text: t("common.done"), onClick: () => navigate("/", { replace: true }) }}
+      secondary={order ? { text: t("placed.view"), onClick: () => navigate(`/order/${order.id}`, { replace: true }) } : null}
+    />
+  );
 
-      <div role="status" class="center" style="display:flex;flex-direction:column;gap:6px;max-width:320px">
-        <h1 class="sm">{waiting ? t("placed.waitingPayment") : t("placed.title")}</h1>
-        {order ? <p class="sub" style="font-size:15px;line-height:1.45;margin:0">{t("placed.body", { quantity: num(order.quantity), service: order.serviceName })}</p> : null}
-      </div>
-
-      {order ? (
-        <>
-          <dl class="card" style="width:100%">
-            <div class="kv">
-              <dt>{t("placed.order")}</dt>
-              <dd>#{order.id}</dd>
-            </div>
-            <div class="kv">
-              <dt>{t("placed.service")}</dt>
-              <dd class="ellipsis">{order.serviceName}</dd>
-            </div>
-            <div class="kv">
-              <dt>{t("placed.charged")}</dt>
-              <dd style="font-weight:600">{order.paidWithStars ? t("placed.withStars", { amount: money(order.charge) }) : t("placed.fromBalance", { amount: money(order.charge) })}</dd>
-            </div>
-          </dl>
-          <div class="card" style="width:100%">
-            <div class="row" style="min-height:58px">
-              <span class="tile" style="background:var(--pink)">
-                <Icon name="bell" size={18} stroke={1.8} />
-              </span>
-              <span class="body">
-                <span class="grow">
-                  <span class="title">{t("placed.notify")}</span>
-                  <span class="meta">{t("placed.notifySub")}</span>
-                </span>
-                <Switch on={me.notify && me.canMessage} label={t("placed.notify")} onChange={toggleNotify} />
-              </span>
-            </div>
+  // ---------- order placed ----------
+  if (order) {
+    return (
+      <Screen
+        bottom="native"
+        center
+        overlay={
+          <>
+            {celebrate ? <Confetti n={12} /> : null}
+            {buttons}
+          </>
+        }
+      >
+        <div class={celebrate ? "success-art celebrate" : "success-art"}>
+          <ArtOrderSuccess state="done" />
+        </div>
+        <div class="rise" style={at(240)} role="status">
+          <LargeTitle
+            align="center"
+            size="title"
+            title={t("placed.title")}
+            sub={tn("placed.body", { quantity: <Num>{num(order.quantity)}</Num>, service: <bdi>{order.serviceName}</bdi> })}
+          />
+        </div>
+        <dl class="card rise" style={at(340)}>
+          <div class="kv">
+            <dt>{t("placed.order")}</dt>
+            <dd>
+              <Num>#{order.id}</Num>
+            </dd>
           </div>
-        </>
-      ) : waiting ? (
-        <Skeleton h={140} />
-      ) : null}
+          <div class="kv">
+            <dt>{t("placed.service")}</dt>
+            <dd>{order.serviceName}</dd>
+          </div>
+          <div class="kv">
+            <dt>{t("placed.charged")}</dt>
+            <dd>
+              <b>{tn(order.paidWithStars ? "placed.withStars" : "placed.fromBalance", { amount: <Num>{money(order.charge)}</Num> })}</b>
+            </dd>
+          </div>
+        </dl>
+        <div class="rise" style={at(400)}>
+          <List>
+            <Row icon="bell" plate="var(--pink)" wrap title={t("placed.notify")} meta={t("placed.notifySub")} toggle={{ on: notifyOn, onChange: toggleNotify }} />
+          </List>
+        </div>
+        <p class="note rise" style={at(460)}>
+          {t("placed.next")}
+        </p>
+      </Screen>
+    );
+  }
 
-      <BottomButtons
-        main={{ text: t("common.done"), onClick: () => navigate("/", { replace: true }) }}
-        secondary={order ? { text: t("placed.view"), onClick: () => navigate(`/order/${order.id}`, { replace: true }) } : null}
-      />
-    </div>
+  // ---------- loading /placed/:id ----------
+  if (orderId) {
+    return (
+      <Screen bottom="native" center overlay={buttons}>
+        {error ? (
+          <ErrorState error={error} onRetry={() => setRound((n) => n + 1)} />
+        ) : (
+          <>
+            <div class="success-art" aria-hidden="true">
+              {spinner ? (
+                <>
+                  <ArtOrderSuccess state="waiting" />
+                  <span class="spinner" />
+                </>
+              ) : null}
+            </div>
+            <p class="sr" role="status">
+              {t("common.loading")}
+            </p>
+          </>
+        )}
+      </Screen>
+    );
+  }
+
+  // ---------- waiting for a Stars payment ----------
+  return (
+    <Screen bottom="native" center overlay={buttons}>
+      <div class="success-art">
+        <ArtOrderSuccess state="waiting" />
+        {polling ? <span class="spinner" aria-hidden="true" /> : null}
+      </div>
+      <LargeTitle align="center" size="title" title={t("placed.waitingPayment")} sub={t("placed.waitingSub")} />
+      <div role="status" aria-live="polite">
+        {slow ? (
+          <div class="rise">
+            <Notice tone="info">{t("placed.slow")}</Notice>
+          </div>
+        ) : null}
+      </div>
+    </Screen>
   );
 }

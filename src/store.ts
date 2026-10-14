@@ -26,3 +26,6 @@ export function createStore<T>(initial: T) {
 }
 
 export const meStore = createStore<Me | null>(null);
+
+/** True while a text field has focus, i.e. the on-screen keyboard is probably up (kept by main.tsx). */
+export const keyboardStore = createStore(false);

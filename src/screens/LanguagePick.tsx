@@ -1,19 +1,32 @@
 import { useState } from "preact/hooks";
 import { LANG_NAMES, LANGS, type Lang, type Me } from "../../shared/types";
 import { api } from "../api";
+import { ArtLanguage } from "../art";
 import { setLang, t } from "../i18n";
-import { Icon } from "../icons";
 import { meStore } from "../store";
-import { haptic } from "../tg";
-import { BottomButtons, errText, toast } from "../ui";
+import { webApp } from "../tg";
+import { BottomButtons, LargeTitle, List, Row, Screen, errText, toast } from "../ui";
 
-/** First launch: pick the app language. Telegram's language is pre-selected; the screen previews each choice. */
+/**
+ * The language Telegram reports for this user, when the app has it. Outside Telegram (local dev) the server's guess
+ * stands in, since it comes from the same Telegram setting. An unsupported Telegram language gives null (no hint).
+ */
+function telegramLang(fallback: Lang): Lang | null {
+  if (!webApp) return fallback;
+  const code = (webApp.initDataUnsafe.user as { id: number; language_code?: string } | undefined)?.language_code;
+  const base = code?.toLowerCase().split(/[-_]/)[0];
+  return LANGS.find((l) => l === base) ?? null;
+}
+
+/** First launch: pick the app language. Telegram's language is pre-selected; each pick previews the app live. */
 export function LanguagePick() {
   const me = meStore.use()!;
   const [lang, setChoice] = useState<Lang>(me.lang);
+  const [tgLang] = useState(() => telegramLang(me.lang));
   const [busy, setBusy] = useState(false);
+
+  // Row radio already fires haptic.select.
   const pick = (l: Lang) => {
-    haptic.select();
     setChoice(l);
     void setLang(l);
   };
@@ -22,34 +35,27 @@ export function LanguagePick() {
     try {
       meStore.set(await api<Me>("/me", { method: "PATCH", body: { lang } }));
     } catch (e) {
-      toast(errText(e));
+      toast(errText(e), "error");
       setBusy(false);
     }
   };
+
   return (
-    <div class="screen no-tabs" style="padding-top:28px;padding-bottom:140px">
-      <div class="center" style="display:flex;flex-direction:column;align-items:center;gap:10px">
-        <span class="tile" style="width:64px;height:64px;border-radius:20px;background:var(--lavender-strong)">
-          <Icon name="globe" size={32} stroke={1.7} />
-        </span>
-        <h1 class="sm">{t("lang.title")}</h1>
-        <p class="sub" style="margin:0">{t("lang.sub")}</p>
-      </div>
-      <div class="card" role="radiogroup" aria-label={t("lang.title")}>
+    <Screen bottom="native" center overlay={<BottomButtons main={{ text: t("lang.continue"), onClick: save, progress: busy }} />}>
+      <ArtLanguage />
+      <LargeTitle align="center" size="title" title={t("lang.title")} sub={t("lang.sub")} />
+      <List role="radiogroup" label={t("lang.title")} stagger>
         {LANGS.map((l) => (
-          <button type="button" role="radio" aria-checked={l === lang} class="row" key={l} onClick={() => pick(l)}>
-            <span class="body" style="min-height:50px">
-              <span class="grow title" lang={l}>
-                {LANG_NAMES[l]}
-              </span>
-              <span style={`color:var(--acc);opacity:${l === lang ? 1 : 0}`}>
-                <Icon name="check" size={20} stroke={2.4} />
-              </span>
-            </span>
-          </button>
+          <Row
+            key={l}
+            radio
+            checked={l === lang}
+            title={<span lang={l}>{LANG_NAMES[l]}</span>}
+            meta={l === tgLang ? t("lang.fromTelegram") : undefined}
+            onClick={() => pick(l)}
+          />
         ))}
-      </div>
-      <BottomButtons main={{ text: t("lang.continue"), onClick: save, progress: busy }} />
-    </div>
+      </List>
+    </Screen>
   );
 }

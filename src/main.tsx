@@ -1,7 +1,26 @@
 import { render } from "preact";
-import { App } from "./app";
-import { initTelegram } from "./tg";
 import "./styles.css";
+import "./art"; // registers the empty-state art with ui.tsx
+import { App, applyStartRoute } from "./app";
+import { keyboardStore } from "./store";
+import { initTelegram } from "./tg";
 
 initTelegram();
+applyStartRoute();
+
+// iOS WebKit applies :active (press states) only when the page has a touch listener.
+document.addEventListener("touchstart", () => {}, { passive: true });
+
+// While a text field has focus the keyboard is up: floating bars step aside (html[data-kb], keyboardStore).
+const NO_KEYBOARD = /^(button|checkbox|radio|range|color|file|submit|reset|image|hidden)$/;
+function syncKeyboard() {
+  const el = document.activeElement;
+  const on = el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !NO_KEYBOARD.test(el.type)) || (el instanceof HTMLElement && el.isContentEditable);
+  document.documentElement.toggleAttribute("data-kb", on);
+  if (keyboardStore.get() !== on) keyboardStore.set(on);
+}
+document.addEventListener("focusin", syncKeyboard);
+// Checked after the focus has moved, so going from one field to the next doesn't flash the bars.
+document.addEventListener("focusout", () => setTimeout(syncKeyboard, 0));
+
 render(<App />, document.getElementById("app")!);

@@ -1,24 +1,32 @@
+// Home (`/`, tab "New order"), design spec §5.1. Also exports PlatformGrid (§5.15), used by the platform picker sheet.
 import { useEffect, useState } from "preact/hooks";
 import type { PlatformItem, ServiceItem } from "../../shared/types";
+import { platformName } from "../../shared/platforms";
 import { api, cachedApi } from "../api";
+import { ArtHomeHero } from "../art";
 import { money, num, prettyLink } from "../format";
-import { t } from "../i18n";
+import { getLang, t } from "../i18n";
 import { Icon } from "../icons";
+import { once } from "../motion";
 import { enc, navigate } from "../router";
 import { meStore } from "../store";
 import { haptic } from "../tg";
-import { ErrorState, PlatformLogo, Skeleton, useAsync } from "../ui";
-import { platformName } from "../../shared/platforms";
+import { Chip, EmptyState, ErrorState, List, Num, PlatformLogo, Row, Screen, SearchField, Section, SkeletonGrid, SkeletonList, useAsync } from "../ui";
 import { ServiceRows } from "./Services";
 
-export function PlatformGrid({ items, current, onPick }: { items: PlatformItem[]; current?: string; onPick: (slug: string) => void }) {
+/**
+ * Platform tiles. `class` adds classes to the grid (e.g. "stagger fast" for the entrance); "grid5" is always kept.
+ * `current` rings the platform that is already picked (picker sheet).
+ */
+export function PlatformGrid({ items, current, onPick, class: cls }: { items: PlatformItem[]; current?: string; onPick: (slug: string) => void; class?: string }) {
   return (
-    <div class="grid5">
+    <div class={cls ? `grid5 ${cls}` : "grid5"}>
       {items.map((p) => (
         <button
           type="button"
           class="ptile"
           key={p.slug}
+          aria-current={current === p.slug ? "true" : undefined}
           onClick={() => {
             haptic.tap();
             onPick(p.slug);
@@ -32,126 +40,157 @@ export function PlatformGrid({ items, current, onPick }: { items: PlatformItem[]
   );
 }
 
+/** Last platform list per language, so coming back to Home shows the grid at once instead of a skeleton flash. */
+let lastPlatforms: { lang: string; items: PlatformItem[] } | null = null;
+
+type Found = { term: string; items: ServiceItem[] } | { term: string; error: unknown };
+
+/** Search runs for 2+ characters, or for any all-digit query (service IDs). */
+const isQuery = (term: string) => term.length >= 2 || /^\d+$/.test(term);
+
 export function Home() {
   const me = meStore.use()!;
-  const platforms = useAsync(() => cachedApi<PlatformItem[]>("/catalog/platforms"), []);
+  const platforms = useAsync(
+    () =>
+      cachedApi<PlatformItem[]>("/catalog/platforms").then((items) => {
+        lastPlatforms = { lang: getLang(), items };
+        return items;
+      }),
+    [],
+  );
+  const list = platforms.data ?? (lastPlatforms?.lang === getLang() ? lastPlatforms.items : undefined);
+
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<ServiceItem[] | null>(null);
+  const [found, setFound] = useState<Found | null>(null);
+  const [retry, setRetry] = useState(0);
+  const term = q.trim();
+  const searching = isQuery(term);
 
   useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2 && !/^\d+$/.test(term)) {
-      setResults(null);
+    if (!searching) {
+      setFound(null);
       return;
     }
-    const id = setTimeout(() => api<ServiceItem[]>(`/catalog/search?q=${enc(term)}`).then(setResults, () => setResults([])), 250);
-    return () => clearTimeout(id);
-  }, [q]);
+    // Earlier results stay on screen while the next query loads; answers to outdated queries are dropped.
+    let live = true;
+    const id = setTimeout(
+      () =>
+        api<ServiceItem[]>(`/catalog/search?q=${enc(term)}`).then(
+          (items) => live && setFound({ term, items }),
+          (error) => live && setFound({ term, error }),
+        ),
+      250,
+    );
+    return () => {
+      live = false;
+      clearTimeout(id);
+    };
+  }, [term, retry]);
+
+  // Entrances play the first time each block appears in this app launch, not on every tab switch or Back.
+  const gridIn = list ? once("home-grid") : false;
+  const recent = me.recent.slice(0, 3);
+  const listIn = once(recent.length ? "home-recent" : "home-how");
 
   return (
-    <div class="screen" style="padding-top:12px">
+    <Screen>
       <section class="hero-card" aria-label={t("home.title")}>
-        <span class="disc" aria-hidden="true" />
-        <span class="ring" aria-hidden="true" />
-        <span class="sticker" aria-hidden="true" style="right:74px;top:20px;transform:rotate(-10deg)">
-          <img src="/platforms/telegram.svg" alt="" />
-        </span>
-        <span class="sticker" aria-hidden="true" style="right:16px;top:50px;transform:rotate(9deg)">
-          <img src="/platforms/instagram.svg" alt="" />
-        </span>
-        <span class="sticker" aria-hidden="true" style="right:72px;top:100px;transform:rotate(-6deg)">
-          <img src="/platforms/tiktok.svg" alt="" />
-        </span>
-        <span class="sticker" aria-hidden="true" style="right:20px;top:112px;width:30px;height:30px;border-radius:10px;background:var(--lime);transform:rotate(12deg);color:var(--brand)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.9c0 5.6-7.5 10-7.5 10z" /></svg>
-        </span>
-        <span class="sticker" aria-hidden="true" style="right:122px;top:16px;width:28px;height:28px;border-radius:9px;background:var(--pink);transform:rotate(-12deg);color:var(--ink)">
-          <Icon name="star" size={14} stroke={2} />
-        </span>
+        <ArtHomeHero enter={once("hero")} />
         <span class="brand">
-          <img src="/brand/mark.svg" alt="" width={26} height={26} style="border-radius:99px;box-shadow:0 0 0 2px rgba(255,255,255,.35)" />
+          <img src="/brand/mark.svg" alt="" width={26} height={26} />
           notpanel
         </span>
         <span class="hi">{t("home.hi", { name: me.firstName })}</span>
         <h1>{t("home.headline")}</h1>
         <div class="actions">
-          <button type="button" class="bal" aria-label={t("home.balanceAria", { amount: money(me.balance) })} onClick={() => (haptic.tap(), navigate("/wallet", { replace: true }))}>
+          <button
+            type="button"
+            class="bal glass-pill press"
+            aria-label={t("home.balanceAria", { amount: money(me.balance) })}
+            onClick={() => (haptic.tap(), navigate("/wallet", { replace: true }))}
+          >
             <Icon name="wallet" size={17} />
-            {money(me.balance)}
+            <Num>{money(me.balance)}</Num>
           </button>
-          <button type="button" class="add" onClick={() => (haptic.tap(), navigate("/topup"))}>
+          <button type="button" class="add white-pill press" onClick={() => (haptic.tap(), navigate("/topup"))}>
             <Icon name="plus" size={16} stroke={2.6} />
             {t("wallet.add")}
           </button>
         </div>
       </section>
 
-      <label class="search">
-        <Icon name="search" size={18} stroke={2} />
-        <span class="sr">{t("home.search")}</span>
-        <input type="search" placeholder={t("home.search")} value={q} onInput={(e) => setQ(e.currentTarget.value)} enterKeyHint="search" />
-      </label>
+      <SearchField value={q} onInput={setQ} placeholder={t("home.search")} />
 
-      {results ? (
-        <div class="section">
-          <h2 class="label">{t("home.results")}</h2>
-          {results.length ? <ServiceRows items={results} showPlatform /> : <div class="empty">{t("home.noResults", { q: q.trim() })}</div>}
-        </div>
+      {searching ? (
+        !found ? (
+          <Section header={t("home.results")}>
+            <SkeletonList rows={3} lead="logo" />
+          </Section>
+        ) : "error" in found ? (
+          <ErrorState error={found.error} onRetry={() => (setFound(null), setRetry((n) => n + 1))} />
+        ) : found.items.length ? (
+          <Section header={t("home.results")}>
+            <ServiceRows items={found.items} showPlatform />
+          </Section>
+        ) : (
+          <EmptyState art="search" title={t("home.noResults", { q: found.term })} body={t("home.noResultsSub")} />
+        )
       ) : (
         <>
-          <div class="section">
-            <h2 class="label">{t("home.platforms")}</h2>
+          <Section variant="title" header={t("home.platforms")}>
             <div class="card">
-              {platforms.error ? (
-                <ErrorState error={platforms.error} onRetry={platforms.reload} />
-              ) : platforms.data ? (
-                <PlatformGrid items={platforms.data} onPick={(slug) => navigate(`/p/${enc(slug)}`)} />
+              {list ? (
+                <PlatformGrid items={list} class={gridIn ? "stagger fast" : undefined} onPick={(slug) => navigate(`/p/${enc(slug)}`)} />
+              ) : platforms.error ? (
+                <ErrorState compact error={platforms.error} onRetry={platforms.reload} />
               ) : (
-                <div style="padding:14px"><Skeleton h={150} /></div>
+                <SkeletonGrid n={10} />
               )}
             </div>
-          </div>
+          </Section>
 
-          {me.recent.length ? (
-            <div class="section">
-              <h2 class="label">
-                {t("home.again")}
-                <a href="#/orders" onClick={(e) => (e.preventDefault(), navigate("/orders", { replace: true }))}>
-                  {t("home.allOrders")}
-                </a>
-              </h2>
-              <div class="card">
-                {me.recent.map((o) => (
-                  <div class="row" key={o.id} style="min-height:58px">
-                    <PlatformLogo slug={o.platform} size={34} radius={10} />
-                    <span class="body">
-                      <span class="grow">
-                        <span class="t15 ellipsis">
-                          {o.serviceName} · {num(o.quantity)}
-                        </span>
-                        <span class="meta ellipsis">
-                          {platformName(o.platform)} · {prettyLink(o.link)}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        class="chip sel"
-                        style="height:30px;padding:0 12px;font-size:14px;border:0"
-                        onClick={() => {
-                          haptic.tap();
-                          navigate(`/s/${o.serviceId}?link=${enc(o.link)}&qty=${o.quantity}`);
-                        }}
-                      >
+          {recent.length ? (
+            <Section variant="title" header={t("home.again")} action={{ label: t("home.allOrders"), href: "/orders", onClick: () => navigate("/orders", { replace: true }) }}>
+              <List stagger={listIn}>
+                {recent.map((o) => (
+                  <Row
+                    key={o.id}
+                    size="lg"
+                    wrap
+                    lead={<PlatformLogo slug={o.platform} size={36} radius={10} />}
+                    title={
+                      <>
+                        <bdi>{o.serviceName}</bdi> · <Num>{num(o.quantity)}</Num>
+                      </>
+                    }
+                    meta={
+                      <bdi dir="ltr" class="ellipsis">
+                        {platformName(o.platform)} · {prettyLink(o.link)}
+                      </bdi>
+                    }
+                    control={
+                      <Chip tint label={`${t("home.againBtn")}: ${o.serviceName}`} onClick={() => navigate(`/s/${o.serviceId}?link=${enc(o.link)}&qty=${o.quantity}`)}>
                         {t("home.againBtn")}
-                      </button>
-                    </span>
-                  </div>
+                      </Chip>
+                    }
+                  />
                 ))}
-              </div>
-            </div>
-          ) : null}
+              </List>
+            </Section>
+          ) : (
+            <Section variant="title" header={t("home.how")}>
+              <ol class={listIn ? "card how stagger" : "card how"}>
+                {(["home.how1", "home.how2", "home.how3"] as const).map((k, i) => (
+                  <li key={k}>
+                    <span class="n">{i + 1}</span>
+                    {t(k)}
+                  </li>
+                ))}
+              </ol>
+            </Section>
+          )}
         </>
       )}
-    </div>
+    </Screen>
   );
 }

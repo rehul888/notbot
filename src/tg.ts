@@ -1,5 +1,6 @@
 // Thin wrapper over window.Telegram.WebApp. Everything degrades gracefully in a normal browser (local dev).
 import { useEffect, useRef } from "preact/hooks";
+import { createStore } from "./store";
 
 interface BottomButton {
   setParams(p: Record<string, unknown>): BottomButton;
@@ -67,12 +68,17 @@ export function isDark(): boolean {
   return matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+/** Re-renders native-button users when Telegram (or the OS) switches between light and dark. */
+const darkStore = createStore(false);
+
 function applyTheme() {
-  document.documentElement.dataset.theme = isDark() ? "dark" : "light";
+  const dark = isDark();
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  darkStore.set(dark);
   if (!webApp) return;
   try {
     // Match the design's page colour (not the user's custom Telegram theme)
-    const page = isDark() ? "#000000" : "#f2f2f7";
+    const page = dark ? "#000000" : "#f2f2f7";
     webApp.setHeaderColor(page);
     webApp.setBackgroundColor(page);
     webApp.setBottomBarColor?.(page);
@@ -82,22 +88,31 @@ function applyTheme() {
 }
 
 export function initTelegram() {
-  // Drop Telegram's launch params from the hash (the SDK has already read them)
-  if (/^#tgWebApp/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + "#/");
+  // Drop Telegram's launch params from the hash (the SDK has already read them). Keep the router's history state.
+  if (/^#tgWebApp/.test(location.hash)) history.replaceState(history.state, "", location.pathname + location.search + "#/");
   applyTheme();
   if (!webApp) {
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
     return;
   }
   webApp.onEvent("themeChanged", applyTheme);
+  // One BackButton listener for the whole app: only the newest handler on the stack runs (a sheet before its page).
+  webApp.BackButton.onClick(() => backStack[backStack.length - 1]?.());
   webApp.expand();
   if (atLeast("7.7")) webApp.disableVerticalSwipes?.();
   webApp.ready();
 }
 
+/** At most one haptic per user action (spec §4.3). */
 export const haptic = {
+  /** Tabs, segments, presets, chips, radios, pay options, switches, stepper ± */
   select: () => webApp?.HapticFeedback.selectionChanged(),
+  /** Navigation rows, platform tiles, opening a sheet, quick-change chips, "Again" */
   tap: () => webApp?.HapticFeedback.impactOccurred("light"),
+  /** A stepper hit its min or max */
+  edge: () => webApp?.HapticFeedback.impactOccurred("rigid"),
+  /** Pay / Pay with Stars, right before the invoice opens */
+  press: () => webApp?.HapticFeedback.impactOccurred("medium"),
   success: () => webApp?.HapticFeedback.notificationOccurred("success"),
   error: () => webApp?.HapticFeedback.notificationOccurred("error"),
   warn: () => webApp?.HapticFeedback.notificationOccurred("warning"),
@@ -163,18 +178,33 @@ export function closingConfirmation(on: boolean) {
   else webApp.disableClosingConfirmation();
 }
 
-/** Shows Telegram's BackButton while mounted. */
+// BackButton handler stack (spec §4.6). Telegram calls one listener (registered in initTelegram), which runs only the
+// newest handler, so Back inside a sheet closes the sheet and leaves the page alone.
+const backStack: (() => void)[] = [];
+let backHide: ReturnType<typeof setTimeout> | undefined;
+
+function syncBack() {
+  if (!webApp) return;
+  clearTimeout(backHide);
+  if (backStack.length) webApp.BackButton.show();
+  // Hide a moment later: on a screen change the old page drops its handler before the new page adds one,
+  // and hiding then showing again makes the header button flicker.
+  else backHide = setTimeout(() => !backStack.length && webApp.BackButton.hide(), 150);
+}
+
+/** Shows Telegram's BackButton while mounted; the most recently mounted handler wins. Pass null for none. */
 export function useBackButton(onBack: (() => void) | null) {
   const ref = useRef(onBack);
   ref.current = onBack;
   useEffect(() => {
-    if (!webApp || !onBack) return;
-    const cb = () => ref.current?.();
-    webApp.BackButton.onClick(cb);
-    webApp.BackButton.show();
+    if (!onBack) return;
+    const h = () => ref.current?.();
+    backStack.push(h);
+    syncBack();
     return () => {
-      webApp.BackButton.offClick(cb);
-      webApp.BackButton.hide();
+      const i = backStack.lastIndexOf(h);
+      if (i >= 0) backStack.splice(i, 1);
+      syncBack();
     };
   }, [!!onBack]);
 }
@@ -187,9 +217,24 @@ export interface ButtonSpec {
   shine?: boolean;
 }
 
+// Spec §3.20 colours: [background, text]
+const BTN = {
+  main: [BRAND, "#ffffff"],
+  mainOffLight: ["#e4e8f5", "#5d6684"],
+  mainOffDark: ["#2c2c2e", "#98989f"],
+  secLight: ["#e6ecff", "#1b45d6"],
+  secDark: ["#1e2847", "#a8bbff"],
+} as const;
+
+/** Which mounted hook last showed each native button, so an unmounting screen doesn't hide the next screen's button. */
+const shownBy = new WeakMap<BottomButton, object>();
+
 function useNativeButton(btn: BottomButton | undefined, spec: ButtonSpec | null, primary: boolean) {
   const ref = useRef(spec);
   ref.current = spec;
+  const self = useRef({}).current;
+  const dark = darkStore.use();
+  const rtl = typeof document !== "undefined" && document.documentElement.dir === "rtl";
   useEffect(() => {
     if (!btn) return;
     const cb = () => {
@@ -199,27 +244,36 @@ function useNativeButton(btn: BottomButton | undefined, spec: ButtonSpec | null,
     btn.onClick(cb);
     return () => {
       btn.offClick(cb);
-      btn.hide();
+      if (shownBy.get(btn) !== self) return;
+      shownBy.delete(btn);
+      // Hide a moment later, so moving to a screen that shows the same button doesn't make it slide out and back.
+      setTimeout(() => !shownBy.has(btn) && btn.hide(), 150);
     };
   }, [btn]);
   useEffect(() => {
     if (!btn) return;
     if (!spec) {
-      btn.hide();
+      const owner = shownBy.get(btn);
+      if (!owner || owner === self) {
+        shownBy.delete(btn);
+        btn.hide();
+      }
       return;
     }
-    const dark = isDark();
+    shownBy.set(btn, self);
+    const [color, text_color] = primary ? (spec.disabled ? (dark ? BTN.mainOffDark : BTN.mainOffLight) : BTN.main) : dark ? BTN.secDark : BTN.secLight;
     btn.setParams({
       text: spec.text,
-      color: primary ? (spec.disabled ? (dark ? "#2c2c2e" : "#c9d3f5") : BRAND) : dark ? "#1e2847" : "#e6ecff",
-      text_color: primary ? (spec.disabled && dark ? "#8e8e93" : "#ffffff") : dark ? "#a8bbff" : "#1b45d6",
+      color,
+      text_color,
       is_active: !spec.disabled,
       is_visible: true,
-      ...(primary ? { has_shine_effect: !!spec.shine && !spec.disabled } : { position: "left" }),
+      // The SecondaryButton sits on the reading-start side: left in LTR, right in Arabic.
+      ...(primary ? { has_shine_effect: !!spec.shine && !spec.disabled && !spec.progress } : { position: rtl ? "right" : "left" }),
     });
     if (spec.progress) btn.showProgress(false);
     else btn.hideProgress();
-  }, [btn, spec?.text, spec?.disabled, spec?.progress, spec?.shine, document.documentElement.dataset.theme]);
+  }, [btn, spec?.text, spec?.disabled, spec?.progress, spec?.shine, dark, rtl]);
 }
 
 /** Telegram MainButton (+ SecondaryButton). Returns true when native buttons are used. */

@@ -240,6 +240,8 @@ dl, dd { margin: 0; }
 .center { text-align: center; }
 .acc { color: var(--acc); }
 .hint { color: var(--hint); }
+.ok-text { color: var(--ok); }
+.fg-text { color: var(--fg); }
 
 h1, .t-large { margin: 0; font: 700 32px/38px var(--display); letter-spacing: calc(-0.8px * var(--trk)); overflow-wrap: anywhere; }
 h1.sm, .t-title1 { font: 700 28px/34px var(--display); letter-spacing: calc(-0.6px * var(--trk)); }
@@ -345,6 +347,7 @@ button.row:disabled, .row.disabled { opacity: 0.45; }
 .tile.md { width: 40px; height: 40px; border-radius: 12px; }
 .tile.xl { width: 64px; height: 64px; border-radius: 20px; }
 .tile.brand { background: var(--brand); color: #fff; }
+.tile.cream { background: var(--cream); }
 .logo { flex: none; border-radius: var(--r-md); background: #fff; border: 1px solid var(--plate-bd); display: flex; align-items: center; justify-content: center; overflow: hidden; color: #636366; }
 .logo img { object-fit: contain; }
 
@@ -603,6 +606,7 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .kv:first-child { border-top: 0; }
 .kv dt { color: var(--hint); flex: none; }
 .kv dd { margin: 0; min-width: 0; text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv .acts { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .kv input { min-height: 44px; border: 0; outline: 0; background: transparent; text-align: end; font: 500 15px/20px var(--font); color: var(--fg); caret-color: var(--acc); }
 .desc { margin: 0; font: 400 14px/20px var(--font); color: var(--hint); white-space: pre-line; overflow-wrap: anywhere; }
 .desc.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -822,7 +826,7 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 
 /* 7.11 Low-end devices: simpler entrances; sheet, lens, thumb, switch, press and badge stay */
 :root[data-perf="low"][data-nav] .screen { animation: fade-in 160ms var(--ease-out) backwards; }
-:root[data-perf="low"] .stagger > * { animation-name: fade-in; }
+:root[data-perf="low"] .stagger > *, :root[data-perf="low"] .rise { animation-name: fade-in; }
 :root[data-perf="low"] :is(.celebrate, .enter) :is(.a-stk, .a-glyph, .a-fade) { animation: none; }
 
 /* 7.10 Reduced motion: short fades or nothing. Last on purpose. */

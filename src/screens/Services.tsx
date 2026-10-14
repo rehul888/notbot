@@ -1,114 +1,147 @@
-import { useEffect, useState } from "preact/hooks";
+// Order flow step 3 of 4: pick a service in one category (design spec §5.5). `ServiceRows` is also used by Home search.
+import { useState } from "preact/hooks";
 import type { ServiceItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
 import { duration, money, short } from "../format";
-import { t } from "../i18n";
-import { Icon } from "../icons";
-import { back, enc, navigate } from "../router";
+import { t, type Key } from "../i18n";
+import { categoryLook, Icon } from "../icons";
+import { enc, navigate } from "../router";
 import { haptic } from "../tg";
-import { BackNav, ErrorState, PlatformLogo, Skeleton, useAsync } from "../ui";
-import { StepsBar } from "./Categories";
+import { BackNav, EmptyState, errText, ErrorState, FlowSteps, LargeTitle, List, Notice, Num, PlatformLogo, Row, Screen, Section, SkeletonList, StepsBar, toast, useAsync } from "../ui";
 import { CategorySheet, PlatformSheet } from "./Pickers";
+
+type Page = { items: ServiceItem[]; more: boolean };
 
 const units = () => ({ m: t("units.m"), h: t("units.h"), d: t("units.d") });
 
+/**
+ * t() with every placeholder value isolated left-to-right (<Num>). Without it, Arabic shows "Max 100K · ~8 min" with
+ * the max and the time swapped, because "100K" pulls the following number into one left-to-right run.
+ */
+function tNums(key: Key, vars: Record<string, string | number>) {
+  const names = Object.keys(vars);
+  const marked = t(key, Object.fromEntries(names.map((k, i) => [k, `\u0000${i}\u0000`])));
+  return marked.split("\u0000").map((part, i) => (i % 2 ? <Num key={i}>{vars[names[Number(part)]]}</Num> : part));
+}
+
+function ServiceMeta({ s, showPlatform }: { s: ServiceItem; showPlatform?: boolean }) {
+  return (
+    <>
+      {showPlatform ? `${platformName(s.platform)} · ${s.category} · ` : null}
+      {tNums("svc.meta", { id: s.id, min: short(s.min), max: short(s.max) })}
+      {/* No-break space keeps "~8 min" together when the line wraps. */}
+      {s.avgMinutes ? ` · ~${duration(s.avgMinutes, units()).replace(/ /g, " ")}` : null}
+      {s.refill ? ` · ${t("form.refill")}` : null}
+    </>
+  );
+}
+
+/** One service: name (2 lines), plain facts, and the price per 1K on the end side. The price column is the affordance. */
+function ServiceRow({ s, showPlatform }: { s: ServiceItem; showPlatform?: boolean }) {
+  return (
+    <Row
+      class="svc"
+      wrap
+      chevron={false}
+      lead={showPlatform ? <PlatformLogo slug={s.platform} size={36} radius={10} /> : undefined}
+      title={s.name}
+      meta={<ServiceMeta s={s} showPlatform={showPlatform} />}
+      href={`/s/${s.id}`}
+    >
+      <span class="price">
+        <b class="num-s">
+          <Num>{money(s.rate)}</Num>
+        </b>
+        <span>{t("common.per1k")}</span>
+      </span>
+    </Row>
+  );
+}
+
 export function ServiceRows({ items, showPlatform }: { items: ServiceItem[]; showPlatform?: boolean }) {
   return (
-    <div class="card">
+    <List stagger>
       {items.map((s) => (
-        <button
-          type="button"
-          class="row"
-          key={s.id}
-          onClick={() => {
-            haptic.tap();
-            navigate(`/s/${s.id}`);
-          }}
-        >
-          {showPlatform ? <PlatformLogo slug={s.platform} size={34} radius={10} /> : null}
-          <span class="body" style="min-height:72px">
-            <span class="grow" style="gap:3px">
-              <span style="font-size:16px;line-height:1.3">{s.name}</span>
-              <span class="meta">
-                {showPlatform ? `${platformName(s.platform)} · ${s.category} · ` : ""}
-                {t("svc.meta", { id: s.id, min: short(s.min), max: short(s.max) })}
-                {s.avgMinutes ? ` · ~${duration(s.avgMinutes, units())}` : ""}
-              </span>
-            </span>
-            <span style="display:flex;flex-direction:column;align-items:flex-end;flex:none">
-              <span style="font-size:16px;font-weight:600;color:var(--acc)">{money(s.rate)}</span>
-              <span style="font-size:12px;color:var(--hint)">{t("common.per1k")}</span>
-            </span>
-          </span>
-        </button>
+        <ServiceRow key={s.id} s={s} showPlatform={showPlatform} />
       ))}
-    </div>
+    </List>
   );
 }
 
 export function Services({ platform, category }: { platform: string; category: string }) {
-  const [pages, setPages] = useState<ServiceItem[][]>([]);
-  const [more, setMore] = useState(false);
-  const first = useAsync(() => cachedApi<{ items: ServiceItem[]; more: boolean }>(`/catalog/services?platform=${enc(platform)}&category=${enc(category)}`), [platform, category]);
+  const base = `/catalog/services?platform=${enc(platform)}&category=${enc(category)}`;
+  const first = useAsync(() => cachedApi<Page>(base), [platform, category]);
+  /** Pages loaded with "Show more" (page 1, 2, …), appended after the first page. */
+  const [extra, setExtra] = useState<{ items: ServiceItem[]; more: boolean; page: number } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<"platform" | "category" | null>(null);
   const [pendingPlatform, setPendingPlatform] = useState<string | null>(null);
+  const pName = platformName(platform);
+  const look = categoryLook(category);
 
-  useEffect(() => {
-    if (first.data) {
-      setPages([first.data.items]);
-      setMore(first.data.more);
-    }
-  }, [first.data]);
+  const items = first.data ? (extra ? first.data.items.concat(extra.items) : first.data.items) : [];
+  const more = extra ? extra.more : !!first.data?.more;
 
   const loadMore = async () => {
-    const r = await cachedApi<{ items: ServiceItem[]; more: boolean }>(`/catalog/services?platform=${enc(platform)}&category=${enc(category)}&page=${pages.length}`);
-    setPages((p) => [...p, r.items]);
-    setMore(r.more);
+    if (busy) return;
+    const page = (extra?.page ?? 0) + 1;
+    setBusy(true);
+    try {
+      const r = await cachedApi<Page>(`${base}&page=${page}`);
+      setExtra((e) => ({ items: [...(e?.items ?? []), ...r.items], more: r.more, page }));
+    } catch (e) {
+      toast(errText(e), "error");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const items = pages.flat();
-  return (
-    <>
-      <BackNav to={`/p/${enc(platform)}`} />
-      <div class="screen with-bar">
-        <div>
-          <h1 class="sm">{category}</h1>
-          <span class="sub">{t("svc.choose", { platform: platformName(platform) })}</span>
-        </div>
-        {first.error ? (
-          <ErrorState error={first.error} onRetry={first.reload} />
-        ) : first.data ? (
-          items.length ? (
-            <>
-              <ServiceRows items={items} />
-              {more ? (
-                <button type="button" class="btn soft sm" onClick={loadMore}>
-                  {t("common.showMore")}
-                </button>
-              ) : null}
-              <p class="note" style="margin:0">{t("svc.footnote")}</p>
-            </>
-          ) : (
-            <div class="empty">{t("svc.empty")}</div>
-          )
+  const open = (s: "platform" | "category") => {
+    haptic.tap();
+    setSheet(s);
+  };
+
+  let content;
+  if (first.error) {
+    content = <ErrorState error={first.error} onRetry={first.reload} />;
+  } else if (first.data && !items.length) {
+    content = <EmptyState art="search" title={t("svc.empty")} action={{ label: t("svc.emptyAction"), onClick: () => setSheet("category") }} />;
+  } else {
+    content = (
+      <Section>
+        <Notice tone="plain" icon="info">
+          {t("svc.footnote")}
+        </Notice>
+        {first.data ? (
+          <List stagger>
+            {items.map((s) => (
+              <ServiceRow key={s.id} s={s} />
+            ))}
+            {more ? <Row key="more" center title={busy ? t("common.loading") : t("common.showMore")} disabled={busy} onClick={loadMore} /> : null}
+          </List>
         ) : (
-          <Skeleton h={72} n={5} />
+          <SkeletonList rows={5} lead="none" />
         )}
-      </div>
+      </Section>
+    );
+  }
+
+  const overlay = (
+    <>
       <StepsBar>
-        <button type="button" class="round" aria-label={t("common.back")} onClick={() => back(`/p/${enc(platform)}`)}>
-          <Icon name="back" size={22} stroke={2.4} class="rtl-flip" />
-        </button>
-        <button type="button" class="pick plain" aria-label={`${t("sheet.platform")}: ${platformName(platform)}`} onClick={() => setSheet("platform")}>
-          <span class="circle">
-            <PlatformLogo slug={platform} size={32} radius={16} />
+        <button type="button" class="pick plain press" aria-haspopup="dialog" aria-label={`${t("sheet.platform")}: ${pName}`} onClick={() => open("platform")}>
+          <span class="circle" aria-hidden="true">
+            <PlatformLogo slug={platform} size={36} radius={18} />
           </span>
           <Icon name="down" size={14} stroke={2.4} />
         </button>
-        <button type="button" class="pick" onClick={() => setSheet("category")}>
-          <span class="ellipsis" style="flex:1;text-align:start;padding-inline-start:6px">{category}</span>
-          <span style="font-weight:500">{t("common.change")}</span>
+        <button type="button" class="pick press" aria-haspopup="dialog" aria-label={`${t("sheet.category")}: ${category}`} onClick={() => open("category")}>
+          <span class="circle tile" aria-hidden="true">
+            <Icon name={look.icon} size={18} stroke={1.8} />
+          </span>
+          <span class="ellipsis">{category}</span>
+          <span class="chg">{t("common.change")}</span>
           <Icon name="down" size={14} stroke={2.4} />
         </button>
       </StepsBar>
@@ -117,6 +150,7 @@ export function Services({ platform, category }: { platform: string; category: s
           current={platform}
           onClose={() => setSheet(null)}
           onPick={(slug) => {
+            // Chain: a new platform needs a category next.
             setPendingPlatform(slug);
             setSheet("category");
           }}
@@ -125,19 +159,29 @@ export function Services({ platform, category }: { platform: string; category: s
       {sheet === "category" ? (
         <CategorySheet
           platform={pendingPlatform ?? platform}
-          current={pendingPlatform ? "" : category}
+          current={pendingPlatform && pendingPlatform !== platform ? "" : category}
           onClose={() => {
             setSheet(null);
             setPendingPlatform(null);
           }}
           onPick={(c) => {
-            setSheet(null);
             const p = pendingPlatform ?? platform;
+            setSheet(null);
             setPendingPlatform(null);
-            navigate(`/p/${enc(p)}/${enc(c)}`, { replace: true });
+            if (p !== platform || c !== category) navigate(`/p/${enc(p)}/${enc(c)}`, { replace: true });
           }}
         />
       ) : null}
+    </>
+  );
+
+  return (
+    <>
+      <BackNav to={`/p/${enc(platform)}`} />
+      <Screen bottom="bar" overlay={overlay}>
+        <LargeTitle size="title" eyebrow={<FlowSteps step={3} />} title={category} sub={t("svc.choose", { platform: pName })} />
+        {content}
+      </Screen>
     </>
   );
 }

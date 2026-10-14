@@ -10,7 +10,23 @@ export function money(micro: number, opts: { sign?: boolean } = {}): string {
   return `${sign}$${s}`;
 }
 
-const locale = () => (getLang() === "zh" ? "zh-CN" : getLang());
+/**
+ * BCP 47 tag for Intl formatting. Arabic uses Latin digits ("ar-u-nu-latn") so num() and dateTime() match money();
+ * Hindi keeps Indian digit grouping.
+ */
+export function locale(): string {
+  const l = getLang();
+  return l === "zh" ? "zh-CN" : l === "ar" ? "ar-u-nu-latn" : l;
+}
+
+/** Lower-cases with the UI language's rules (Turkish dotted/dotless i), for words shown inside sentences. */
+export function lower(s: string): string {
+  try {
+    return s.toLocaleLowerCase(getLang());
+  } catch {
+    return s.toLowerCase();
+  }
+}
 
 export function num(n: number): string {
   return n.toLocaleString(locale());
@@ -46,6 +62,22 @@ export function duration(minutes: number, units: { m: string; h: string; d: stri
   if (minutes <= 2880) return `${+(minutes / 60).toFixed(1)} ${units.h}`;
   return `${Math.round(minutes / 1440)} ${units.d}`;
 }
+
+/**
+ * Left-to-right isolate (U+2066…U+2069) for money or an order number placed into a translated sentence by t(), which
+ * returns plain text. In Arabic, "$1.22" or "#123" right after Arabic letters would otherwise show as "1.22$" or
+ * "123#". Elements use <Num> instead.
+ */
+export const iso = (s: string) => `⁦${s}⁩`;
+
+/** iso() around every "#123" in a translated sentence ('#' has to be inside the isolate too). */
+export const isoIds = (s: string) => s.replace(/#\d+/g, (m) => iso(m));
+
+/**
+ * For text Telegram draws natively (MainButton, popups), where some clients may not support isolates: a left-to-right
+ * mark in front keeps "$1.22" or "#123" in order inside Arabic. It is invisible everywhere else.
+ */
+export const lrm = (s: string) => `‎${s}`;
 
 /** Strips the scheme for display */
 export function prettyLink(link: string): string {

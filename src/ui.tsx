@@ -8,8 +8,9 @@ import { prettyLink } from "./format";
 import { t, tErr, type Key } from "./i18n";
 import { Icon, ICON_PATHS, type IconName } from "./icons";
 import { back, navigate, useRoute } from "./router";
-import { createStore } from "./store";
-import { haptic, hasSecondaryButton, inTelegram, useBackButton, useBottomButtons, webApp, type ButtonSpec } from "./tg";
+import { reducedMotion } from "./motion";
+import { createStore, keyboardStore } from "./store";
+import { haptic, hasSecondaryButton, inTelegram, useBackButton, useBottomButtons, type ButtonSpec } from "./tg";
 
 // ---------- small helpers ----------
 
@@ -20,8 +21,6 @@ function tx(key: string, fallback: string, vars: Record<string, string | number>
   const s = t(key as Key, vars);
   return s === key ? fallback.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? "")) : s;
 }
-
-const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** After the keyboard opens (~300ms), bring a focused control into view. */
 function revealAfterFocus(el: HTMLElement | null, block: ScrollLogicalPosition) {
@@ -830,8 +829,6 @@ export function Toasts() {
 
 /** Number of open sheets. BottomButtons hides Telegram's MainButton/SecondaryButton while it is above 0. */
 export const overlayStore = createStore(0);
-/** Mounted BackNav count (see the BackButton note in Sheet). */
-let navBacks = 0;
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -904,14 +901,10 @@ export function Sheet({ title, sub, onClose, children, footer, size = "auto" }: 
       clearTimeout(openFallback);
       // Restore focus, but never to a text input (that would pop the keyboard back up).
       if (prev && prev.isConnected && prev !== document.body && !prev.matches("input, textarea, [contenteditable]")) prev.focus({ preventScroll: true });
-      // Until tg.ts keeps a BackButton stack, a closing sheet hides Telegram's BackButton; show it again for the page.
-      if (navBacks > 0)
-        setTimeout(() => {
-          if (navBacks > 0 && overlayStore.get() === 0) webApp?.BackButton.show();
-        }, 0);
     };
   }, []);
 
+  // On top of the BackButton stack while open: Back closes this sheet only, and the page's Back returns afterwards.
   useBackButton(requestClose);
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -1043,12 +1036,20 @@ const TABS: [string, IconName, "tab.new" | "tab.orders" | "tab.wallet" | "tab.pr
   ["/profile", "person", "tab.profile"],
 ];
 
-/** Floating capsule tab bar with a sliding lens. Only on the four main screens. */
+/** Without :has() (old Android WebViews) CSS can't slide the floating bars away from the keyboard, so they unmount. */
+const cssHas = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("selector(:has(a))");
+function useKeyboardHidesBar(): boolean {
+  const kb = keyboardStore.use();
+  return kb && !cssHas;
+}
+
+/** Floating capsule tab bar with a sliding lens. Only on the four main screens, as their only nav (so no label). */
 export function TabBar() {
   const { path } = useRoute();
+  if (useKeyboardHidesBar()) return null;
   const idx = TABS.findIndex(([href]) => href === path);
   return (
-    <nav class="tabs" aria-label="Main" style={`--i:${Math.max(0, idx)}`} data-none={idx < 0 ? "" : undefined}>
+    <nav class="tabs" style={`--i:${Math.max(0, idx)}`} data-none={idx < 0 ? "" : undefined}>
       {TABS.map(([href, icon, key]) => (
         <a
           key={href}
@@ -1070,10 +1071,11 @@ export function TabBar() {
   );
 }
 
-/** Floating order-steps bar (Categories, Services). Put `.pick` buttons inside. Render it in Screen `overlay`. */
+/** Floating order-steps bar (Categories, Services; their only nav, so no label). Put `.pick` buttons inside. Render it in Screen `overlay`. */
 export function StepsBar({ children }: { children: ComponentChildren }) {
+  if (useKeyboardHidesBar()) return null;
   return (
-    <nav class="steps" aria-label="Order steps">
+    <nav class="steps">
       {children}
     </nav>
   );
@@ -1081,16 +1083,10 @@ export function StepsBar({ children }: { children: ComponentChildren }) {
 
 /** Telegram BackButton inside Telegram; a small back link in a normal browser (local dev). */
 export function BackNav({ to }: { to: string }) {
-  // While a sheet is open, Back belongs to the sheet (it registers its own handler).
+  // A sheet opened later sits above this on the BackButton stack; the overlay check is a second guard.
   useBackButton(() => {
     if (overlayStore.get() === 0) back(to);
   });
-  useLayoutEffect(() => {
-    navBacks++;
-    return () => {
-      navBacks--;
-    };
-  }, []);
   if (inTelegram) return null;
   return (
     <div class="devbar">

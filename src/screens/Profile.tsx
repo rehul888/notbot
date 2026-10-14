@@ -1,69 +1,164 @@
-import { useEffect, useState } from "preact/hooks";
-import { LANG_NAMES, LANGS } from "../../shared/types";
-import { api } from "../api";
-import { setLang, t } from "../i18n";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { LANG_NAMES, LANGS, type Lang } from "../../shared/types";
+import { api, clearApiCache } from "../api";
+import { getLang, setLang, t } from "../i18n";
 import { Icon } from "../icons";
 import { updateMe } from "../me";
-import { clearApiCache } from "../api";
 import { meStore } from "../store";
-import { haptic, homeScreen, isDark, openTelegramLink, requestWriteAccess } from "../tg";
-import { Row, Sheet, Switch, errText, toast } from "../ui";
+import { homeScreen, isDark, openTelegramLink, requestWriteAccess, webApp } from "../tg";
+import { ErrorState, LargeTitle, List, Row, Screen, Section, Sheet, Skeleton, errText, toast } from "../ui";
+
+/** First letter of each name, uppercased for the UI language (whole characters, so emoji and surrogates survive). */
+function initials(first: string, last: string): string {
+  const s = (Array.from(first.trim())[0] ?? "") + (Array.from(last.trim())[0] ?? "");
+  return s.toLocaleUpperCase(getLang()) || "?";
+}
+
+/** 88px avatar: Telegram photo, or initials on pink when there is none (or it fails to load). */
+function Avatar({ url, first, last }: { url: string | null; first: string; last: string }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <span class="avatar" aria-hidden="true">
+      {url && !broken ? <img src={url} alt="" decoding="async" onError={() => setBroken(true)} /> : initials(first, last)}
+    </span>
+  );
+}
 
 export function Profile() {
   const me = meStore.use()!;
   const [sheet, setSheet] = useState<"lang" | "terms" | null>(null);
-  const [terms, setTerms] = useState("");
+  const [terms, setTerms] = useState<string | null>(null);
+  const [termsErr, setTermsErr] = useState<unknown>(null);
   const [home, setHome] = useState("unsupported");
+  // While the notify request is in flight the switch shows the new state; the server's answer then wins.
+  const [notifyPending, setNotifyPending] = useState<boolean | null>(null);
+  const notifyBusy = useRef(false);
+
   useEffect(() => {
-    if (homeScreen.supported) homeScreen.status().then(setHome);
+    if (!homeScreen.supported) return;
+    let live = true;
+    homeScreen.status().then((s) => live && setHome(s));
+    const added = () => setHome("added");
+    webApp?.onEvent("homeScreenAdded", added);
+    return () => {
+      live = false;
+      webApp?.offEvent("homeScreenAdded", added);
+    };
   }, []);
 
-  const initials = ((me.firstName[0] ?? "") + (me.lastName[0] ?? "")).toUpperCase() || "?";
-
-  const pickLang = async (l: string) => {
+  const pickLang = async (l: Lang) => {
+    // Row radio fires the selection haptic; the sheet unmounts straight away (spec: picks call the parent directly).
     setSheet(null);
-    haptic.select();
+    if (l === me.lang && l === getLang()) return;
     try {
       const m = await updateMe({ lang: l });
       clearApiCache();
       await setLang(m.lang);
     } catch (e) {
-      toast(errText(e));
+      toast(errText(e), "error");
     }
   };
 
   const toggleNotify = async (on: boolean) => {
+    if (notifyBusy.current) return;
+    notifyBusy.current = true;
+    setNotifyPending(on);
     try {
       if (on && !me.canMessage) {
         const ok = await requestWriteAccess();
-        if (!ok) return toast(t("profile.notifyDenied"));
+        if (!ok) {
+          toast(t("profile.notifyDenied"));
+          return;
+        }
         await updateMe({ notify: true, canMessage: true });
       } else await updateMe({ notify: on });
     } catch (e) {
-      toast(errText(e));
+      toast(errText(e), "error");
+    } finally {
+      notifyBusy.current = false;
+      setNotifyPending(null);
     }
   };
 
-  const support = () => (me.supportUsername ? openTelegramLink(`https://t.me/${me.supportUsername}`) : me.botUsername ? openTelegramLink(`https://t.me/${me.botUsername}`) : undefined);
+  const loadTerms = () => {
+    setTermsErr(null);
+    api<{ terms: string }>("/terms").then((r) => setTerms(r.terms), setTermsErr);
+  };
+  const openTerms = () => {
+    setSheet("terms");
+    if (terms === null) loadTerms();
+  };
+
+  const support = () =>
+    me.supportUsername
+      ? openTelegramLink(`https://t.me/${me.supportUsername}`)
+      : me.botUsername
+        ? openTelegramLink(`https://t.me/${me.botUsername}`)
+        : undefined;
+
+  const fullName = `${me.firstName} ${me.lastName}`.trim();
+  const notifyOn = notifyPending ?? (me.notify && me.canMessage);
+
+  const overlay =
+    sheet === "lang" ? (
+      <Sheet title={t("profile.language")} onClose={() => setSheet(null)}>
+        <List role="radiogroup" label={t("profile.language")}>
+          {LANGS.map((l) => (
+            <Row key={l} radio checked={l === me.lang} title={<span lang={l}>{LANG_NAMES[l]}</span>} onClick={() => pickLang(l)} />
+          ))}
+        </List>
+      </Sheet>
+    ) : sheet === "terms" ? (
+      <Sheet size="large" title={t("profile.terms")} onClose={() => setSheet(null)}>
+        {termsErr ? (
+          <ErrorState compact error={termsErr} onRetry={loadTerms} />
+        ) : terms === null ? (
+          <Skeleton h={18} n={6} radius={6} />
+        ) : (
+          // The owner writes the terms in one language: let the text pick its own direction inside an RTL UI.
+          <p class="desc" dir="auto">
+            {terms}
+          </p>
+        )}
+      </Sheet>
+    ) : null;
 
   return (
-    <div class="screen">
-      <div class="center" style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:10px">
-        <span class="avatar">{me.photoUrl ? <img src={me.photoUrl} alt="" /> : initials}</span>
-        <h1 class="xs" style="margin-top:6px">
-          {me.firstName} {me.lastName}
-        </h1>
-        <span class="sub">{me.username ? `@${me.username} · ${t("profile.account")}` : t("profile.account")}</span>
-      </div>
+    <Screen overlay={overlay}>
+      <LargeTitle
+        align="center"
+        size="title2"
+        lead={<Avatar url={me.photoUrl} first={me.firstName} last={me.lastName} />}
+        title={<bdi>{fullName}</bdi>}
+        sub={
+          me.username ? (
+            <>
+              <bdi dir="ltr">@{me.username}</bdi> · {t("profile.account")}
+            </>
+          ) : (
+            t("profile.account")
+          )
+        }
+      />
 
-      <div class="card">
-        <Row icon="globe" plate="var(--lavender-strong)" title={t("profile.language")} value={LANG_NAMES[me.lang]} onClick={() => setSheet("lang")} />
-      </div>
+      <List>
+        <Row
+          icon="globe"
+          plate="var(--lavender-strong)"
+          title={t("profile.language")}
+          value={<span lang={me.lang}>{LANG_NAMES[me.lang]}</span>}
+          onClick={() => setSheet("lang")}
+        />
+      </List>
 
-      <div class="card">
-        <Row icon="bell" plate="var(--pink)" title={t("profile.notify")} meta={t("profile.notifySub")} chevron={false}>
-          <Switch on={me.notify && me.canMessage} label={t("profile.notify")} onChange={toggleNotify} />
-        </Row>
+      {/* The footer sits right under the switch it explains (not under Terms, where it would read as part of them). */}
+      <Section footer={t("profile.notifySub")}>
+        <List>
+          <Row icon="bell" plate="var(--pink)" title={t("profile.notify")} toggle={{ on: notifyOn, onChange: toggleNotify }} />
+        </List>
+      </Section>
+
+      <List>
         {homeScreen.supported ? (
           <Row
             icon="phone"
@@ -71,55 +166,29 @@ export function Profile() {
             title={t("profile.home")}
             value={home === "added" ? t("profile.homeAdded") : undefined}
             onClick={home === "added" ? undefined : () => homeScreen.add()}
-            chevron={false}
           />
         ) : null}
-        <Row icon="chat" plate="var(--sky)" title={t("profile.support")} onClick={support} />
-        <Row
-          icon="doc"
-          plate="var(--lavender)"
-          title={t("profile.terms")}
-          onClick={() => {
-            setSheet("terms");
-            api<{ terms: string }>("/terms").then((r) => setTerms(r.terms));
-          }}
-        />
-      </div>
+        <Row icon="chat" plate="var(--sky)" title={t("profile.support")} onClick={support} external />
+        <Row icon="doc" plate="var(--lavender)" title={t("profile.terms")} onClick={openTerms} />
+      </List>
 
       {me.isAdmin ? (
-        <div class="section">
-          <div class="card">
-            <Row lead={<span class="tile sm" style="background:var(--brand);color:#fff"><Icon name="shield" size={18} /></span>} title={t("profile.admin")} href="/admin" />
-          </div>
-          <p class="note" style="margin:0">{t("profile.adminNote")}</p>
-        </div>
-      ) : null}
-
-      <img src={isDark() ? "/brand/wordmark-dark.svg" : "/brand/wordmark-light.svg"} alt="NotPanel" height={22} style="align-self:center;margin-top:8px;opacity:.9" />
-
-      {sheet === "lang" ? (
-        <Sheet title={t("profile.language")} onClose={() => setSheet(null)}>
-          <div class="card">
-            {LANGS.map((l) => (
-              <button type="button" class="row" key={l} onClick={() => pickLang(l)}>
-                <span class="body" style="min-height:50px">
-                  <span class="grow title" lang={l}>
-                    {LANG_NAMES[l]}
-                  </span>
-                  <span style={`color:var(--acc);opacity:${l === me.lang ? 1 : 0}`}>
-                    <Icon name="check" size={18} stroke={2.4} />
-                  </span>
+        <Section footer={t("profile.adminNote")}>
+          <List>
+            <Row
+              lead={
+                <span class="tile sm brand">
+                  <Icon name="shield" size={18} stroke={1.8} />
                 </span>
-              </button>
-            ))}
-          </div>
-        </Sheet>
+              }
+              title={t("profile.admin")}
+              href="/admin"
+            />
+          </List>
+        </Section>
       ) : null}
-      {sheet === "terms" ? (
-        <Sheet title={t("profile.terms")} onClose={() => setSheet(null)}>
-          <p class="desc" style="padding:0 0 12px">{terms || t("common.loading")}</p>
-        </Sheet>
-      ) : null}
-    </div>
+
+      <img class="wordmark" src={isDark() ? "/brand/wordmark-dark.svg" : "/brand/wordmark-light.svg"} alt="NotPanel" height={22} />
+    </Screen>
   );
 }

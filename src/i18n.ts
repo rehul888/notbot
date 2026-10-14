@@ -10,14 +10,22 @@ export function getLang(): Lang {
   return langStore.get().lang;
 }
 
+let langSeq = 0;
+
+/** Switches the UI language. Always updates <html lang/dir> (English included), together with the strings. */
 export async function setLang(code: string | null | undefined) {
   const lang = pickLang(code);
-  if (lang === "en") return langStore.set({ lang, dict: en });
-  const load = loaders[`./i18n/${lang}.json`];
-  const dict = load ? (await load()).default : {};
-  document.documentElement.lang = lang;
-  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-  langStore.set({ lang, dict: { ...en, ...dict } });
+  const seq = ++langSeq;
+  let dict: Record<string, string> = en;
+  if (lang !== "en") {
+    const load = loaders[`./i18n/${lang}.json`];
+    dict = { ...en, ...(load ? (await load()).default : {}) };
+  }
+  if (seq !== langSeq) return; // a newer choice arrived while this one was loading
+  const root = document.documentElement;
+  root.lang = lang;
+  root.dir = lang === "ar" ? "rtl" : "ltr";
+  langStore.set({ lang, dict });
 }
 
 export function t(key: Key, vars: Record<string, string | number> = {}): string {

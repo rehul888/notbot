@@ -1,20 +1,51 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+// Order form (`/s/:id`, step 4 of 4), design spec §5.6. Reads top to bottom like a form: what, where, how many,
+// how to pay, total. The MainButton always says exactly what will happen.
+//
+// One component renders the loading, error and loaded states inside the same <main>, so the screen's enter animation
+// plays once (a remounted <main> would replay it while html[data-nav] is still set).
+import type { ComponentChildren } from "preact";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { OrderView, ServiceDetail, ServiceField } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { api, ApiError, cachedApi } from "../api";
-import { duration, money, num } from "../format";
+import { duration, iso, lower, lrm, money, num, short } from "../format";
 import { t } from "../i18n";
 import { Icon, StarIcon } from "../icons";
-import { enc, navigate } from "../router";
 import { refreshMe } from "../me";
+import { reducedMotion } from "../motion";
+import { enc, navigate } from "../router";
 import { meStore } from "../store";
-import { closingConfirmation, haptic, openInvoice } from "../tg";
-import { BackNav, BottomButtons, ErrorState, PlatformLogo, Skeleton, errText, toast, useAsync } from "../ui";
+import { closingConfirmation, haptic, openInvoice, type ButtonSpec } from "../tg";
+import {
+  BackNav,
+  BottomButtons,
+  Chip,
+  ErrorState,
+  Field,
+  FlowSteps,
+  Notice,
+  Num,
+  PayOption,
+  PlatformLogo,
+  Presets,
+  QuickChip,
+  Screen,
+  Section,
+  Skeleton,
+  errText,
+  toast,
+  useAsync,
+} from "../ui";
+import { primePlaced } from "./OrderPlaced";
 import { CategorySheet, PlatformSheet, ServiceSheet } from "./Pickers";
+
+type PayWith = "balance" | "stars";
 
 const units = () => ({ m: t("units.m"), h: t("units.h"), d: t("units.d") });
 const PRESETS = [100, 500, 1000, 5000, 10000, 50000];
 const SPEEDS = [60, 360, 720, 1440, 2880];
+/** One cent in micro-USD. */
+const CENT = 10_000;
 
 function charge(svc: ServiceDetail, qty: number): number {
   if (svc.quantityMode === "fixed") return svc.rate;
@@ -32,83 +63,174 @@ function clampQty(svc: ServiceDetail, q: number): number {
   return v;
 }
 
+const initialQty = (svc: ServiceDetail, query: URLSearchParams) => clampQty(svc, Number(query.get("qty")) || (svc.min <= 1000 && svc.max >= 1000 ? 1000 : svc.min));
+
 const countLines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean).length;
+
+const smooth = (): ScrollBehavior => (reducedMotion() ? "auto" : "smooth");
+
+const canPaste = typeof navigator !== "undefined" && !!navigator.clipboard && "readText" in navigator.clipboard;
 
 export function OrderForm({ serviceId, query }: { serviceId: number; query: URLSearchParams }) {
   const res = useAsync(() => cachedApi<ServiceDetail>(`/catalog/service/${serviceId}`), [serviceId]);
-  return (
-    <>
-      <BackNav to="/" />
-      {res.error ? (
-        <div class="screen no-tabs">
-          <ErrorState error={res.error} onRetry={res.reload} />
-        </div>
-      ) : res.data ? (
-        <Form key={serviceId} svc={res.data} query={query} />
-      ) : (
-        <div class="screen no-tabs">
-          <Skeleton h={96} />
-          <Skeleton h={52} />
-          <Skeleton h={130} />
-        </div>
-      )}
-    </>
-  );
-}
-
-function Form({ svc, query }: { svc: ServiceDetail; query: URLSearchParams }) {
+  const svc = res.data;
   const me = meStore.use()!;
   const [link, setLink] = useState(query.get("link") ?? "");
-  const [qty, setQty] = useState(() => clampQty(svc, Number(query.get("qty")) || (svc.min <= 1000 && svc.max >= 1000 ? 1000 : svc.min)));
-  const [qtyText, setQtyText] = useState(String(qty));
+  /** null until the user changes it: the default comes from ?qty= or the service. */
+  const [qtyPick, setQtyPick] = useState<number | null>(null);
+  /** Raw digits while the amount field has focus; null shows the formatted number. */
+  const [editing, setEditing] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [drip, setDrip] = useState(0);
-  const [payWith, setPayWith] = useState<"balance" | "stars">("balance");
+  /** null until the user picks: then the balance is used when it covers the order, Stars otherwise. */
+  const [payPick, setPayPick] = useState<PayWith | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [sheet, setSheet] = useState<"platform" | "category" | "service" | null>(null);
   const [pickPlatform, setPickPlatform] = useState<string | null>(null);
-
-  const linesKey = svc.linesField;
-  const quantity = svc.quantityMode === "lines" && linesKey ? countLines(fields[linesKey] ?? "") : svc.quantityMode === "fixed" ? svc.min : qty;
-  const total = charge(svc, quantity);
-  const stars = Math.max(1, Math.ceil((total / 1e6) * me.starsPerUsd - 1e-9));
-  const enough = me.balance >= total;
+  const [descOpen, setDescOpen] = useState(false);
+  const [descLong, setDescLong] = useState(false);
+  const descRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     closingConfirmation(!!link.trim());
     return () => closingConfirmation(false);
   }, [!!link.trim()]);
 
-  // Offer Stars when the balance can't cover the order
+  // Offer "Show more" only when the description really runs past three lines.
+  useLayoutEffect(() => {
+    const el = descRef.current;
+    if (el && !descOpen) setDescLong(el.scrollHeight > el.clientHeight + 1);
+  }, [svc?.description]);
+
+  // A payment error appears inside "Pay with"; make sure it is on screen.
   useEffect(() => {
-    if (!enough && payWith === "balance") setPayWith("stars");
-  }, [enough]);
+    if (error) document.querySelector(".screen .notice.error")?.scrollIntoView({ block: "center", behavior: smooth() });
+  }, [error]);
 
-  const missing = useMemo(() => {
-    const m: string[] = [];
-    if (link.trim().length < 2) m.push("link");
-    for (const f of svc.fields) if (f.required && !(fields[f.key] ?? "").trim()) m.push(f.key);
-    if (svc.quantityMode === "lines" && (quantity < svc.min || quantity > svc.max)) m.push(linesKey ?? "lines");
-    return m;
-  }, [link, fields, quantity]);
+  const shell = (body: ComponentChildren, overlay?: ComponentChildren, center?: boolean) => (
+    <>
+      <BackNav to="/" />
+      <Screen bottom="native" class="stagger" center={center} overlay={overlay}>
+        {body}
+      </Screen>
+    </>
+  );
 
+  if (!svc && res.error) return shell(<><ErrorState error={res.error} onRetry={res.reload} /></>, null, true);
+  if (!svc)
+    return shell(
+      <>
+        <header class="lt">
+          <FlowSteps step={4} />
+          <Skeleton h={148} radius={20} />
+        </header>
+        <Skeleton h={52} radius={20} />
+        <Skeleton h={132} radius={20} />
+      </>,
+    );
+
+  // ---------- derived state ----------
+  const fixed = svc.quantityMode === "fixed";
+  const linesKey = svc.linesField;
+  const qty = qtyPick ?? initialQty(svc, query);
+  const quantity = svc.quantityMode === "lines" && linesKey ? countLines(fields[linesKey] ?? "") : fixed ? svc.min : qty;
+  const total = charge(svc, quantity);
+  const stars = Math.max(1, Math.ceil((total / 1e6) * me.starsPerUsd - 1e-9));
+  const enough = me.balance >= total;
+  const payWith: PayWith = payPick ?? (enough ? "balance" : "stars");
+  const shortOnBalance = payWith === "balance" && !enough;
+  // Top-up that covers the order: at least the minimum top-up, rounded up to a cent, within the maximum.
+  const needRaw = Math.ceil(Math.max(total - me.balance, me.minTopup) / CENT) * CENT;
+  const need = me.maxTopup > 0 ? Math.min(needRaw, me.maxTopup) : needRaw;
+
+  const missing: string[] = [];
+  if (link.trim().length < 2) missing.push("link");
+  for (const f of svc.fields) if (f.required && !(fields[f.key] ?? "").trim()) missing.push(f.key);
+  if (svc.quantityMode === "lines" && (quantity < svc.min || quantity > svc.max)) missing.push(linesKey ?? "lines");
+
+  const fieldError = (f: ServiceField): string | null => {
+    if (!showErrors || !missing.includes(f.key)) return null;
+    if (f.key === linesKey && svc.quantityMode === "lines") {
+      if (quantity < svc.min) return t("err.MINIMUM_QUANTITY", { n: num(svc.min) });
+      if (quantity > svc.max) return t("err.MAXIMUM_QUANTITY", { n: num(svc.max) });
+    }
+    return t("form.required");
+  };
+
+  const presets = PRESETS.filter((p) => p >= svc.min && p <= svc.max && (svc.step <= 1 || p % svc.step === 0)).slice(0, 5);
+  const speeds = svc.dripFeed ? SPEEDS.filter((m) => m <= svc.dripFeed!.max_total_minutes) : [];
+
+  // ---------- actions ----------
   const setQuantity = (v: number) => {
-    const c = clampQty(svc, v);
-    setQty(c);
-    setQtyText(String(c));
+    setQtyPick(clampQty(svc, v));
+    setEditing(null);
+  };
+
+  const bump = (d: 1 | -1) => {
+    const raw = qty + d * stepFor(svc);
+    if (raw < svc.min || raw > svc.max) haptic.edge();
+    else haptic.select();
+    setQuantity(raw);
+  };
+
+  const commitQty = (text: string) => {
+    const v = Number(text.replace(/\D/g, "")) || svc.min;
+    if (v < svc.min || v > svc.max) haptic.edge();
+    setQuantity(v);
+  };
+
+  /** Bring the amount card above the keyboard once it is up (~300ms). */
+  const revealQty = (el: HTMLElement) =>
+    setTimeout(() => {
+      if (document.activeElement !== el) return;
+      const card = el.closest<HTMLElement>(".qty-card") ?? el;
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      const r = card.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > h - 8) card.scrollIntoView({ block: "center", behavior: smooth() });
+    }, 300);
+
+  const pickPay = (p: PayWith) => {
+    setPayPick(p);
+    setError(null);
+  };
+
+  const paste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.trim()) {
+        setLink(text.trim());
+        setError(null);
+        haptic.select();
+      }
+    } catch {
+      toast(t("form.linkPh"));
+    }
+  };
+
+  /** Scroll to the first invalid field (in screen order) and focus it. */
+  const focusFirstInvalid = () => {
+    const order = ["link", ...svc.fields.map((f) => f.key)];
+    const key = order.find((k) => missing.includes(k)) ?? missing[0];
+    const el = document.getElementById(key === "link" ? "lnk" : `f-${key}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: smooth() });
+    const target = el.matches("input, textarea") ? el : el.querySelector<HTMLElement>("button");
+    target?.focus({ preventScroll: true });
   };
 
   const submit = async () => {
+    if (busy) return;
     if (missing.length) {
       setShowErrors(true);
       haptic.error();
-      setError(missing.includes("link") ? t("err.INVALID_LINK") : t("err.MISSING_FIELD"));
+      focusFirstInvalid();
       return;
     }
     setError(null);
     setBusy(true);
+    haptic.press();
     const body = {
       serviceId: svc.id,
       link: link.trim(),
@@ -117,213 +239,288 @@ function Form({ svc, query }: { svc: ServiceDetail; query: URLSearchParams }) {
       dripMinutes: drip || undefined,
       payWith,
     };
+    // No success haptic here: OrderPlaced fires it in time with its celebration (spec §7.8).
     try {
       if (payWith === "stars") {
         const r = await api<{ invoice: string; paymentId: number }>("/orders", { body });
         const status = await openInvoice(r.invoice);
         if (status === "paid" || status === "pending") {
-          haptic.success();
           closingConfirmation(false);
           navigate(`/placed/0?payment=${r.paymentId}`, { replace: true });
         } else setBusy(false);
         return;
       }
       const r = await api<{ order: OrderView }>("/orders", { body });
-      haptic.success();
       closingConfirmation(false);
       void refreshMe();
+      // Hand the order over, so OrderPlaced celebrates straight away instead of loading it again.
+      primePlaced(r.order);
       navigate(`/placed/${r.order.id}`, { replace: true });
     } catch (e) {
       haptic.error();
       setBusy(false);
       setError(errText(e));
-      if (e instanceof ApiError && e.code === "INSUFFICIENT_FUNDS") setPayWith("stars");
+      if (e instanceof ApiError && e.code === "INSUFFICIENT_FUNDS") setPayPick("stars");
     }
   };
 
-  const paste = async () => {
+  /** Balance too low: top up exactly what's missing, then come back to this order. */
+  const addFunds = () => {
+    haptic.tap();
+    const ret = `/s/${svc.id}?link=${enc(link)}&qty=${quantity}`;
+    // Keep what was typed in this history entry too, so Back from the top-up screen returns to a filled form.
     try {
-      const text = await navigator.clipboard.readText();
-      if (text) setLink(text.trim());
+      history.replaceState(history.state, "", "#" + ret);
     } catch {
-      toast(t("form.linkPh"));
+      /* not critical */
     }
+    navigate(`/topup?amount=${(need / 1e6).toFixed(2)}&ret=${enc(ret)}`);
   };
 
-  const presets = PRESETS.filter((p) => p >= svc.min && p <= svc.max && (svc.step <= 1 || p % svc.step === 0)).slice(0, 5);
-  const speeds = svc.dripFeed ? SPEEDS.filter((m) => m <= svc.dripFeed!.max_total_minutes) : [];
-  const invalid = (k: string) => showErrors && missing.includes(k);
+  // Telegram draws these labels natively: lrm() keeps "$0.078" from turning into "0.078$" in Arabic.
+  const main: ButtonSpec = shortOnBalance
+    ? { text: t("form.addFunds", { amount: lrm(money(need)) }), onClick: addFunds }
+    : {
+        text: payWith === "stars" ? t("form.payStars", { stars: num(stars) }) : t("form.pay", { amount: lrm(money(total)) }),
+        onClick: submit,
+        progress: busy,
+        shine: true,
+      };
 
-  return (
-    <div class="screen no-tabs" style="padding-bottom:calc(200px + var(--safe-bottom))">
-      {/* Summary */}
-      <div class="card pad" style="display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;gap:12px;align-items:center">
-          <PlatformLogo slug={svc.platform} size={40} radius={11} />
-          <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
-            <b style="font-size:17px;line-height:1.25">{svc.name}</b>
-            <span class="sub" style="font-size:13px">
-              {platformName(svc.platform)} · {svc.category} · ID {svc.id}
-            </span>
+  // ---------- view ----------
+  const body = (
+    <>
+      {/* 1-2. Step and the service card (the card is the screen's heading) */}
+      <header class="lt">
+        <FlowSteps step={4} />
+        <div class="card pad svc-card fade">
+          <div class="head">
+            <PlatformLogo slug={svc.platform} size={44} radius={12} />
+            <div>
+              {/* NotPanel data (Latin names, brackets, IDs): isolated so it reads correctly inside Arabic UI. */}
+              <b class="t-headline" role="heading" aria-level={1}>
+                <bdi>{svc.name}</bdi>
+              </b>
+              <span>
+                <bdi>
+                  {platformName(svc.platform)} · {svc.category} · ID {svc.id}
+                </bdi>
+              </span>
+            </div>
           </div>
+          <div class="chips">
+            {/* One span per chip: the chip is a flex row, and loose text + <bdi> would each become a spaced item. */}
+            <Chip selected>
+              <span>
+                <Num>{money(svc.rate)}</Num>
+                {fixed ? null : ` ${t("common.per1k")}`}
+              </span>
+            </Chip>
+            {fixed ? null : (
+              <Chip>
+                <span>
+                  {t("common.min")} <Num>{num(svc.min)}</Num> · {t("common.max")} <Num>{num(svc.max)}</Num>
+                </span>
+              </Chip>
+            )}
+            {svc.avgMinutes ? <Chip lead={<Icon name="clock" size={13} stroke={2.2} />}>{t("form.avgTime", { time: duration(svc.avgMinutes, units()) })}</Chip> : null}
+            {svc.refill ? <Chip lead={<Icon name="refill" size={13} stroke={2.2} />}>{t("form.refill")}</Chip> : null}
+          </div>
+          {svc.description ? (
+            <p ref={descRef} id="svc-desc" dir="auto" class={descOpen ? "desc" : "desc clamp"}>
+              {svc.description}
+            </p>
+          ) : null}
+          {svc.description && descLong ? (
+            <div class="t-callout">
+              <button type="button" class="textbtn inline" aria-expanded={descOpen} aria-controls="svc-desc" onClick={() => setDescOpen((o) => !o)}>
+                {t(descOpen ? "common.showLess" : "common.showMore")}
+              </button>
+            </div>
+          ) : null}
         </div>
-        <div class="chips">
-          <span class="chip sel">
-            {money(svc.rate)} {svc.quantityMode === "fixed" ? "" : t("common.per1k")}
-          </span>
-          {svc.quantityMode !== "fixed" ? (
-            <span class="chip">
-              {t("common.min")} {num(svc.min)} · {t("common.max")} {num(svc.max)}
-            </span>
-          ) : null}
-          {svc.avgMinutes ? (
-            <span class="chip">
-              <Icon name="clock" size={13} stroke={2.2} />
-              {t("form.avgTime", { time: duration(svc.avgMinutes, units()) })}
-            </span>
-          ) : null}
-          {svc.refill ? (
-            <span class="chip">
-              <Icon name="refill" size={13} stroke={2.2} />
-              {t("form.refill")}
-            </span>
-          ) : null}
-        </div>
-        {svc.description ? <p class="desc" style="padding:0;margin:0">{svc.description}</p> : null}
-      </div>
+      </header>
 
-      {/* Link */}
-      <div class="section">
-        <label class="label" for="lnk">
-          {t("form.link")}
-        </label>
-        <div class={`card field ${invalid("link") ? "invalid" : ""}`}>
-          <Icon name="link" size={18} />
-          <input id="lnk" type="url" inputMode="url" autoComplete="off" autoCapitalize="off" spellcheck={false} placeholder={t("form.linkPh")} value={link} onInput={(e) => setLink(e.currentTarget.value)} />
-          {!link && "readText" in (navigator.clipboard ?? {}) ? (
+      {/* 3. Link */}
+      <Field
+        id="lnk"
+        lead="link"
+        type="url"
+        inputMode="url"
+        dir="ltr"
+        enterKeyHint="done"
+        label={t("form.link")}
+        placeholder={t("form.linkPh")}
+        value={link}
+        onInput={(v) => {
+          setLink(v);
+          if (error) setError(null);
+        }}
+        help={t("form.linkHelp")}
+        error={showErrors && missing.includes("link") ? t("err.INVALID_LINK") : null}
+        trailing={
+          !link && canPaste ? (
             <button type="button" class="textbtn" onClick={paste}>
               {t("form.paste")}
             </button>
-          ) : null}
-        </div>
-      </div>
+          ) : null
+        }
+      />
 
-      {/* Amount */}
+      {/* 4. Amount */}
       {svc.quantityMode === "free" ? (
-        <div class="section">
-          <h2 class="label">{t("form.amount")}</h2>
-          <div class="card" style="padding:10px 14px 12px;display:flex;flex-direction:column;gap:10px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <button type="button" class="iconbtn lg" aria-label={t("form.fewer")} style="color:var(--fg)" onClick={() => (haptic.select(), setQuantity(qty - stepFor(svc)))}>
+        <Section
+          labelFor="qty"
+          header={t("form.amount")}
+          footer={
+            <>
+              {t("common.min")} <Num>{num(svc.min)}</Num> · {t("common.max")} <Num>{num(svc.max)}</Num>
+            </>
+          }
+        >
+          <div class="card qty-card">
+            <div class="qty">
+              <button type="button" class="iconbtn lg qty-btn press" aria-label={t("form.fewer")} onClick={() => bump(-1)}>
                 <Icon name="minus" size={20} stroke={2.4} />
               </button>
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center">
+              <div class="qty-mid">
                 <input
-                  aria-label={t("form.amount")}
-                  class="display"
+                  id="qty"
+                  class="qty-input num-l"
                   inputMode="numeric"
-                  style="width:100%;border:0;outline:0;background:transparent;text-align:center;font-size:30px"
-                  value={qtyText}
-                  onInput={(e) => {
-                    const digits = e.currentTarget.value.replace(/\D/g, "");
-                    setQtyText(digits);
-                    if (digits) setQty(Math.min(svc.max, Number(digits)));
+                  enterKeyHint="done"
+                  autoComplete="off"
+                  value={editing ?? num(qty)}
+                  onFocus={(e) => {
+                    setEditing(String(qty));
+                    revealQty(e.currentTarget);
                   }}
-                  onBlur={() => setQuantity(Number(qtyText) || svc.min)}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    const digits = el.value.replace(/\D/g, "").slice(0, 10);
+                    if (el.value !== digits) el.value = digits;
+                    setEditing(digits);
+                    if (digits) setQtyPick(Math.min(svc.max, Number(digits)));
+                  }}
+                  onBlur={(e) => commitQty(e.currentTarget.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                 />
-                <span class="sub" style="font-size:13px">{svc.category.toLowerCase()}</span>
+                <span class="qty-unit">{lower(svc.category)}</span>
               </div>
-              <button type="button" class="iconbtn lg" aria-label={t("form.more")} style="color:var(--fg)" onClick={() => (haptic.select(), setQuantity(qty + stepFor(svc)))}>
+              <button type="button" class="iconbtn lg qty-btn press" aria-label={t("form.more")} onClick={() => bump(1)}>
                 <Icon name="plus" size={20} stroke={2.4} />
               </button>
             </div>
-            {presets.length ? (
-              <div class="presets">
-                {presets.map((p) => (
-                  <button type="button" class="preset" key={p} aria-pressed={qty === p} onClick={() => (haptic.select(), setQuantity(p))}>
-                    {p >= 1000 ? `${p / 1000}K` : p}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            {presets.length ? <Presets value={qty} options={presets.map((p) => [p, short(p)] as [number, string])} onChange={setQuantity} label={t("form.amount")} /> : null}
           </div>
-        </div>
-      ) : svc.quantityMode === "fixed" ? (
-        <p class="note" style="margin:0">{t("form.packageNote")}</p>
+        </Section>
+      ) : fixed ? (
+        <Section header={t("form.amount")}>
+          <div class="card qty-card">
+            <div class="qty-mid">
+              <b class="num-l">{num(svc.min)}</b>
+              <span class="qty-unit">{lower(svc.category)}</span>
+            </div>
+          </div>
+          <Notice tone="info">{t("form.packageNote")}</Notice>
+        </Section>
       ) : null}
 
-      {/* Extra fields from NotPanel */}
+      {/* 5. Extra fields from NotPanel */}
       {svc.fields.map((f) => (
-        <FieldInput key={f.key} f={f} value={fields[f.key] ?? ""} invalid={invalid(f.key)} isLines={f.key === linesKey} onChange={(v) => setFields((x) => ({ ...x, [f.key]: v }))} />
+        <FieldInput key={f.key} f={f} value={fields[f.key] ?? ""} error={fieldError(f)} isLines={f.key === linesKey} onChange={(v) => setFields((x) => ({ ...x, [f.key]: v }))} />
       ))}
 
-      {/* Speed (drip-feed) */}
+      {/* 6. Speed (drip-feed) */}
       {speeds.length ? (
-        <div class="section">
-          <h2 class="label">{t("form.speed")}</h2>
-          <div class="chips">
-            <button type="button" class={`chip ${drip === 0 ? "sel" : ""}`} style="border:0;height:34px" onClick={() => (haptic.select(), setDrip(0))}>
+        <Section header={t("form.speed")} footer={drip ? t("form.speedOver", { time: duration(drip, units()) }) : undefined}>
+          <div class="chips scroll" role="group" aria-label={t("form.speed")}>
+            <Chip selected={drip === 0} onClick={() => setDrip(0)}>
               {t("form.speedFast")}
-            </button>
+            </Chip>
             {speeds.map((m) => (
-              <button type="button" key={m} class={`chip ${drip === m ? "sel" : ""}`} style="border:0;height:34px" onClick={() => (haptic.select(), setDrip(m))}>
+              <Chip key={m} selected={drip === m} onClick={() => setDrip(m)}>
                 {duration(m, units())}
-              </button>
+              </Chip>
             ))}
           </div>
-          {drip ? <p class="note" style="margin:0">{t("form.speedOver", { time: duration(drip, units()) })}</p> : null}
-        </div>
+        </Section>
       ) : null}
 
-      {/* Pay with */}
-      <div class="section">
-        <h2 class="label">{t("form.payWith")}</h2>
-        <div role="radiogroup" aria-label={t("form.payWith")} style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <PayOption on={payWith === "balance"} onClick={() => setPayWith("balance")} title={t("form.balance")} sub={money(me.balance)} icon={<Icon name="wallet" size={17} />} plate="var(--lavender)" />
-          <PayOption on={payWith === "stars"} onClick={() => setPayWith("stars")} title={t("form.stars")} sub={`${num(stars)} ⭐`} icon={<StarIcon size={17} />} plate="var(--cream)" />
+      {/* 7-8. Pay with, and a payment (API) error right under it */}
+      <Section header={t("form.payWith")}>
+        <div class="pay-opts" role="radiogroup" aria-label={t("form.payWith")}>
+          <PayOption
+            on={payWith === "balance"}
+            onClick={() => pickPay("balance")}
+            title={t("form.balance")}
+            sub={enough ? <Num>{money(me.balance)}</Num> : t("form.notEnoughShort")}
+            low={!enough}
+            plate="var(--lavender)"
+            icon={<Icon name="wallet" size={17} />}
+          />
+          <PayOption
+            on={payWith === "stars"}
+            onClick={() => pickPay("stars")}
+            title={t("form.stars")}
+            sub={
+              <>
+                <Num>{num(stars)}</Num> ⭐
+              </>
+            }
+            plate="var(--cream)"
+            icon={<StarIcon size={17} />}
+          />
         </div>
-      </div>
+        {error ? <Notice tone="error">{error}</Notice> : null}
+      </Section>
 
-      {error ? (
-        <div class="err-box" role="alert">
-          {error}
-        </div>
-      ) : null}
-
-      {/* Quick change + summary, above Telegram's bottom buttons */}
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
-        <span class="sub" style="font-size:12px;padding:0 4px">{t("form.tapToChange")}</span>
-        <div style="display:flex;gap:6px;overflow-x:auto;margin:0 -16px;padding:0 16px">
-          <QuickChip onClick={() => setSheet("platform")} lead={<PlatformLogo slug={svc.platform} size={26} radius={13} />}>
+      {/* 9. Quick change, right where second thoughts happen */}
+      <Section header={t("form.tapToChange")}>
+        <div class="chips scroll">
+          <QuickChip lead={<PlatformLogo slug={svc.platform} size={28} radius={14} />} label={`${t("sheet.platform")}: ${platformName(svc.platform)}`} onClick={() => setSheet("platform")}>
             {platformName(svc.platform)}
           </QuickChip>
-          <QuickChip onClick={() => setSheet("category")}>{svc.category}</QuickChip>
-          <QuickChip onClick={() => setSheet("service")}>{t("form.service")}</QuickChip>
+          <QuickChip label={`${t("sheet.category")}: ${svc.category}`} onClick={() => setSheet("category")}>
+            {svc.category}
+          </QuickChip>
+          <QuickChip label={t("sheet.service")} onClick={() => setSheet("service")}>
+            {t("form.service")}
+          </QuickChip>
         </div>
-        <div class="card pad" style="display:flex;justify-content:space-between;align-items:center">
-          <span>
-            {t("form.total")} · {num(quantity)}
-          </span>
-          <b class="display" style="font-size:22px;letter-spacing:-0.5px">
-            {payWith === "stars" ? `${num(stars)} ⭐` : money(total)}
-          </b>
+      </Section>
+
+      {/* 10-11. Total, and what happens to the money */}
+      <Section>
+        <div class="card total">
+          <div class="lbl">
+            <b>{t("form.total")}</b>
+            {fixed ? null : <span>{t("form.totalSub", { qty: iso(num(quantity)), rate: iso(money(svc.rate)) })}</span>}
+          </div>
+          <div class="amt" aria-live="polite">
+            {payWith === "stars" ? (
+              <>
+                <Num>{num(stars)}</Num> ⭐
+              </>
+            ) : (
+              <Num>{money(total)}</Num>
+            )}
+          </div>
         </div>
-        <p class="sub center" style="font-size:13px;margin:0">
-          {payWith === "stars" ? t("form.starsNote") : enough ? t("form.balanceAfter", { amount: money(me.balance - total) }) : t("form.notEnough", { amount: money(total - me.balance) })}
+        <p class="note center">
+          {payWith === "stars"
+            ? t("form.starsNote")
+            : enough
+              ? t("form.balanceAfter", { amount: iso(money(me.balance - total)) })
+              : t("form.notEnough", { amount: iso(money(Math.ceil((total - me.balance) / CENT) * CENT)) })}
         </p>
-      </div>
+      </Section>
+    </>
+  );
 
-      <BottomButtons
-        main={{
-          text: payWith === "stars" ? t("form.payStars", { stars: num(stars) }) : t("form.pay", { amount: money(total) }),
-          onClick: submit,
-          progress: busy,
-          disabled: payWith === "balance" && !enough,
-          shine: true,
-        }}
-        secondary={{ text: t("common.cancel"), onClick: () => navigate("/", { replace: true }) }}
-      />
-
+  const overlay = (
+    <>
+      <BottomButtons main={main} secondary={{ text: t("common.cancel"), onClick: () => navigate("/", { replace: true }) }} />
       {sheet === "platform" ? (
         <PlatformSheet
           current={svc.platform}
@@ -358,112 +555,84 @@ function Form({ svc, query }: { svc: ServiceDetail; query: URLSearchParams }) {
           }}
         />
       ) : null}
-    </div>
+    </>
   );
+
+  return shell(body, overlay);
 }
 
-function PayOption({ on, onClick, title, sub, icon, plate }: { on: boolean; onClick: () => void; title: string; sub: string; icon: preact.ComponentChildren; plate: string }) {
+function FieldError({ id, children }: { id: string; children: ComponentChildren }) {
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={on}
-      onClick={() => (haptic.select(), onClick())}
-      style={`height:58px;border-radius:16px;background:var(--card);border:2px solid ${on ? "var(--brand)" : "transparent"};display:flex;align-items:center;gap:10px;padding:0 12px;text-align:start`}
-    >
-      <span class="tile sm" style={`background:${plate};color:var(--sel-fg)`}>
-        {icon}
-      </span>
-      <span style="display:flex;flex-direction:column;min-width:0">
-        <b style="font-size:15px">{title}</b>
-        <span class="sub ellipsis" style="font-size:12px">
-          {sub}
-        </span>
-      </span>
-    </button>
+    <p class="field-error" id={`${id}-err`} role="alert">
+      <Icon name="alert" size={15} stroke={2.2} />
+      <span>{children}</span>
+    </p>
   );
 }
 
-function QuickChip({ onClick, lead, children }: { onClick: () => void; lead?: preact.ComponentChildren; children: preact.ComponentChildren }) {
-  return (
-    <button
-      type="button"
-      onClick={() => (haptic.tap(), onClick())}
-      style="height:40px;flex:none;border-radius:999px;border:1px solid var(--sep);background:var(--card);display:flex;align-items:center;gap:6px;padding:0 12px 0 8px;font-size:14px;font-weight:600;max-width:70%"
-    >
-      {lead}
-      <span class="ellipsis">{children}</span>
-      <Icon name="down" size={14} stroke={2.4} />
-    </button>
-  );
-}
-
-function FieldInput({ f, value, onChange, invalid, isLines }: { f: ServiceField; value: string; onChange: (v: string) => void; invalid: boolean; isLines: boolean }) {
+/** One extra NotPanel field: emoji reactions, a choice, a list of lines, or a text/number/link input. */
+function FieldInput({ f, value, onChange, error, isLines }: { f: ServiceField; value: string; onChange: (v: string) => void; error: string | null; isLines: boolean }) {
   const id = `f-${f.key}`;
-  const label = (
-    <label class="label" for={id}>
-      <span>
-        {f.label}
-        {f.required ? " *" : ""}
-      </span>
-      {f.kind === "lines" ? <span style="text-transform:none">{t("form.lines", { n: countLines(value) })}</span> : null}
-    </label>
-  );
+  const label = f.required ? `${f.label} *` : f.label;
+
   if (f.kind === "reactions" && f.allowed?.length) {
     const picked = value ? value.split(",") : [];
     const max = f.max_distinct ?? 11;
     const toggle = (e: string) => {
-      haptic.select();
-      const next = picked.includes(e) ? picked.filter((x) => x !== e) : picked.length < max ? [...picked, e] : picked;
-      onChange(next.join(","));
+      if (picked.includes(e)) {
+        haptic.select();
+        onChange(picked.filter((x) => x !== e).join(","));
+      } else if (picked.length < max) {
+        haptic.select();
+        onChange([...picked, e].join(","));
+      } else haptic.edge();
     };
     return (
-      <div class="section">
-        <h2 class="label">{t("form.reactions")}</h2>
-        <div class="card emoji-grid">
+      <Section header={t("form.reactions")} footer={error ? undefined : t("form.reactionsNote", { n: max })}>
+        <div id={id} class={`card emoji-grid${error ? " invalid" : ""}`} role="group" aria-label={t("form.reactions")} aria-describedby={error ? `${id}-err` : undefined}>
           {f.allowed.map((e) => (
-            <button type="button" key={e} aria-pressed={picked.includes(e)} onClick={() => toggle(e)}>
+            <button type="button" class="press" key={e} aria-pressed={picked.includes(e)} onClick={() => toggle(e)}>
               {e}
             </button>
           ))}
         </div>
-        <p class="note" style="margin:0">{t("form.reactionsNote", { n: max })}</p>
-      </div>
+        {error ? <FieldError id={id}>{error}</FieldError> : null}
+      </Section>
     );
   }
+
   if (f.kind === "choice" && f.choices?.length) {
     return (
-      <div class="section">
-        <h2 class="label">{f.label}</h2>
-        <div class="chips">
+      <Section header={label}>
+        <div id={id} class="chips" role="group" aria-label={f.label} aria-describedby={error ? `${id}-err` : undefined}>
           {f.choices.map((c) => (
-            <button type="button" key={c} class={`chip ${value === c ? "sel" : ""}`} style="border:0;height:34px" onClick={() => (haptic.select(), onChange(value === c ? "" : c))}>
+            <Chip key={c} selected={value === c} onClick={() => onChange(value === c ? "" : c)}>
               {c.replace(/_/g, " ")}
-            </button>
+            </Chip>
           ))}
         </div>
-      </div>
+        {error ? <FieldError id={id}>{error}</FieldError> : null}
+      </Section>
     );
   }
+
+  const lines = f.kind === "lines";
   return (
-    <div class="section">
-      {label}
-      <div class={`card field ${f.kind === "lines" ? "top" : ""} ${invalid ? "invalid" : ""}`}>
-        {f.kind === "lines" ? (
-          <textarea id={id} value={value} rows={5} maxLength={f.max_length ? f.max_length * 10000 : undefined} onInput={(e) => onChange(e.currentTarget.value)} />
-        ) : (
-          <input
-            id={id}
-            value={value}
-            type={(f.kind === "url" ? "url" : "text") as "text"}
-            inputMode={(f.kind === "integer" ? "numeric" : f.kind === "url" ? "url" : "text") as "text"}
-            maxLength={f.max_length}
-            autoCapitalize="off"
-            onInput={(e) => onChange(e.currentTarget.value)}
-          />
-        )}
-      </div>
-      {isLines ? <p class="note" style="margin:0">{t("form.linesNote")}</p> : null}
-    </div>
+    <Field
+      id={id}
+      label={label}
+      labelEnd={lines ? t("form.lines", { n: num(countLines(value)) }) : undefined}
+      value={value}
+      onInput={onChange}
+      multiline={lines}
+      rows={5}
+      required={f.required}
+      maxLength={lines ? (f.max_length ? f.max_length * 10000 : undefined) : f.max_length}
+      type={f.kind === "url" ? "url" : "text"}
+      inputMode={f.kind === "integer" ? "numeric" : f.kind === "url" ? "url" : "text"}
+      dir={f.kind === "url" ? "ltr" : undefined}
+      help={isLines ? t("form.linesNote") : undefined}
+      error={error}
+    />
   );
 }

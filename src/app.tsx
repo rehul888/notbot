@@ -1,10 +1,12 @@
+import { Fragment, type JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { refreshMe } from "./me";
 import { setLang, useLang } from "./i18n";
-import { navigate, useRoute } from "./router";
+import { useRoute } from "./router";
 import { meStore } from "./store";
 import { startParam } from "./tg";
-import { ErrorState, Skeleton, TabBar, Toasts } from "./ui";
+import { ErrorState, Screen, Skeleton, SkeletonGrid, TabBar, Toasts } from "./ui";
+import { ArtGallery } from "./art";
 import { Welcome } from "./screens/Welcome";
 import { LanguagePick } from "./screens/LanguagePick";
 import { Home } from "./screens/Home";
@@ -30,7 +32,26 @@ function routeFromStartParam(p: string | null): string | null {
   return null;
 }
 
+/** Called once before the first render: a deep link replaces the start route (no history entry, no animation). */
+export function applyStartRoute() {
+  const deep = routeFromStartParam(startParam);
+  if (deep && (location.hash === "" || location.hash === "#/")) history.replaceState(history.state, "", "#" + deep);
+}
+
 const TAB_PATHS = new Set(["/", "/orders", "/wallet", "/profile"]);
+
+/** Shown until /me answers: shaped like Home (hero card, search, platform grid). */
+function AppSkeleton() {
+  return (
+    <Screen bottom="none">
+      <Skeleton h={236} radius={24} />
+      <Skeleton h={44} />
+      <div class="card">
+        <SkeletonGrid />
+      </div>
+    </Screen>
+  );
+}
 
 export function App() {
   useLang();
@@ -44,43 +65,54 @@ export function App() {
       .then((m) => setLang(m.lang))
       .catch(setError);
   };
-  useEffect(() => {
-    const deep = routeFromStartParam(startParam);
-    if (deep && (location.hash === "" || location.hash === "#/")) navigate(deep, { replace: true });
-    load();
-  }, []);
+  useEffect(load, []);
 
-  if (error) return <ErrorState error={error} onRetry={load} />;
-  if (!me)
-    return (
-      <div class="screen">
-        <Skeleton h={40} />
-        <Skeleton h={220} />
-        <Skeleton h={58} n={2} />
-      </div>
+  // Each route change remounts the screen (keyed), so it plays the enter animation picked by the router (html[data-nav]).
+  let key: string;
+  let screen: JSX.Element;
+  let tabs = false;
+  if (import.meta.env.DEV && route.path === "/__art") {
+    // Dev-only art gallery (spec §8.3); not linked anywhere.
+    key = "__art";
+    screen = <ArtGallery />;
+  } else if (error) {
+    key = "error";
+    screen = (
+      <Screen bottom="none" center>
+        <ErrorState error={error} onRetry={load} />
+      </Screen>
     );
-  if (!me.langChosen) return <LanguagePick />;
-  if (!me.termsAccepted) return <Welcome />;
-
-  const [a, b, c] = route.parts;
-  let screen;
-  if (route.path === "/") screen = <Home />;
-  else if (a === "p" && b && c) screen = <Services platform={b} category={c} />;
-  else if (a === "p" && b) screen = <Categories platform={b} />;
-  else if (a === "s" && b) screen = <OrderForm serviceId={Number(b)} query={route.query} />;
-  else if (a === "placed" && b) screen = <OrderPlaced orderId={Number(b)} />;
-  else if (route.path === "/orders") screen = <Orders />;
-  else if (a === "order" && b) screen = <OrderDetail orderId={Number(b)} />;
-  else if (route.path === "/wallet") screen = <Wallet />;
-  else if (route.path === "/topup") screen = <TopUp />;
-  else if (route.path === "/profile") screen = <Profile />;
-  else if (a === "admin" && me.isAdmin) screen = <AdminRoutes parts={route.parts.slice(1)} query={route.query} />;
-  else screen = <Home />;
+  } else if (!me) {
+    key = "loading";
+    screen = <AppSkeleton />;
+  } else if (!me.langChosen) {
+    key = "lang";
+    screen = <LanguagePick />;
+  } else if (!me.termsAccepted) {
+    key = "welcome";
+    screen = <Welcome />;
+  } else {
+    const [a, b, c] = route.parts;
+    key = route.path + "?" + route.query;
+    tabs = TAB_PATHS.has(route.path);
+    if (route.path === "/") screen = <Home />;
+    else if (a === "p" && b && c) screen = <Services platform={b} category={c} />;
+    else if (a === "p" && b) screen = <Categories platform={b} />;
+    else if (a === "s" && b) screen = <OrderForm serviceId={Number(b)} query={route.query} />;
+    else if (a === "placed" && b) screen = <OrderPlaced orderId={Number(b)} />;
+    else if (route.path === "/orders") screen = <Orders />;
+    else if (a === "order" && b) screen = <OrderDetail orderId={Number(b)} />;
+    else if (route.path === "/wallet") screen = <Wallet />;
+    else if (route.path === "/topup") screen = <TopUp />;
+    else if (route.path === "/profile") screen = <Profile />;
+    else if (a === "admin" && me.isAdmin) screen = <AdminRoutes parts={route.parts.slice(1)} query={route.query} />;
+    else screen = <Home />;
+  }
 
   return (
     <>
-      {screen}
-      {TAB_PATHS.has(route.path) ? <TabBar /> : null}
+      <Fragment key={key}>{screen}</Fragment>
+      {tabs ? <TabBar /> : null}
       <Toasts />
     </>
   );
