@@ -12,7 +12,6 @@
     {
       "binding": "DB",
       "database_name": "notpanel",
-      // Replace with the id printed by `npx wrangler d1 create notpanel`
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
@@ -24,6 +23,5 @@
     "OWNER_IDS": "",
     // Local development only (set in .dev.vars). Must stay empty in production.
     "DEV_FAKE_USER_ID": ""
-  },
-  "secrets": { "required": ["BOT_TOKEN", "NOTPANEL_API_KEY", "TG_WEBHOOK_SECRET"] }
+  }
 }
