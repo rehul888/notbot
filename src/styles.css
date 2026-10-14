@@ -1,12 +1,12 @@
 /* Surfaces and text follow the user's Telegram theme; NotPanel's cobalt and pastels are the brand layer. */
 :root {
-  --page: var(--tg-theme-secondary-bg-color, #f2f2f7);
-  --card: var(--tg-theme-section-bg-color, #ffffff);
-  --fg: var(--tg-theme-text-color, #000000);
-  --hint: var(--tg-theme-hint-color, #6d6d72);
-  --sep: var(--tg-theme-section-separator-color, #e3e3e8);
-  --sheet: var(--tg-theme-secondary-bg-color, #f2f2f7);
-  --destructive: var(--tg-theme-destructive-text-color, #c4213a);
+  --page: #f2f2f7;
+  --card: #ffffff;
+  --fg: #000000;
+  --hint: #6d6d72;
+  --sep: #e3e3e8;
+  --sheet: #f2f2f7;
+  --destructive: #c4213a;
 
   --brand: #2457ff;
   --brand-pressed: #163ccb;
@@ -24,6 +24,7 @@
   --ok: #1a6b48;
   --ink: #152044;
 
+  --glow: rgba(36, 87, 255, 0.13);
   --lavender: #e6ecff;
   --lavender-strong: #b8c9ff;
   --lime: #e2fb98;
@@ -37,20 +38,20 @@
   --st-partial-bg: #fff4de; --st-partial: #835819;
   --st-cancel-bg: #ffebee; --st-cancel: #b3203a;
 
-  --font: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font: "DM Sans", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
   --display: "Space Grotesk", var(--font);
   --safe-bottom: max(var(--tg-safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --page: var(--tg-theme-secondary-bg-color, #000000);
-  --card: var(--tg-theme-section-bg-color, #1c1c1e);
-  --fg: var(--tg-theme-text-color, #ffffff);
-  --hint: var(--tg-theme-hint-color, #98989f);
-  --sep: var(--tg-theme-section-separator-color, #38383a);
-  --sheet: var(--tg-theme-section-bg-color, #1c1c1e);
-  --destructive: var(--tg-theme-destructive-text-color, #ff6b7f);
+  --page: #000000;
+  --card: #1c1c1e;
+  --fg: #ffffff;
+  --hint: #98989f;
+  --sep: #38383a;
+  --sheet: #1c1c1e;
+  --destructive: #ff6b7f;
   --acc: #8aa4ff;
   --sel: #1e2847;
   --sel-fg: #a8bbff;
@@ -62,6 +63,7 @@
   --bar-bd: rgba(255, 255, 255, 0.08);
   --shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.9);
   --dim: rgba(0, 0, 0, 0.6);
+  --glow: rgba(90, 120, 255, 0.22);
   --ok: #8bd4ad;
   --st-pending-bg: #2c2c2e; --st-pending: #d1d1d6;
   --st-progress-bg: #1e2847; --st-progress: #a8bbff;
@@ -72,7 +74,8 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; background: var(--page); color: var(--fg); font: 400 16px/1.35 var(--font); }
+html, body { margin: 0; background: var(--page); color: var(--fg); font: 400 16px/1.35 var(--font); -webkit-font-smoothing: antialiased; }
+body { background: radial-gradient(120% 340px at 50% -60px, var(--glow), transparent 70%) no-repeat, var(--page); }
 body { min-height: 100vh; min-height: var(--tg-viewport-stable-height, 100vh); overscroll-behavior-y: none; font-variant-numeric: tabular-nums; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -88,7 +91,7 @@ a { color: var(--acc); text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .screen, .sheet, .sheet-dim { animation: none !important; } }
 
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-h1 { margin: 0; font-size: 32px; line-height: 1.15; font-weight: 700; letter-spacing: -0.6px; }
+h1 { margin: 0; font-family: var(--display); font-size: 32px; line-height: 1.12; font-weight: 700; letter-spacing: -1.1px; }
 h1.sm { font-size: 28px; letter-spacing: -0.5px; }
 h1.xs { font-size: 22px; letter-spacing: -0.3px; }
 .sub { font-size: 14px; color: var(--hint); }
@@ -239,3 +242,16 @@ dd { margin: 0; }
 .stat b { font-family: var(--display); font-size: 22px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .devbar { position: sticky; top: 0; z-index: 40; height: 44px; display: flex; align-items: center; padding: 0 8px; background: var(--page); }
+
+/* Home hero */
+.hero-card { position: relative; overflow: hidden; border-radius: 24px; background: var(--brand); color: #fff; padding: 18px 18px 16px; min-height: 214px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 40px -22px rgba(36, 87, 255, 0.75); }
+.hero-card .ring { position: absolute; right: -46px; top: -54px; width: 210px; height: 210px; border-radius: 999px; border: 2px dashed rgba(255, 255, 255, 0.28); }
+.hero-card .disc { position: absolute; right: -10px; top: -14px; width: 150px; height: 150px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
+.hero-card .sticker { position: absolute; width: 42px; height: 42px; border-radius: 13px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 3px 6px 0 rgba(10, 24, 90, 0.3); }
+.hero-card .sticker img { width: 24px; height: 24px; }
+.hero-card .brand { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: -0.4px; position: relative; }
+.hero-card h1 { color: #fff; font-size: 26px; letter-spacing: -0.9px; max-width: 205px; position: relative; }
+.hero-card .hi { font-size: 14px; color: #c9d6ff; position: relative; }
+.hero-card .actions { margin-top: auto; display: flex; gap: 8px; position: relative; }
+.hero-card .bal { height: 40px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); color: #fff; border: 1px solid rgba(255, 255, 255, 0.22); padding: 0 14px; display: flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; font-size: 17px; }
+.hero-card .add { height: 40px; border: 0; border-radius: 999px; background: #fff; color: #1b45d6; padding: 0 14px; display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 15px; }

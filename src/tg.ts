@@ -71,15 +71,19 @@ function applyTheme() {
   document.documentElement.dataset.theme = isDark() ? "dark" : "light";
   if (!webApp) return;
   try {
-    webApp.setHeaderColor("secondary_bg_color");
-    webApp.setBackgroundColor("secondary_bg_color");
-    webApp.setBottomBarColor?.(webApp.themeParams.secondary_bg_color ?? (isDark() ? "#000000" : "#f2f2f7"));
+    // Match the design's page colour (not the user's custom Telegram theme)
+    const page = isDark() ? "#000000" : "#f2f2f7";
+    webApp.setHeaderColor(page);
+    webApp.setBackgroundColor(page);
+    webApp.setBottomBarColor?.(page);
   } catch {
     /* older clients */
   }
 }
 
 export function initTelegram() {
+  // Drop Telegram's launch params from the hash (the SDK has already read them)
+  if (/^#tgWebApp/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + "#/");
   applyTheme();
   if (!webApp) {
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);

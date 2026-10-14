@@ -49,16 +49,42 @@ export function Home() {
   }, [q]);
 
   return (
-    <div class="screen">
-      <div class="top" style="margin-top:6px">
-        <h1>{t("home.title")}</h1>
-        <a class="pill" href="#/wallet" aria-label={t("home.balanceAria", { amount: money(me.balance) })} onClick={(e) => (e.preventDefault(), navigate("/wallet", { replace: true }))}>
-          <span style="color:var(--acc);display:flex">
+    <div class="screen" style="padding-top:12px">
+      <section class="hero-card" aria-label={t("home.title")}>
+        <span class="disc" aria-hidden="true" />
+        <span class="ring" aria-hidden="true" />
+        <span class="sticker" aria-hidden="true" style="right:74px;top:20px;transform:rotate(-10deg)">
+          <img src="/platforms/telegram.svg" alt="" />
+        </span>
+        <span class="sticker" aria-hidden="true" style="right:16px;top:50px;transform:rotate(9deg)">
+          <img src="/platforms/instagram.svg" alt="" />
+        </span>
+        <span class="sticker" aria-hidden="true" style="right:72px;top:100px;transform:rotate(-6deg)">
+          <img src="/platforms/tiktok.svg" alt="" />
+        </span>
+        <span class="sticker" aria-hidden="true" style="right:20px;top:112px;width:30px;height:30px;border-radius:10px;background:var(--lime);transform:rotate(12deg);color:var(--brand)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.9c0 5.6-7.5 10-7.5 10z" /></svg>
+        </span>
+        <span class="sticker" aria-hidden="true" style="right:122px;top:16px;width:28px;height:28px;border-radius:9px;background:var(--pink);transform:rotate(-12deg);color:var(--ink)">
+          <Icon name="star" size={14} stroke={2} />
+        </span>
+        <span class="brand">
+          <img src="/brand/mark.svg" alt="" width={26} height={26} style="border-radius:99px;box-shadow:0 0 0 2px rgba(255,255,255,.35)" />
+          notpanel
+        </span>
+        <span class="hi">{t("home.hi", { name: me.firstName })}</span>
+        <h1>{t("home.headline")}</h1>
+        <div class="actions">
+          <button type="button" class="bal" aria-label={t("home.balanceAria", { amount: money(me.balance) })} onClick={() => (haptic.tap(), navigate("/wallet", { replace: true }))}>
             <Icon name="wallet" size={17} />
-          </span>
-          {money(me.balance)}
-        </a>
-      </div>
+            {money(me.balance)}
+          </button>
+          <button type="button" class="add" onClick={() => (haptic.tap(), navigate("/topup"))}>
+            <Icon name="plus" size={16} stroke={2.6} />
+            {t("wallet.add")}
+          </button>
+        </div>
+      </section>
 
       <label class="search">
         <Icon name="search" size={18} stroke={2} />

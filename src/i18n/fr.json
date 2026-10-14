@@ -34,6 +34,8 @@
   "welcome.terms": "Conditions d'utilisation",
   "welcome.continue": "Continuer",
   "home.title": "Nouvelle commande",
+  "home.hi": "Salut {name} 👋",
+  "home.headline": "Que voulez-vous faire grandir aujourd'hui ?",
   "home.balanceAria": "Solde {amount}, ouvrir le portefeuille",
   "home.search": "Rechercher un service par nom ou ID",
   "home.platforms": "Choisissez une plateforme",

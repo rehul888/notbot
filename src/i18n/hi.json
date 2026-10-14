@@ -34,6 +34,8 @@
   "welcome.terms": "सेवा की शर्तों",
   "welcome.continue": "जारी रखें",
   "home.title": "नया ऑर्डर",
+  "home.hi": "नमस्ते, {name} 👋",
+  "home.headline": "आज आप क्या बढ़ाना चाहते हैं?",
   "home.balanceAria": "बैलेंस {amount}, वॉलेट खोलें",
   "home.search": "नाम या ID से सेवाएँ खोजें",
   "home.platforms": "प्लेटफ़ॉर्म चुनें",

@@ -34,6 +34,8 @@
   "welcome.terms": "服务条款",
   "welcome.continue": "继续",
   "home.title": "新订单",
+  "home.hi": "你好，{name} 👋",
+  "home.headline": "今天想提升什么？",
   "home.balanceAria": "余额 {amount}，打开钱包",
   "home.search": "按名称或 ID 搜索服务",
   "home.platforms": "选择平台",

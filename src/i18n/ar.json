@@ -34,6 +34,8 @@
   "welcome.terms": "شروط الخدمة",
   "welcome.continue": "متابعة",
   "home.title": "طلب جديد",
+  "home.hi": "مرحبًا {name} 👋",
+  "home.headline": "ما الذي تريد تنميته اليوم؟",
   "home.balanceAria": "الرصيد {amount}، افتح المحفظة",
   "home.search": "ابحث عن الخدمات بالاسم أو المعرّف",
   "home.platforms": "اختر منصة",

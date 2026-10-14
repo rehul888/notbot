@@ -44,6 +44,8 @@ export const en = {
 
   // Home / new order
   "home.title": "New order",
+  "home.hi": "Hi, {name} 👋",
+  "home.headline": "What do you want to grow today?",
   "home.balanceAria": "Balance {amount}, open wallet",
   "home.search": "Search services by name or ID",
   "home.platforms": "Choose a platform",

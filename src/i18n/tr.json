@@ -34,6 +34,8 @@
   "welcome.terms": "Hizmet şartlarını",
   "welcome.continue": "Devam",
   "home.title": "Yeni sipariş",
+  "home.hi": "Merhaba {name} 👋",
+  "home.headline": "Bugün neyi büyütmek istersin?",
   "home.balanceAria": "Bakiye {amount}, cüzdanı aç",
   "home.search": "Hizmetleri ada veya ID'ye göre ara",
   "home.platforms": "Bir platform seç",

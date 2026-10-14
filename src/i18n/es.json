@@ -34,6 +34,8 @@
   "welcome.terms": "Términos del servicio",
   "welcome.continue": "Continuar",
   "home.title": "Nuevo pedido",
+  "home.hi": "Hola, {name} 👋",
+  "home.headline": "¿Qué quieres hacer crecer hoy?",
   "home.balanceAria": "Saldo {amount}, abrir cartera",
   "home.search": "Busca servicios por nombre o ID",
   "home.platforms": "Elige una plataforma",

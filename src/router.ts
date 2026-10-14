@@ -8,7 +8,9 @@ export interface Route {
 }
 
 function parse(): Route {
-  const raw = location.hash.replace(/^#/, "") || "/";
+  // Telegram appends its launch data (#tgWebAppData=…&tgWebAppVersion=…) to the URL; ignore it.
+  let raw = location.hash.replace(/^#/, "").replace(/[?&]?tgWebApp[\s\S]*$/, "");
+  if (!raw.startsWith("/")) raw = "/";
   const [path, q = ""] = raw.split("?");
   return { path, parts: path.split("/").filter(Boolean).map(decodeURIComponent), query: new URLSearchParams(q) };
 }

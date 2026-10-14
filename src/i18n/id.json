@@ -34,6 +34,8 @@
   "welcome.terms": "Ketentuan layanan",
   "welcome.continue": "Lanjutkan",
   "home.title": "Pesanan baru",
+  "home.hi": "Hai, {name} 👋",
+  "home.headline": "Apa yang ingin kamu kembangkan hari ini?",
   "home.balanceAria": "Saldo {amount}, buka dompet",
   "home.search": "Cari layanan berdasarkan nama atau ID",
   "home.platforms": "Pilih platform",
