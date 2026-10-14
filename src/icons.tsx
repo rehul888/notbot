@@ -39,13 +39,21 @@ const P: Record<string, string> = {
   chart: "M4 20V4M4 20h16M8 16l4-5 3 3 5-6",
   more: "M5 12h.01M12 12h.01M19 12h.01",
   tag: "M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9zM8 8h.01",
+  alert: "M12 3.5l9 16H3zM12 10v4M12 17h.01",
+  info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01",
+  spark: "M12 3c.6 4.2 2.8 6.4 7 7-4.2.6-6.4 2.8-7 7-.6-4.2-2.8-6.4-7-7 4.2-.6 6.4-2.8 7-7z",
+  wifiOff: "M5 9.5a10 10 0 0 1 14 0M8 12.5a6 6 0 0 1 8 0M11 15.5a2 2 0 0 1 2 0M12 18.5h.01M4 4l16 16",
 };
 
 export type IconName = keyof typeof P;
 
-export function Icon({ name, size = 22, stroke = 1.9, class: cls }: { name: IconName; size?: number; stroke?: number; class?: string }) {
+/** Raw 24×24 path data, for the inline-SVG art (src/art.tsx). */
+export const ICON_PATHS: Readonly<Record<IconName, string>> = P;
+
+/** Stroke icon. `fill` paints the shape too (e.g. a solid heart or spark). */
+export function Icon({ name, size = 22, stroke = 1.9, class: cls, fill }: { name: IconName; size?: number; stroke?: number; class?: string; fill?: boolean }) {
   return (
-    <svg class={cls} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={stroke} stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class={cls} width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke="currentColor" stroke-width={stroke} stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
       <path d={P[name]} />
     </svg>
   );
