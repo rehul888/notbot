@@ -1,7 +1,8 @@
 // Minimal Telegram Bot API client.
 
-/** Custom emoji shown on "open the app" buttons (needs the bot owner's Telegram Premium). */
-export const OPEN_ICON_EMOJI_ID = "6300928211068913689";
+/** Custom emoji icons on buttons (need the bot owner's Telegram Premium). */
+export const OPEN_ICON_EMOJI_ID = "5332336747072208845";
+export const VIEW_ORDER_ICON_EMOJI_ID = "5235588635885054955";
 
 function stripIcons(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(stripIcons);
@@ -33,7 +34,7 @@ export async function tg<T = any>(token: string, method: string, params: Record<
   return data.result;
 }
 
-/** Blue button that opens the Mini App, with the custom emoji icon. */
-export function webAppButton(text: string, url: string) {
-  return { text, web_app: { url }, style: "primary", icon_custom_emoji_id: OPEN_ICON_EMOJI_ID };
+/** Blue button that opens the Mini App, with a custom emoji icon and an upper-case label ("OPEN APP"). */
+export function webAppButton(text: string, url: string, icon: string = OPEN_ICON_EMOJI_ID) {
+  return { text: text.toLocaleUpperCase(), web_app: { url }, style: "primary", icon_custom_emoji_id: icon };
 }

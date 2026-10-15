@@ -16,7 +16,7 @@ const en = {
     "👇 <b>Tap Open App to start</b>",
   open: "Open App",
   chooseLanguage: "🌐 <b>Choose your language</b>\n\nTap a language below. You can change it any time with /language.",
-  viewOrder: "📊 View order",
+  viewOrder: "View order",
   orderPlaced:
     "🚀 <b>ORDER PLACED</b>\n\n" +
     "  ┣ 🧾 Order: <b>#{id}</b>\n" +

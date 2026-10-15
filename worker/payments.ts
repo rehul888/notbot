@@ -6,7 +6,7 @@ import { linkText } from "./botMessages";
 import { OrderError, placeOrder } from "./orders";
 import { checkDraft } from "./pricing";
 import { getSettings, type Settings } from "./settings";
-import { tg, webAppButton } from "./telegram";
+import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 
 export const usd = (m: number) => "$" + (m / 1e6).toFixed(m > 0 && m < 100_000 ? 3 : 2);
 
@@ -142,7 +142,7 @@ export async function onSuccessfulPayment(
   const lang = pickLang(user?.lang ?? user?.language_code ?? from.language_code);
   const s = await getSettings(env);
   const button = (id?: number) =>
-    s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, id ? "viewOrder" : "open"), `${s.app_url}/#/${id ? `order/${id}` : "wallet"}`)]] } : undefined;
+    s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, id ? "viewOrder" : "open"), `${s.app_url}/#/${id ? `order/${id}` : "wallet"}`, id ? VIEW_ORDER_ICON_EMOJI_ID : undefined)]] } : undefined;
 
   if (!p.draft) {
     const bal = await env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(p.user_id).first<{ balance: number }>();

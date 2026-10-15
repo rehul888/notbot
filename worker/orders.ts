@@ -5,7 +5,7 @@ import { linkText, usdText } from "./botMessages";
 import { NotPanelError, np, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
 import { orderCharge } from "./pricing";
 import { getSettings } from "./settings";
-import { tg, webAppButton } from "./telegram";
+import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 import type { ServiceDetail } from "../shared/types";
 
 export interface OrderRow {
@@ -332,7 +332,7 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
       text,
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
-      reply_markup: { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/order/${o.id}`)]] },
+      reply_markup: { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/order/${o.id}`, VIEW_ORDER_ICON_EMOJI_ID)]] },
     });
   } catch (e) {
     // 403 = the user blocked the bot; stop trying

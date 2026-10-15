@@ -3,7 +3,7 @@ import { langLabel, type Lang } from "../shared/types";
 import type { Env } from "./env";
 import { botText } from "./i18n";
 import { getSettings, setSettings, type Settings } from "./settings";
-import { tg, webAppButton } from "./telegram";
+import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 
 export const TERMS_URL = "https://notpanel.com/tos";
 const BANNER_PATH = "/brand/welcome-banner.jpg";
@@ -62,7 +62,7 @@ export function languageKeyboard(langs: readonly Lang[]) {
 export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: string, langs: readonly Lang[]): Promise<number> {
   const s = await getSettings(env);
   const sample = { id: "1234", service: "Telegram Post Views — Real", quantity: "1,000", link: "t.me/notpanel_com/42", refund: "$0.35", amount: "$5.00", balance: "$12.40", reason: "LINK_BUSY" };
-  const view = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/orders`)]] } : undefined;
+  const view = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/orders`, VIEW_ORDER_ICON_EMOJI_ID)]] } : undefined;
   const open = openButton(lang, s);
   const send = (text: string, reply_markup?: unknown) =>
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
