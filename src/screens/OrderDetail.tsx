@@ -149,7 +149,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     const cancel = async () => {
       haptic.warn();
       // Native popup: a left-to-right mark keeps "#123" in order in Arabic (isolates may not be supported there).
-      const ok = await confirmDialog(t("detail.cancelConfirm", { id: o.id }).replace(/#\d+/g, lrm), t("detail.cancelYes"), t("detail.cancelNo"), true);
+      const ok = await confirmDialog(t("detail.cancelConfirm", { id: o.number }).replace(/#\d+/g, lrm), t("detail.cancelYes"), t("detail.cancelNo"), true);
       if (!ok) return;
       setBusy(true);
       try {
@@ -195,7 +195,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
           title={o.serviceName}
           sub={
             <>
-              {isoIds(t("detail.title", { id: o.id }))} · {platformName(o.platform)}
+              {isoIds(t("detail.title", { id: o.number }))} · {platformName(o.platform)}
             </>
           }
         />

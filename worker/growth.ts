@@ -4,7 +4,7 @@ import { usdText } from "./botMessages";
 import { type Env, isOwner } from "./env";
 import { botText } from "./i18n";
 import type { Settings } from "./settings";
-import { tg, webAppButton } from "./telegram";
+import { INVITE_ICON_EMOJI_ID, tg, webAppButton } from "./telegram";
 
 const DAY = 86400;
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -180,7 +180,7 @@ async function notifyReferrer(env: Env, s: Settings, referrerId: number, friend:
     chat_id: referrerId,
     text: botText(lang, "referralReward", { name: friend || "—", amount: usdText(reward), balance: usdText(u.balance) }),
     parse_mode: "HTML",
-    reply_markup: s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "inviteMore"), `${s.app_url}/#/invite`)]] } : undefined,
+    reply_markup: s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "inviteMore"), `${s.app_url}/#/invite`, INVITE_ICON_EMOJI_ID)]] } : undefined,
   });
 }
 

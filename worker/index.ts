@@ -4,7 +4,7 @@ import { timingSafeEqual } from "./auth";
 import { sendPreviews } from "./botMessages";
 import { checkChannel } from "./growth";
 import { getSettings } from "./settings";
-import { tg } from "./telegram";
+import { emojiFallbacks, tg } from "./telegram";
 import type { Env } from "./env";
 import { pollOpenOrders } from "./orders";
 import { cleanupPendingPayments } from "./payments";
@@ -51,11 +51,13 @@ app.get("/setup/:secret/preview", async (c) => {
   const lang = pickLang(c.req.query("lang"));
   const owners = c.env.OWNER_IDS.split(",").map((s) => Number(s.trim())).filter(Boolean);
   let sent = 0;
+  const before = emojiFallbacks.count;
   for (const id of owners) {
     const u = await c.env.DB.prepare("SELECT first_name FROM users WHERE id = ?1").bind(id).first<{ first_name: string }>();
     sent += await sendPreviews(c.env, id, lang, u?.first_name ?? "", LANGS);
   }
-  return c.json({ ok: true, owners: owners.length, sent });
+  const fallbacks = emojiFallbacks.count - before;
+  return c.json({ ok: true, owners: owners.length, sent, customEmoji: fallbacks ? `refused ${fallbacks}x: ${emojiFallbacks.last}` : "accepted" });
 });
 
 /** Checks the bot can see the update channel and is an admin there: /setup/<SETUP_SECRET>/channel */

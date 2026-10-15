@@ -131,3 +131,14 @@ describe("notpanel webhook signature", () => {
     expect(sig).toBe(expected);
   });
 });
+
+describe("custom emoji", () => {
+  it("wraps known emojis (with or without the variation selector) and leaves others", async () => {
+    const { withCustomEmoji } = await import("../worker/telegram");
+    const out = withCustomEmoji("✅ <b>Done</b> ⭐️ ⭐ 🔢");
+    expect(out).toContain('<tg-emoji emoji-id="5985596818912712352">✅</tg-emoji>');
+    expect(out.match(/emoji-id="5258039825805624495"/g)?.length).toBe(2);
+    expect(out).toContain("🔢"); // no custom emoji for quantity
+    expect(out).not.toContain('">🔢');
+  });
+});

@@ -160,6 +160,8 @@ export interface ServiceDetail extends ServiceItem {
 
 export interface OrderView {
   id: number;
+  /** Number shown to users: the NotPanel order id, or the internal id while not yet accepted. */
+  number: number;
   serviceId: number;
   serviceName: string;
   platform: string;
@@ -185,6 +187,8 @@ export interface LedgerItem {
   delta: number;
   kind: "topup" | "order" | "refund" | "admin" | "stars_refund" | "referral";
   ref: number | null;
+  /** Displayed order number for kinds order/refund. */
+  orderNumber: number | null;
   note: string | null;
   createdAt: number;
 }

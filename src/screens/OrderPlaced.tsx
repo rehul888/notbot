@@ -231,7 +231,7 @@ export function OrderPlaced({ orderId }: { orderId: number }) {
           <div class="kv">
             <dt>{t("placed.order")}</dt>
             <dd>
-              <Num>#{order.id}</Num>
+              <Num>#{order.number}</Num>
             </dd>
           </div>
           <div class="kv">

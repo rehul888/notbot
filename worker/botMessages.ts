@@ -3,7 +3,7 @@ import { langLabel, type Lang } from "../shared/types";
 import type { Env } from "./env";
 import { botText } from "./i18n";
 import { getSettings, setSettings, type Settings } from "./settings";
-import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
+import { TERMS_ICON_EMOJI_ID, tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 
 export const TERMS_URL = "https://notpanel.com/tos";
 const BANNER_PATH = "/brand/welcome-banner.jpg";
@@ -48,7 +48,7 @@ export async function sendHelp(env: Env, chatId: number, lang: Lang, key: "help"
     text: botText(lang, key, { support: supportHandle(s) }),
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
-    reply_markup: { inline_keyboard: [...(open ? [[open]] : []), [{ text: botText(lang, "termsButton"), url: TERMS_URL }]] },
+    reply_markup: { inline_keyboard: [...(open ? [[open]] : []), [{ text: botText(lang, "termsButton"), url: TERMS_URL, style: "primary", icon_custom_emoji_id: TERMS_ICON_EMOJI_ID }]] },
   });
 }
 

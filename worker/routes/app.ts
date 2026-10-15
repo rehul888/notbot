@@ -293,7 +293,7 @@ app.get("/orders", async (c) => {
   if (filter === "finished") where.push("status IN ('completed','partial','cancelled','failed')");
   if (q) {
     vals.push(`%${q.replace(/^#/, "")}%`);
-    where.push(`(CAST(id AS TEXT) LIKE ?3 OR link LIKE ?3 OR service_name LIKE ?3)`);
+    where.push(`(CAST(COALESCE(np_order_id, id) AS TEXT) LIKE ?3 OR link LIKE ?3 OR service_name LIKE ?3)`);
   }
   const { results } = await c.env.DB.prepare(`SELECT * FROM orders WHERE ${where.join(" AND ")} ORDER BY id DESC LIMIT 30`)
     .bind(...vals)
@@ -349,12 +349,16 @@ app.post("/orders/:id/refill", async (c) => {
 app.get("/wallet", async (c) => {
   const u = c.get("user");
   const before = cursorParam(c.req.query("before"));
-  const { results } = await c.env.DB.prepare("SELECT * FROM ledger WHERE user_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT 30")
+  const { results } = await c.env.DB.prepare(
+    `SELECT l.id, l.delta, l.kind, l.ref, l.note, l.created_at, COALESCE(o.np_order_id, o.id) AS order_number
+     FROM ledger l LEFT JOIN orders o ON o.id = l.ref AND l.kind IN ('order','refund')
+     WHERE l.user_id = ?1 AND l.id < ?2 ORDER BY l.id DESC LIMIT 30`,
+  )
     .bind(u.id, before)
-    .all<{ id: number; delta: number; kind: LedgerItem["kind"]; ref: number | null; note: string | null; created_at: number }>();
+    .all<{ id: number; delta: number; kind: LedgerItem["kind"]; ref: number | null; note: string | null; created_at: number; order_number: number | null }>();
   return c.json({
     balance: u.balance,
-    items: results.map((r) => ({ id: r.id, delta: r.delta, kind: r.kind, ref: r.ref, note: r.note, createdAt: r.created_at })),
+    items: results.map((r) => ({ id: r.id, delta: r.delta, kind: r.kind, ref: r.ref, orderNumber: r.kind === "order" || r.kind === "refund" ? r.order_number ?? r.ref : null, note: r.note, createdAt: r.created_at })),
   });
 });
 

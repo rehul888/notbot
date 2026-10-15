@@ -37,8 +37,8 @@ function StarsTile() {
 }
 
 function ledgerTitle(i: LedgerItem): string {
-  if (i.kind === "order") return isoIds(t("ledger.order", { id: i.ref ?? "" }));
-  if (i.kind === "refund") return isoIds(t("ledger.refund", { id: i.ref ?? "" }));
+  if (i.kind === "order") return isoIds(t("ledger.order", { id: i.orderNumber ?? i.ref ?? "" }));
+  if (i.kind === "refund") return isoIds(t("ledger.refund", { id: i.orderNumber ?? i.ref ?? "" }));
   return t(`ledger.${i.kind}`);
 }
 

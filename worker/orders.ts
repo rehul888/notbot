@@ -47,6 +47,7 @@ export function orderView(o: OrderRow, paidWithStars = false): OrderView {
   const inGrace = !!o.cancel_before && now < o.cancel_before;
   return {
     id: o.id,
+    number: o.np_order_id ?? o.id,
     serviceId: o.service_id,
     serviceName: o.service_name,
     platform: o.platform,
@@ -320,7 +321,7 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
   ];
   if (!key) return;
   const text = botText(lang, key, {
-    id: String(o.id),
+    id: String(o.np_order_id ?? o.id),
     service: o.service_name,
     quantity: o.quantity.toLocaleString("en-US"),
     refund: usdText(o.refund),

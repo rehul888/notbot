@@ -40,7 +40,7 @@ export function OrderRow({ o, first }: { o: OrderView; first?: boolean }) {
       title={o.serviceName}
       meta={
         <>
-          <Num>#{o.id}</Num> · <Num>{num(o.quantity)}</Num>
+          <Num>#{o.number}</Num> · <Num>{num(o.quantity)}</Num>
           {done !== null ? null : <> · {ended ? t("orders.refunded") : <Num>{money(o.charge - o.refund)}</Num>}</>}
           {done !== null ? (
             <span class="order-prog">

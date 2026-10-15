@@ -1375,11 +1375,11 @@ function AdminOrders() {
                 title={o.serviceName}
                 meta={
                   <>
-                    <Num>#{o.id}</Num>
+                    internal <Num>#{o.id}</Num>
                     {o.npOrderId ? (
                       <>
                         {" "}
-                        · NP <Num>{o.npOrderId}</Num>
+                        · NotPanel <Num>#{o.npOrderId}</Num>
                       </>
                     ) : null}{" "}
                     · {o.userName}

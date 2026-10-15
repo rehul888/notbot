@@ -73,7 +73,7 @@ const en = {
     "  ┣ 💬 Write to: {support}\n" +
     "  ┗ 🧾 Include your payment date and amount\n\n" +
     "<i>Telegram support can't help with purchases made in this bot.</i>",
-  termsButton: "📄 Terms of service",
+  termsButton: "Terms of service",
   referralReward:
     "🎁 <b>REFERRAL BONUS</b>\n\n" +
     "  ┣ 👤 {name} joined with your link\n" +
