@@ -1,0 +1,6 @@
+.gate-steps { display: flex; flex-direction: column; gap: 14px; align-self: center; width: 100%; max-width: 340px; margin: 0; padding: 0; list-style: none; text-align: start; }
+.gate-steps li { display: flex; align-items: center; gap: 14px; font: 400 16px/22px var(--font); }
+.gate-steps .n { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--sel); color: var(--sel-fg); font: 700 17px/1 var(--num-font); }
+.gate-note { align-self: center; width: 100%; max-width: 340px; }
+.gate-body { margin: 0 auto; max-width: 320px; font: 400 16px/23px var(--font); color: var(--hint); text-align: center; }
+.gate-title { margin: 0; font: 700 28px/34px var(--display); letter-spacing: calc(-1px * var(--trk)); overflow-wrap: anywhere; text-align: center; }

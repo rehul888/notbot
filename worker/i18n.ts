@@ -12,12 +12,9 @@ const en = {
     "  ┣ ❤️ <i>Likes & reactions</i>\n" +
     "  ┣ 💬 <i>Comments & shares</i>\n" +
     "  ┗ 📊 <i>Live tracking for every order</i>\n\n" +
-    "📱 <b>PLATFORMS</b>\n" +
-    "  Telegram · Instagram · TikTok · YouTube · X and more\n\n" +
-    "⭐️ <b>Pay with Telegram Stars.</b> Anything not delivered is refunded to your balance automatically.\n\n" +
     "┗━━━━━━━━━━━━━━━━━━━━━━┛\n" +
-    "👇 <b>Tap Open NotPanel to start</b>",
-  open: "🚀 Open NotPanel",
+    "👇 <b>Tap Open App to start</b>",
+  open: "Open App",
   chooseLanguage: "🌐 <b>Choose your language</b>\n\nTap a language below. You can change it any time with /language.",
   viewOrder: "📊 View order",
   orderPlaced:
@@ -77,6 +74,13 @@ const en = {
     "  ┗ 🧾 Include your payment date and amount\n\n" +
     "<i>Telegram support can't help with purchases made in this bot.</i>",
   termsButton: "📄 Terms of service",
+  referralReward:
+    "🎁 <b>REFERRAL BONUS</b>\n\n" +
+    "  ┣ 👤 {name} joined with your link\n" +
+    "  ┣ 💰 Added: <b>{amount}</b>\n" +
+    "  ┗ 👛 Balance: <b>{balance}</b>\n\n" +
+    "<i>Invite more friends and earn for each one.</i>",
+  inviteMore: "Invite more friends",
   cmdStart: "Open NotPanel",
   cmdLanguage: "Change language",
   cmdHelp: "Help and support",

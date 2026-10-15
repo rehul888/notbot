@@ -208,9 +208,10 @@
 
 /* DM Sans and Space Grotesk have no Cyrillic, Arabic, Devanagari or CJK glyphs:
    one system face for those scripts (a line never mixes fonts) and no negative tracking. */
-html:is([lang="ru"], [lang="ar"], [lang="hi"], [lang="zh"]) { --font: var(--font-system); --display: var(--font-system); --trk: 0; }
+/* Scripts the brand fonts (DM Sans, Space Grotesk) don't cover well: use the system font */
+html:is([lang="ru"], [lang="uk"], [lang="ar"], [lang="fa"], [lang="ur"], [lang="hi"], [lang="bn"], [lang="zh"], [lang="ja"], [lang="ko"], [lang="vi"]) { --font: var(--font-system); --display: var(--font-system); --trk: 0; }
 html[lang="hi"] { --lh-body: 24px; --lh-foot: 20px; }
-html[lang="ar"] { --lh-body: 24px; }
+html:is([lang="ar"], [lang="fa"], [lang="ur"], [lang="bn"]) { --lh-body: 24px; }
 
 /* =========================================================================
    2. Base and type ramp

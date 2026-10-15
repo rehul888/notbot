@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { LANG_NAMES, LANGS, type Lang } from "../../shared/types";
+import { LANGS, langLabel, type Lang } from "../../shared/types";
 import { clearApiCache } from "../api";
 import { getLang, setLang, t } from "../i18n";
 import { Icon } from "../icons";
@@ -93,7 +93,7 @@ export function Profile() {
       <Sheet title={t("profile.language")} onClose={() => setSheet(null)}>
         <List role="radiogroup" label={t("profile.language")}>
           {LANGS.map((l) => (
-            <Row key={l} radio checked={l === me.lang} title={<span lang={l}>{LANG_NAMES[l]}</span>} onClick={() => pickLang(l)} />
+            <Row key={l} radio checked={l === me.lang} title={<span lang={l}>{langLabel(l)}</span>} onClick={() => pickLang(l)} />
           ))}
         </List>
       </Sheet>
@@ -117,15 +117,21 @@ export function Profile() {
         }
       />
 
-      <div class={"link-tiles" + (me.channelUsername ? "" : " one")}>
-        {me.channelUsername ? (
+      {me.referralEnabled ? (
+        <List>
+          <Row icon="users" plate="var(--lime)" title={t("invite.title")} meta={t("invite.cta")} href="/invite" accent />
+        </List>
+      ) : null}
+
+      <div class={"link-tiles" + (me.channelUrl ? "" : " one")}>
+        {me.channelUrl ? (
           <button
             type="button"
             class="link-tile press"
-            aria-label={`${t("profile.channel")}, @${me.channelUsername}`}
+            aria-label={`${t("profile.channel")}, ${t("profile.channelSub")}`}
             onClick={() => {
               haptic.tap();
-              openTelegramLink(`https://t.me/${me.channelUsername}`);
+              openTelegramLink(me.channelUrl!);
             }}
           >
             <span class="tile md brand">
@@ -134,9 +140,7 @@ export function Profile() {
             <Icon class="lt-out" name="out" size={16} stroke={2} />
             <span class="lt-text">
               <span class="lt-title">{t("profile.channel")}</span>
-              <span class="lt-hint" dir="ltr">
-                @{me.channelUsername}
-              </span>
+              <span class="lt-hint">{t("profile.channelSub")}</span>
             </span>
           </button>
         ) : null}
@@ -165,7 +169,7 @@ export function Profile() {
           icon="globe"
           plate="var(--lavender-strong)"
           title={t("profile.language")}
-          value={<span lang={me.lang}>{LANG_NAMES[me.lang]}</span>}
+          value={<span lang={me.lang}>{langLabel(me.lang)}</span>}
           onClick={() => setSheet("lang")}
         />
       </List>

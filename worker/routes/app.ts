@@ -6,6 +6,7 @@ import { type Env, isOwner } from "../env";
 import { botPlain } from "../i18n";
 import { cancelOrder, getOrderRow, OrderError, orderView, placeOrder, refillOrder, refreshOrder, type OrderRow } from "../orders";
 import { createInvoice } from "../payments";
+import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, verifyChannel } from "../growth";
 import { checkDraft, orderCharge } from "../pricing";
 import { getSettings, type Settings } from "../settings";
 
@@ -22,9 +23,12 @@ export interface UserRow {
   can_message: number;
   terms_accepted_at: number | null;
   banned: number;
+  channel_ok: number;
+  channel_checked_at: number | null;
+  home_at: number | null;
 }
 
-type Vars = { tgUser: TgUser; user: UserRow; settings: Settings; lang: Lang };
+type Vars = { tgUser: TgUser; user: UserRow; settings: Settings; lang: Lang; startParam: string | null };
 export type AppEnv = { Bindings: Env; Variables: Vars };
 type C = Context<AppEnv>;
 
@@ -58,11 +62,16 @@ export const app = new Hono<AppEnv>();
 app.use("*", async (c, next) => {
   const auth = c.req.header("authorization") ?? "";
   let tgUser: TgUser | null = null;
+  let startParam: string | null = null;
   if (auth.startsWith("tma ")) {
     const data = await validateInitData(auth.slice(4), c.env.BOT_TOKEN);
     tgUser = data?.user ?? null;
+    startParam = data?.startParam ?? null;
   } else if (c.env.DEV_FAKE_USER_ID && ["localhost", "127.0.0.1"].includes(new URL(c.req.url).hostname)) {
-    tgUser = { id: Number(c.env.DEV_FAKE_USER_ID), first_name: "Dev", last_name: "User", username: "dev", language_code: "en" };
+    const cookieUser = /(?:^|;\s*)dev_user=(\d+)/.exec(c.req.header("cookie") ?? "")?.[1];
+    const devId = Number(c.req.header("x-dev-user") || cookieUser || c.env.DEV_FAKE_USER_ID);
+    tgUser = { id: devId, first_name: devId === Number(c.env.DEV_FAKE_USER_ID) ? "Dev" : `Tester${devId}`, last_name: "User", username: "dev", language_code: "en" };
+    startParam = c.req.header("x-dev-start") ?? null;
   }
   if (!tgUser) return err(c, 401, "UNAUTHORIZED");
   const isMe = c.req.path.endsWith("/api/me") && c.req.method === "GET";
@@ -74,6 +83,7 @@ app.use("*", async (c, next) => {
   c.set("user", user);
   c.set("settings", settings);
   c.set("lang", pickLang(user.lang ?? user.language_code));
+  c.set("startParam", startParam);
   await next();
 });
 
@@ -104,13 +114,47 @@ async function meView(c: C): Promise<Me> {
     minTopup: s.min_topup,
     maxTopup: s.max_topup,
     supportUsername: s.support_username || null,
-    channelUsername: s.channel_username || null,
+    channelUrl: s.channel_url || null,
+    channelRequired: await channelGateRequired(c.env, s, u),
+    referralEnabled: !!s.referral_enabled,
     botUsername: s.bot_username || null,
     recent: results.map((r) => ({ id: r.id, serviceId: r.service_id, serviceName: r.service_name, platform: r.platform, link: r.link, quantity: r.quantity })),
   };
 }
 
-app.get("/me", async (c) => c.json(await meView(c)));
+app.get("/me", async (c) => {
+  // Mini App opened from a referral link (t.me/<bot>/app?startapp=ref_<id>): link the new user to the referrer
+  const ref = parseRef(c.get("startParam"));
+  if (ref) await attachReferral(c.env, c.get("settings"), c.get("user").id, ref);
+  return c.json(await meView(c));
+});
+
+/** The Verify button on the join-channel step */
+app.post("/channel/verify", async (c) => {
+  let result;
+  try {
+    result = await verifyChannel(c.env, c.get("settings"), c.get("user").id);
+  } catch (e) {
+    if (e instanceof RetryLater) return err(c, 429, "TRY_AGAIN");
+    throw e;
+  }
+  const user = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?1").bind(c.get("user").id).first<UserRow>();
+  c.set("user", user!);
+  // "unavailable" is stored as passed-unconfirmed, so meView no longer requires the step (and no referral is paid)
+  return c.json({ result, me: await meView(c) });
+});
+
+/** Called once when the home screen first shows: completes a pending referral */
+app.post("/me/home", async (c) => {
+  const s = c.get("settings");
+  const u = c.get("user");
+  if (u.lang === null || !u.terms_accepted_at) return c.json({ ok: false });
+  if (await channelGateRequired(c.env, s, u)) return err(c, 403, "CHANNEL_REQUIRED");
+  await onHomeReached(c.env, s, (p) => c.executionCtx.waitUntil(p), u.id);
+  return c.json({ ok: true });
+});
+
+app.get("/referrals", async (c) => c.json(await referralStats(c.env, c.get("settings"), c.get("user").id)));
 
 app.get("/terms", (c) => c.json({ terms: c.get("settings").terms_text }));
 
@@ -180,6 +224,7 @@ function orderErr(c: C, e: unknown) {
 }
 
 app.post("/orders", async (c) => {
+  if (await channelGateRequired(c.env, c.get("settings"), c.get("user"))) return err(c, 403, "CHANNEL_REQUIRED");
   const draft = await c.req.json<OrderDraft & { payWith?: "balance" | "stars" }>();
   try {
     const { svc, check, charge } = await draftFor(c, draft);
@@ -280,6 +325,7 @@ app.get("/wallet", async (c) => {
 });
 
 app.post("/wallet/topup", async (c) => {
+  if (await channelGateRequired(c.env, c.get("settings"), c.get("user"))) return err(c, 403, "CHANNEL_REQUIRED");
   const { amount } = await c.req.json<{ amount: number }>();
   const s = c.get("settings");
   const micro = Math.round(Number(amount) * MICRO);

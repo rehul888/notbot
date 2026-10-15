@@ -1,5 +1,5 @@
 // UI translations. English is bundled; other languages load on demand.
-import { type Lang, pickLang } from "../shared/types";
+import { type Lang, pickLang, RTL_LANGS } from "../shared/types";
 import { createStore } from "./store";
 import { en, type Key } from "./i18n/en";
 
@@ -24,7 +24,7 @@ export async function setLang(code: string | null | undefined) {
   if (seq !== langSeq) return; // a newer choice arrived while this one was loading
   const root = document.documentElement;
   root.lang = lang;
-  root.dir = lang === "ar" ? "rtl" : "ltr";
+  root.dir = RTL_LANGS.includes(lang) ? "rtl" : "ltr";
   langStore.set({ lang, dict });
 }
 

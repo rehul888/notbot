@@ -9,6 +9,8 @@ import { ErrorState, Screen, Skeleton, SkeletonGrid, TabBar, Toasts } from "./ui
 import { ArtGallery } from "./art";
 import { Welcome } from "./screens/Welcome";
 import { LanguagePick } from "./screens/LanguagePick";
+import { ChannelGate } from "./screens/ChannelGate";
+import { Invite } from "./screens/Invite";
 import { Home } from "./screens/Home";
 import { Categories } from "./screens/Categories";
 import { Services } from "./screens/Services";
@@ -88,6 +90,9 @@ export function App() {
   } else if (!me.langChosen) {
     key = "lang";
     screen = <LanguagePick />;
+  } else if (me.channelRequired) {
+    key = "gate";
+    screen = <ChannelGate />;
   } else if (!me.termsAccepted) {
     key = "welcome";
     screen = <Welcome />;
@@ -105,6 +110,7 @@ export function App() {
     else if (route.path === "/wallet") screen = <Wallet />;
     else if (route.path === "/topup") screen = <TopUp />;
     else if (route.path === "/profile") screen = <Profile />;
+    else if (route.path === "/invite") screen = <Invite />;
     else if (a === "admin" && me.isAdmin) screen = <LazyAdminRoutes parts={route.parts.slice(1)} query={route.query} />;
     else screen = <Home />;
   }

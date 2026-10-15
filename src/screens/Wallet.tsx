@@ -23,6 +23,7 @@ const KIND: Record<LedgerItem["kind"], { icon?: IconName; plate: string }> = {
   refund: { icon: "refill", plate: "var(--lime)" },
   topup: { plate: "var(--cream)" },
   admin: { icon: "sliders", plate: "var(--sky)" },
+  referral: { icon: "users", plate: "var(--lime)" },
   stars_refund: { icon: "star", plate: "var(--pink)" },
 };
 

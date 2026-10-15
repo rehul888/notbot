@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { platformName } from "../../shared/platforms";
-import { LANG_NAMES, LANGS, MICRO, type Lang } from "../../shared/types";
+import { LANGS, MICRO, type Lang } from "../../shared/types";
 import { sendPreviews } from "../botMessages";
 import { botPlain } from "../i18n";
+import { BOT_ABOUT } from "../bot-about";
 import { MARKUP_SQL, rebuildSummaryStmts, RULE_JOINS } from "../catalog";
 import { isOwner } from "../env";
 import { np, usdToMicro } from "../notpanel";
@@ -73,7 +74,12 @@ const EDITABLE: (keyof Settings)[] = [
   "only_timed",
   "low_balance",
   "support_username",
-  "channel_username",
+  "channel_url",
+  "channel_id",
+  "channel_gate",
+  "referral_enabled",
+  "referral_reward_stars",
+  "referral_daily_cap",
   "terms_text",
 ];
 
@@ -106,7 +112,8 @@ admin.put("/settings", async (c) => {
   if (values.default_markup_pct !== undefined && values.default_markup_pct > 1000) return err(c, 400, "INVALID_VALUE", { key: "default_markup_pct" });
   if (values.sync_every_hours !== undefined && values.sync_every_hours < 1) return err(c, 400, "INVALID_VALUE", { key: "sync_every_hours" });
   if (values.support_username) values.support_username = values.support_username.replace(/^@/, "");
-  if (values.channel_username) values.channel_username = values.channel_username.replace(/^@/, "");
+  if (values.channel_url && !/^https:\/\/t\.me\//.test(values.channel_url)) return err(c, 400, "INVALID_VALUE", { key: "channel_url" });
+  if (values.channel_id && !/^-100\d{5,}$/.test(values.channel_id)) return err(c, 400, "INVALID_VALUE", { key: "channel_id" });
   await c.env.DB.batch([...setSettingsStmts(c.env, values), bumpCatalogStmt(c.env)]);
   const s = await getSettings(c.env);
   if (values.default_markup_pct !== undefined) await c.env.DB.batch(rebuildSummaryStmts(c.env, s));
@@ -362,7 +369,7 @@ admin.post("/preview-messages", async (c) => {
   const u = c.get("user");
   const l = (LANGS as readonly string[]).includes(lang ?? "") ? (lang as Lang) : c.get("lang");
   try {
-    const sent = await sendPreviews(c.env, u.id, l, u.first_name, LANGS, LANG_NAMES);
+    const sent = await sendPreviews(c.env, u.id, l, u.first_name, LANGS);
     return c.json({ ok: true, sent });
   } catch (e) {
     return err(c, 400, "SEND_FAILED", { message: (e as Error).message });
@@ -375,6 +382,29 @@ admin.post("/connect", async (c) => {
   return c.json(result);
 });
 
+/**
+ * Sets the name, command menu, profile "About" text and description for one batch of 10 languages (4 Telegram calls each),
+ * staying under the free plan's 50 outgoing calls per request. Returns the next batch number, or null when done.
+ */
+export async function syncBotTexts(env: AppEnv["Bindings"], batch: number): Promise<number | null> {
+  const langs = LANGS.slice(batch * 10, batch * 10 + 10);
+  for (const l of langs) {
+    const lc = l === "en" ? {} : { language_code: l };
+    const commands = [
+      { command: "start", description: botPlain(l, "cmdStart") },
+      { command: "language", description: botPlain(l, "cmdLanguage") },
+      { command: "help", description: botPlain(l, "cmdHelp") },
+    ];
+    await tg(env.BOT_TOKEN, "setMyCommands", { commands, ...lc });
+    await tg(env.BOT_TOKEN, "setMyName", { name: BOT_ABOUT[l].name, ...lc });
+    await tg(env.BOT_TOKEN, "setMyShortDescription", { short_description: BOT_ABOUT[l].short, ...lc });
+    await tg(env.BOT_TOKEN, "setMyDescription", { description: BOT_ABOUT[l].description, ...lc });
+  }
+  return (batch + 1) * 10 < LANGS.length ? batch + 1 : null;
+}
+
+admin.post("/bot-texts/:batch", async (c) => c.json({ next: await syncBotTexts(c.env, Number(c.req.param("batch")) || 0) }));
+
 export async function connectAll(env: AppEnv["Bindings"], origin: string) {
   const s = await getSettings(env);
   const out: Record<string, unknown> = { appUrl: origin };
@@ -386,15 +416,7 @@ export async function connectAll(env: AppEnv["Bindings"], origin: string) {
     allowed_updates: ["message", "callback_query", "pre_checkout_query", "my_chat_member"],
     drop_pending_updates: false,
   });
-  // Command menu in every language (Telegram picks it by the user's app language; English is the default)
-  for (const l of LANGS) {
-    const commands = [
-      { command: "start", description: botPlain(l, "cmdStart") },
-      { command: "language", description: botPlain(l, "cmdLanguage") },
-      { command: "help", description: botPlain(l, "cmdHelp") },
-    ];
-    await tg(env.BOT_TOKEN, "setMyCommands", l === "en" ? { commands } : { commands, language_code: l });
-  }
+  // Per-language command menu, About text and description: see syncBotTexts (batched for the free plan's 50-call limit)
   await tg(env.BOT_TOKEN, "setChatMenuButton", { menu_button: { type: "web_app", text: "Open", web_app: { url: origin } } });
   const values: Partial<Settings> = { app_url: origin, bot_username: me.username };
   // NotPanel webhook for instant order updates (the cron job is the backup)

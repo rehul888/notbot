@@ -16,7 +16,11 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.code ?? "NETWORK", res.status, data.details);
+  if (!res.ok) {
+    // The user left the update channel: refresh Me so the app shows the join step again
+    if (data.code === "CHANNEL_REQUIRED" && path !== "/me") void import("./me").then((m) => m.refreshMe()).catch(() => undefined);
+    throw new ApiError(data.code ?? "NETWORK", res.status, data.details);
+  }
   return data as T;
 }
 

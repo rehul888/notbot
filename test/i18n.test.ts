@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { LANGS } from "../shared/types";
 import { en } from "../src/i18n/en";
 
-// Every non-English UI dictionary, loaded the same way the app loads them (src/i18n/*.json).
+// Every non-English UI dictionary (20 languages incl. English), loaded the same way the app loads them (src/i18n/*.json).
 const modules = import.meta.glob<Record<string, string>>("../src/i18n/*.json", { eager: true, import: "default" });
 const dicts: Record<string, Record<string, string>> = {};
 for (const [path, dict] of Object.entries(modules)) dicts[/([\w-]+)\.json$/.exec(path)![1]] = dict;

@@ -1,5 +1,5 @@
 // Rich bot messages: the photo welcome, help, and an owner-only preview of every message type.
-import type { Lang } from "../shared/types";
+import { langLabel, type Lang } from "../shared/types";
 import type { Env } from "./env";
 import { botText } from "./i18n";
 import { getSettings, setSettings, type Settings } from "./settings";
@@ -52,14 +52,14 @@ export async function sendHelp(env: Env, chatId: number, lang: Lang, key: "help"
   });
 }
 
-export function languageKeyboard(langs: readonly Lang[], names: Record<Lang, string>) {
+export function languageKeyboard(langs: readonly Lang[]) {
   const rows: { text: string; callback_data: string }[][] = [];
-  for (let i = 0; i < langs.length; i += 2) rows.push(langs.slice(i, i + 2).map((l) => ({ text: names[l], callback_data: `lang:${l}` })));
+  for (let i = 0; i < langs.length; i += 2) rows.push(langs.slice(i, i + 2).map((l) => ({ text: langLabel(l), callback_data: `lang:${l}` })));
   return { inline_keyboard: rows };
 }
 
 /** Owner preview: sends one of every message type with sample data, in the given language. */
-export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: string, langs: readonly Lang[], names: Record<Lang, string>): Promise<number> {
+export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: string, langs: readonly Lang[]): Promise<number> {
   const s = await getSettings(env);
   const sample = { id: "1234", service: "Telegram Post Views — Real", quantity: "1,000", link: "t.me/notpanel_com/42", refund: "$0.35", amount: "$5.00", balance: "$12.40", reason: "LINK_BUSY" };
   const view = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/orders`)]] } : undefined;
@@ -67,8 +67,8 @@ export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: s
   const send = (text: string, reply_markup?: unknown) =>
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
   let n = 0;
-  await send(`🧪 <b>Bot message previews</b> · ${names[lang]}\nSample data, nothing was charged.`);
-  await send(botText(lang, "chooseLanguage"), languageKeyboard(langs, names)), n++;
+  await send(`🧪 <b>Bot message previews</b> · ${langLabel(lang)}\nSample data, nothing was charged.`);
+  await send(botText(lang, "chooseLanguage"), languageKeyboard(langs)), n++;
   await sendWelcome(env, chatId, lang, name), n++;
   await sendHelp(env, chatId, lang), n++;
   await sendHelp(env, chatId, lang, "paysupport"), n++;

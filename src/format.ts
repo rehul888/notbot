@@ -16,7 +16,10 @@ export function money(micro: number, opts: { sign?: boolean } = {}): string {
  */
 export function locale(): string {
   const l = getLang();
-  return l === "zh" ? "zh-CN" : l === "ar" ? "ar-u-nu-latn" : l;
+  // Latin digits wherever the locale would switch to its own numerals, so num() matches money()
+  if (l === "zh") return "zh-CN";
+  if (l === "ar" || l === "fa" || l === "ur" || l === "bn") return `${l}-u-nu-latn`;
+  return l;
 }
 
 /** Lower-cases with the UI language's rules (Turkish dotted/dotless i), for words shown inside sentences. */

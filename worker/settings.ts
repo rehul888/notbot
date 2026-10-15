@@ -11,7 +11,14 @@ export const DEFAULTS = {
   only_timed: 1, // list only services that have a measured average delivery time
   low_balance: 5_000_000,
   support_username: "",
-  channel_username: "notpanel_com",
+  // Update channel: users must join it before using the app (bot must be an admin there)
+  channel_url: "https://t.me/your_channel",
+  channel_id: "-1001234567890",
+  channel_gate: 1,
+  // Referrals: reward the referrer this many Stars' worth of balance when a new user joins the channel and reaches home
+  referral_enabled: 1,
+  referral_reward_stars: 3,
+  referral_daily_cap: 50,
   terms_text:
     "By using this app you agree that services are delivered by third parties and delivery times are estimates. " +
     "Balance top-ups are paid in Telegram Stars and are credited to your in-app balance. Orders that cannot be " +

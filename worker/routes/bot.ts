@@ -1,8 +1,10 @@
 import { Hono } from "hono";
-import { LANG_NAMES, LANGS, pickLang, type Lang } from "../../shared/types";
+import { LANGS, langLabel, pickLang, type Lang } from "../../shared/types";
 import { timingSafeEqual } from "../auth";
 import type { Env } from "../env";
 import { isOwner } from "../env";
+import { attachReferral, parseRef } from "../growth";
+import { getSettings } from "../settings";
 import { botText } from "../i18n";
 import { languageKeyboard, sendHelp, sendPreviews, sendWelcome } from "../botMessages";
 import { onPreCheckout, onSuccessfulPayment } from "../payments";
@@ -37,7 +39,7 @@ async function onCallback(env: Env, q: any): Promise<void> {
   if (!m || !(LANGS as readonly string[]).includes(m[1])) return void (await tg(env.BOT_TOKEN, "answerCallbackQuery", { callback_query_id: q.id }));
   const lang = m[1] as Lang;
   await env.DB.prepare("UPDATE users SET lang = ?2 WHERE id = ?1").bind(q.from.id, lang).run();
-  await tg(env.BOT_TOKEN, "answerCallbackQuery", { callback_query_id: q.id, text: LANG_NAMES[lang] });
+  await tg(env.BOT_TOKEN, "answerCallbackQuery", { callback_query_id: q.id, text: langLabel(lang) });
   // Swap the language picker for the photo welcome in the chosen language
   if (q.message) await tg(env.BOT_TOKEN, "deleteMessage", { chat_id: q.message.chat.id, message_id: q.message.message_id }).catch(() => undefined);
   await sendWelcome(env, q.from.id, lang, q.from.first_name ?? "");
@@ -79,17 +81,21 @@ async function handle(env: Env, u: any): Promise<void> {
   const cmd = /^\/(\w+)/.exec(text)?.[1]?.toLowerCase() ?? "";
   const send = (t: string, markup?: unknown) =>
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: from.id, text: t, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: markup });
-  const pickLanguage = () => send(botText(lang, "chooseLanguage"), languageKeyboard(LANGS, LANG_NAMES));
+  const pickLanguage = () => send(botText(lang, "chooseLanguage"), languageKeyboard(LANGS));
 
   // /paysupport stays answered (Telegram requires it for Stars) but isn't in the command menu.
   if (cmd === "paysupport" || cmd === "support") return void (await sendHelp(env, from.id, lang, "paysupport"));
   if (cmd === "language") return void (await pickLanguage());
+  if (cmd === "start") {
+    const ref = parseRef(text.split(/\s+/)[1]);
+    if (ref) await attachReferral(env, await getSettings(env), from.id, ref);
+  }
   if (cmd === "start") return void (await (user?.lang ? sendWelcome(env, from.id, lang, from.first_name) : pickLanguage()));
   // Owner only: one of every message, e.g. "/preview" or "/preview ru"
   if (cmd === "preview" && isOwner(env, from.id)) {
     const arg = text.split(/\s+/)[1] as Lang | undefined;
     const l = arg && (LANGS as readonly string[]).includes(arg) ? arg : lang;
-    await sendPreviews(env, from.id, l, from.first_name, LANGS, LANG_NAMES);
+    await sendPreviews(env, from.id, l, from.first_name, LANGS);
     return;
   }
   await sendHelp(env, from.id, lang);

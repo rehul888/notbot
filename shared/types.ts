@@ -1,7 +1,16 @@
 // Types shared by the Worker API and the Mini App.
 
-export const LANGS = ["en", "es", "pt", "ru", "tr", "ar", "hi", "id", "fr", "zh"] as const;
+export const LANGS = [
+  "en", "es", "pt", "ru", "tr", "ar", "hi", "id", "fr", "zh",
+  "de", "it", "pl", "uk", "ja", "ko", "vi", "fa", "ur", "bn",
+] as const;
 export type Lang = (typeof LANGS)[number];
+
+/** Languages NotPanel's API can translate service names into; others show English service names. */
+export const NP_LANGS: readonly Lang[] = ["en", "es", "pt", "ru", "tr", "ar", "hi", "id", "fr", "zh"];
+
+/** Right-to-left languages */
+export const RTL_LANGS: readonly Lang[] = ["ar", "fa", "ur"];
 
 export const LANG_NAMES: Record<Lang, string> = {
   en: "English",
@@ -14,7 +23,26 @@ export const LANG_NAMES: Record<Lang, string> = {
   id: "Bahasa Indonesia",
   fr: "Français",
   zh: "中文",
+  de: "Deutsch",
+  it: "Italiano",
+  pl: "Polski",
+  uk: "Українська",
+  ja: "日本語",
+  ko: "한국어",
+  vi: "Tiếng Việt",
+  fa: "فارسی",
+  ur: "اردو",
+  bn: "বাংলা",
 };
+
+/** Flag shown next to each language (English is global, so a globe) */
+export const LANG_FLAGS: Record<Lang, string> = {
+  en: "🌐", es: "🇪🇸", pt: "🇧🇷", ru: "🇷🇺", tr: "🇹🇷", ar: "🇸🇦", hi: "🇮🇳", id: "🇮🇩", fr: "🇫🇷", zh: "🇨🇳",
+  de: "🇩🇪", it: "🇮🇹", pl: "🇵🇱", uk: "🇺🇦", ja: "🇯🇵", ko: "🇰🇷", vi: "🇻🇳", fa: "🇮🇷", ur: "🇵🇰", bn: "🇧🇩",
+};
+
+/** "🇪🇸 Español" */
+export const langLabel = (l: Lang) => `${LANG_FLAGS[l]} ${LANG_NAMES[l]}`;
 
 export function pickLang(code: string | null | undefined): Lang {
   const base = (code || "en").toLowerCase().split(/[-_]/)[0];
@@ -53,7 +81,11 @@ export interface Me {
   minTopup: number;
   maxTopup: number;
   supportUsername: string | null;
-  channelUsername: string | null;
+  /** Update channel link (Profile tile + join step) */
+  channelUrl: string | null;
+  /** Show the "join the update channel" step before the app */
+  channelRequired: boolean;
+  referralEnabled: boolean;
   botUsername: string | null;
   recent: RecentOrder[];
 }
@@ -151,7 +183,7 @@ export interface OrderView {
 export interface LedgerItem {
   id: number;
   delta: number;
-  kind: "topup" | "order" | "refund" | "admin" | "stars_refund";
+  kind: "topup" | "order" | "refund" | "admin" | "stars_refund" | "referral";
   ref: number | null;
   note: string | null;
   createdAt: number;
@@ -175,3 +207,21 @@ export interface ApiError {
   code: string;
   details?: Record<string, unknown>;
 }
+
+export interface ReferralStats {
+  /** Personal invite link (t.me/<bot>?start=ref_<id>), null until the bot is connected */
+  link: string | null;
+  enabled: boolean;
+  rewardStars: number;
+  /** Reward per friend in micro-USD */
+  reward: number;
+  /** Friends who started through the link */
+  invited: number;
+  /** Friends who joined the channel and reached home (paid or over the daily cap) */
+  joined: number;
+  /** Total paid to this user, micro-USD */
+  earned: number;
+  recent: { name: string; status: "pending" | "rewarded" | "capped"; at: number }[];
+}
+
+export type ChannelVerify = { result: "member" | "not_member" | "unavailable"; me: Me };

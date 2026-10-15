@@ -1226,7 +1226,12 @@ interface AdminSettingsData {
   only_timed: number;
   low_balance: number;
   support_username: string;
-  channel_username: string;
+  channel_url: string;
+  channel_id: string;
+  channel_gate: number;
+  referral_enabled: number;
+  referral_reward_stars: number;
+  referral_daily_cap: number;
   terms_text: string;
   last_sync_at: number;
   last_sync_summary: Overview["lastSync"];
@@ -1237,7 +1242,7 @@ interface AdminSettingsData {
   key_hint: string | null;
 }
 
-type NumKey = "stars_per_usd" | "min_topup" | "max_topup" | "low_balance";
+type NumKey = "stars_per_usd" | "min_topup" | "max_topup" | "low_balance" | "referral_reward_stars" | "referral_daily_cap";
 const USD_KEYS: NumKey[] = ["min_topup", "max_topup", "low_balance"];
 
 function AdminSettings() {
@@ -1304,6 +1309,8 @@ function AdminSettings() {
     setConnecting(true);
     try {
       const r = await api<{ bot: string; notpanelWebhook: true | string }>("/admin/connect", { method: "POST" });
+      // Command menu, About text and description in every language, in batches
+      for (let batch: number | null = 0; batch !== null; ) batch = (await api<{ next: number | null }>(`/admin/bot-texts/${batch}`, { method: "POST" })).next;
       if (r.notpanelWebhook === true) toast(`Connected @${r.bot} and NotPanel updates`, "ok");
       else toast(`Bot connected; NotPanel webhook: ${r.notpanelWebhook}`);
       res.reload();
@@ -1441,22 +1448,60 @@ function AdminSettings() {
                   />
                 </Num>
               </Kv>
-              <Kv label="Update channel" id="set-channel">
+            </dl>
+          </Section>
+
+          <Section header="Update channel" footer="The bot must be an admin in this channel.">
+            <dl class="card">
+              <Row toggle={{ on: !!s.channel_gate, onChange: (v) => set("channel_gate", v ? 1 : 0) }} wrap title="Require joining before using the app" />
+              <Kv label="Channel link" id="set-channel-url">
                 <Num>
-                  @
                   <input
-                    id="set-channel"
+                    id="set-channel-url"
                     dir="ltr"
                     autoComplete="off"
                     autoCapitalize="off"
                     spellcheck={false}
                     enterKeyHint="done"
-                    size={14}
-                    value={s.channel_username}
-                    placeholder="your_channel"
-                    onInput={(e) => set("channel_username", e.currentTarget.value.replace(/^@/, ""))}
+                    size={22}
+                    value={s.channel_url}
+                    placeholder="https://t.me/your_channel"
+                    onInput={(e) => set("channel_url", e.currentTarget.value.trim())}
                   />
                 </Num>
+              </Kv>
+              <Kv label="Channel ID" id="set-channel-id">
+                <Num>
+                  <input
+                    id="set-channel-id"
+                    dir="ltr"
+                    class="mono"
+                    style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellcheck={false}
+                    enterKeyHint="done"
+                    size={16}
+                    value={s.channel_id}
+                    placeholder="-1001234567890"
+                    onInput={(e) => set("channel_id", e.currentTarget.value.trim())}
+                  />
+                </Num>
+              </Kv>
+            </dl>
+          </Section>
+
+          <Section
+            header="Referrals"
+            footer={`≈ $${(s.stars_per_usd > 0 ? s.referral_reward_stars / s.stars_per_usd : 0).toFixed(3)} at ${s.stars_per_usd} Stars per $1. A referral counts when a new user opens the bot from the link, picks a language, joins the update channel (checked with Telegram) and reaches the home screen.`}
+          >
+            <dl class="card">
+              <Row toggle={{ on: !!s.referral_enabled, onChange: (v) => set("referral_enabled", v ? 1 : 0) }} wrap title="Referral program" />
+              <Kv label="Reward per friend (Stars)" id="set-ref-reward">
+                <Num>{numInput("referral_reward_stars", "set-ref-reward")}</Num>
+              </Kv>
+              <Kv label="Max paid referrals per user per day" id="set-ref-cap">
+                <Num>{numInput("referral_daily_cap", "set-ref-cap")}</Num>
               </Kv>
             </dl>
           </Section>

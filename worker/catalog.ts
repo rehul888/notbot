@@ -1,4 +1,4 @@
-import type { CategoryItem, DripFeed, Lang, PlatformItem, ServiceDetail, ServiceField, ServiceItem } from "../shared/types";
+import { NP_LANGS, type CategoryItem, type DripFeed, type Lang, type PlatformItem, type ServiceDetail, type ServiceField, type ServiceItem } from "../shared/types";
 import { PLATFORM_ORDER, platformName } from "../shared/platforms";
 import type { Env } from "./env";
 import { np } from "./notpanel";
@@ -107,7 +107,7 @@ export function listCategories(env: Env, s: Settings, platform: string): Promise
  */
 async function fillNames(env: Env, lang: Lang, rows: Row[], page: number): Promise<void> {
   const missing = rows.filter((r) => !r.name_found);
-  if (lang === "en" || !missing.length) return;
+  if (lang === "en" || !NP_LANGS.includes(lang) || !missing.length) return;
   const first = missing[0];
   try {
     const res = await np<{ items: { service: string; name: string; name_language?: string }[] }>(env.NOTPANEL_API_KEY, "catalog", {

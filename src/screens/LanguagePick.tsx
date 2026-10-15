@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { LANG_NAMES, LANGS, type Lang, type Me } from "../../shared/types";
+import { LANGS, langLabel, type Lang, type Me } from "../../shared/types";
 import { api } from "../api";
 import { ArtLanguage } from "../art";
 import { setLang, t } from "../i18n";
@@ -50,7 +50,7 @@ export function LanguagePick() {
             key={l}
             radio
             checked={l === lang}
-            title={<span lang={l}>{LANG_NAMES[l]}</span>}
+            title={<span lang={l}>{langLabel(l)}</span>}
             meta={l === tgLang ? t("lang.fromTelegram") : undefined}
             onClick={() => pick(l)}
           />

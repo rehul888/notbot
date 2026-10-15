@@ -37,6 +37,42 @@ export const en = {
   "lang.fromTelegram": "Your Telegram language",
   "lang.continue": "Continue",
 
+  // Join the update channel (step after the language)
+  "gate.title": "Join our update channel",
+  "gate.body": "Get news, new services and special offers first. Join the channel, then come back and tap Verify.",
+  "gate.open": "Open channel",
+  "gate.verify": "Verify",
+  "gate.checking": "Checking…",
+  "gate.notJoined": "You haven't joined yet. Open the channel, tap Join, then try again.",
+  "gate.joined": "Thanks for joining!",
+  "gate.step1": "Open the channel",
+  "gate.step2": "Tap Join",
+  "gate.step3": "Come back and tap Verify",
+
+  // Invite friends (referrals)
+  "invite.title": "Invite friends",
+  "invite.sub": "Earn {amount} for every friend who joins",
+  "invite.reward": "{stars} ⭐ worth of balance per friend",
+  "invite.yourLink": "Your invite link",
+  "invite.copy": "Copy link",
+  "invite.share": "Share",
+  "invite.shareText": "Grow your Telegram, Instagram, TikTok and more with NotPanel 🚀",
+  "invite.how": "How it works",
+  "invite.how1": "Send your link to a friend",
+  "invite.how2": "They open the bot, pick a language and join our update channel",
+  "invite.how3": "You get {amount} as soon as they reach the app's home screen",
+  "invite.invited": "Invited",
+  "invite.joined": "Joined",
+  "invite.earned": "Earned",
+  "invite.friends": "Your friends",
+  "invite.empty": "No friends yet",
+  "invite.emptySub": "Share your link to start earning.",
+  "invite.pending": "Waiting to join",
+  "invite.rewarded": "Bonus received",
+  "invite.capped": "Daily limit reached",
+  "invite.unavailable": "Invites will be available soon.",
+  "invite.cta": "Invite friends, earn balance",
+
   // Welcome
   "welcome.title": "Welcome to NotPanel",
   "welcome.subtitle": "Get followers, views and likes for Telegram, Instagram, TikTok and more, in a few taps.",
@@ -108,7 +144,7 @@ export const en = {
   "form.starsNote": "Telegram shows the price in Stars before you confirm",
   "form.notEnough": "Not enough balance. Add {amount} or pay with Stars.",
   "form.notEnoughShort": "Not enough",
-  "form.addFunds": "Add {amount} to balance",
+  "form.addFunds": "Add {amount}",
   "form.pay": "Pay {amount}",
   "form.payStars": "Pay {stars} ⭐",
   "form.tapToChange": "Tap to change",
@@ -210,6 +246,7 @@ export const en = {
   "ledger.refund": "Refund · Order #{id}",
   "ledger.admin": "Balance adjustment",
   "ledger.stars_refund": "Stars refunded",
+  "ledger.referral": "Referral bonus",
 
   // Top up
   "topup.title": "Add funds",
@@ -266,6 +303,7 @@ export const en = {
   "err.REFILL_ALREADY_PENDING": "A refill is already in progress.",
   "err.INVALID_AMOUNT": "Enter an amount from {min} to {max}.",
   "err.BANNED": "Your account is blocked.",
+  "err.CHANNEL_REQUIRED": "Please join our update channel first.",
   "err.UNAUTHORIZED": "Please open the app from Telegram.",
 };
 

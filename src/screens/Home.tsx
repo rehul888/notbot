@@ -2,7 +2,8 @@
 import { useEffect, useState } from "preact/hooks";
 import type { PlatformItem, ServiceItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
-import { api, cachedApi } from "../api";
+import { ApiError, api, cachedApi } from "../api";
+import { refreshMe } from "../me";
 import { ArtHomeHero } from "../art";
 import { money, num, prettyLink } from "../format";
 import { getLang, t } from "../i18n";
@@ -48,8 +49,19 @@ type Found = { term: string; items: ServiceItem[] } | { term: string; error: unk
 /** Search runs for 2+ characters, or for any all-digit query (service IDs). */
 const isQuery = (term: string) => term.length >= 2 || /^\d+$/.test(term);
 
+/** Tells the server once per app session that the user reached Home (completes a pending referral). */
+let homeReported = false;
+
 export function Home() {
   const me = meStore.use()!;
+  useEffect(() => {
+    if (homeReported || !me.termsAccepted || !me.langChosen) return;
+    homeReported = true;
+    api("/me/home", { method: "POST", body: {} }).catch((e) => {
+      // The user left the channel: bring the gate back.
+      if (e instanceof ApiError && e.code === "CHANNEL_REQUIRED") void refreshMe().catch(() => {});
+    });
+  }, []);
   const platforms = useAsync(
     () =>
       cachedApi<PlatformItem[]>("/catalog/platforms").then((items) => {
@@ -148,6 +160,13 @@ export function Home() {
               )}
             </div>
           </Section>
+
+
+          {me.referralEnabled ? (
+            <List>
+              <Row icon="users" plate="var(--lime)" size="lg" title={t("invite.cta")} onClick={() => navigate("/invite")} />
+            </List>
+          ) : null}
 
           {recent.length ? (
             <Section variant="title" header={t("home.again")} action={{ label: t("home.allOrders"), href: "/orders", onClick: () => navigate("/orders", { replace: true }) }}>
