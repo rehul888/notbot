@@ -47,6 +47,7 @@ export function AdminRoutes({ parts, query }: { parts: string[]; query: URLSearc
   if (a === "changes") return <AdminChanges />;
   if (a === "payments") return <AdminPayments />;
   if (a === "users") return <AdminUsers />;
+  if (a === "referrals") return <AdminReferrals />;
   if (a === "orders") return <AdminOrders />;
   if (a === "settings") return <AdminSettings />;
   return <AdminHome />;
@@ -199,6 +200,7 @@ interface Overview {
   lowBalance: number;
   today: { orders: number; sales: number; profit: number };
   users: number;
+  referralsJoined?: number;
   openOrders: number;
   needsAttention: number;
   defaultMarkup: number;
@@ -210,6 +212,7 @@ const MANAGE: [string, IconName, string, string][] = [
   ["Price changes", "chart", "var(--sky)", "/admin/changes"],
   ["Payments", "wallet", "var(--lime)", "/admin/payments"],
   ["Users", "users", "var(--pink)", "/admin/users"],
+  ["Referrals", "star", "var(--cream)", "/admin/referrals"],
   ["All orders", "list", "var(--sky)", "/admin/orders"],
   ["Settings & connection", "plug", "var(--lavender)", "/admin/settings"],
 ];
@@ -236,7 +239,7 @@ function AdminHome() {
         {(o) => {
           const low = o.npBalance !== null && o.npBalance < o.lowBalance;
           const value = (href: string) =>
-            href === "/admin/prices" ? <Num>{pct(o.defaultMarkup)}</Num> : href === "/admin/users" ? num(o.users) : href === "/admin/orders" && o.openOrders ? `${num(o.openOrders)} open` : undefined;
+            href === "/admin/prices" ? <Num>{pct(o.defaultMarkup)}</Num> : href === "/admin/users" ? num(o.users) : href === "/admin/referrals" ? num(o.referralsJoined ?? 0) : href === "/admin/orders" && o.openOrders ? `${num(o.openOrders)} open` : undefined;
           const n = o.needsAttention;
           return (
             <>
@@ -962,6 +965,197 @@ function AdminPayments() {
           </>
         )}
       </Loader>
+    </Page>
+  );
+}
+
+// ---------------- Referrals ----------------
+
+interface RefPerson {
+  first: string | null;
+  last: string | null;
+  user: string | null;
+}
+interface RefTopRow {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  invited: number;
+  joined: number;
+  earned: number;
+}
+interface RefRecentRow {
+  referred_id: number;
+  referrer_id: number;
+  status: "pending" | "rewarded" | "capped";
+  reward: number;
+  created_at: number;
+  rewarded_at: number | null;
+  f_first: string | null;
+  f_last: string | null;
+  f_user: string | null;
+  r_first: string | null;
+  r_last: string | null;
+  r_user: string | null;
+}
+interface RefData {
+  totals: { invited: number; joined: number; rewarded: number; pending: number; capped: number; paid: number; todayInvited: number; todayPaid: number };
+  top: RefTopRow[];
+  recent: RefRecentRow[];
+  next: number | null;
+  settings: { enabled: boolean; rewardStars: number; dailyCap: number; starsPerUsd: number };
+}
+
+const refName = (id: number, p: RefPerson) => {
+  const n = `${p.first ?? ""} ${p.last ?? ""}`.trim();
+  return n || (p.user ? `@${p.user}` : `User ${id}`);
+};
+const REF_STATUS: Record<RefRecentRow["status"], [string, string]> = {
+  pending: ["Waiting", "st-pending"],
+  rewarded: ["Paid", "st-done"],
+  capped: ["Daily limit", "st-cancel"],
+};
+
+function AdminReferrals() {
+  const [q, setQ] = useState("");
+  const [data, setData] = useState<RefData | null>(null);
+  const [more, setMore] = useState<RefRecentRow[]>([]);
+  const [next, setNext] = useState<number | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const seq = useRef(0);
+  const url = (before?: number) => `/admin/referrals?q=${enc(q.trim())}${before ? `&before=${before}` : ""}`;
+  const load = () => {
+    const n = ++seq.current;
+    setErr(null);
+    api<RefData>(url()).then(
+      (r) => {
+        if (n !== seq.current) return;
+        setData(r);
+        setMore([]);
+        setNext(r.next);
+      },
+      (e) => n === seq.current && setErr(e),
+    );
+  };
+  useEffect(() => {
+    const id = setTimeout(load, q ? 300 : 0);
+    return () => clearTimeout(id);
+  }, [q]);
+  const showMore = async () => {
+    if (!next || busy) return;
+    const n = seq.current;
+    setBusy(true);
+    try {
+      const r = await api<RefData>(url(next));
+      if (n === seq.current) {
+        setMore((m) => [...m, ...r.recent]);
+        setNext(r.next);
+      }
+    } catch (e) {
+      fail(e);
+    }
+    setBusy(false);
+  };
+  const recent = data ? [...data.recent, ...more] : [];
+  return (
+    <Page back="/admin" title="Referrals" sub="Friends invited with a link">
+      {err && !data ? (
+        <ErrorState error={err} onRetry={load} />
+      ) : !data ? (
+        <>
+          <Skeleton h={76} radius={16} />
+          <Skeleton h={76} radius={16} />
+          <SkeletonList rows={5} lead="none" />
+        </>
+      ) : (
+        <>
+          <div class="grid3 stagger">
+            <Stat label="Invited">
+              <Num>{num(data.totals.invited)}</Num>
+            </Stat>
+            <Stat label="Joined">
+              <Num>{num(data.totals.joined)}</Num>
+            </Stat>
+            <Stat label="Paid out" ok>
+              <Num>{money(data.totals.paid)}</Num>
+            </Stat>
+            <Stat label="Waiting">
+              <Num>{num(data.totals.pending)}</Num>
+            </Stat>
+            <Stat label="Over daily limit">
+              <Num>{num(data.totals.capped)}</Num>
+            </Stat>
+            <Stat label={`Today · ${money(data.totals.todayPaid)} paid`}>
+              <Num>{num(data.totals.todayInvited)}</Num>
+            </Stat>
+          </div>
+
+          <SearchField value={q} onInput={setQ} placeholder="Name, @username or Telegram ID" />
+
+          <Section header="Top referrers">
+            {data.top.length ? (
+              <List stagger>
+                {data.top.map((t) => (
+                  <Row
+                    key={t.id}
+                    title={refName(t.id, { first: t.first_name, last: t.last_name, user: t.username })}
+                    meta={`${t.username ? `@${t.username} · ` : ""}${num(t.invited)} invited · ${num(t.joined)} joined`}
+                    value={<Num>{money(t.earned)}</Num>}
+                    onClick={() => setQ(String(t.id))}
+                  />
+                ))}
+              </List>
+            ) : (
+              <EmptyState compact art="search" title="No referrers yet" />
+            )}
+          </Section>
+
+          <Section
+            header="Recent referrals"
+            footer={`A referral counts when a new user opens the bot from a link, picks a language, joins the update channel (confirmed by Telegram) and reaches the home screen. ${
+              data.settings.enabled ? `Reward: ${num(data.settings.rewardStars)} Stars' worth of balance, at most ${num(data.settings.dailyCap)} paid per referrer per day.` : "The referral program is currently off."
+            }`}
+          >
+            {recent.length ? (
+              <>
+                <List stagger>
+                  {recent.map((r) => {
+                    const [label, cls] = REF_STATUS[r.status];
+                    return (
+                      <Row
+                        key={r.referred_id}
+                        title={`${refName(r.referred_id, { first: r.f_first, last: r.f_last, user: r.f_user })} ← ${refName(r.referrer_id, { first: r.r_first, last: r.r_last, user: r.r_user })}`}
+                        meta={
+                          <>
+                            <span class={`status ${cls}`}>{label}</span>
+                            {r.status === "rewarded" ? (
+                              <>
+                                {" "}
+                                <Num>{money(r.reward)}</Num>
+                              </>
+                            ) : null}{" "}
+                            · {dateTime(r.rewarded_at ?? r.created_at)}
+                          </>
+                        }
+                        onClick={() => setQ(String(r.referrer_id))}
+                      />
+                    );
+                  })}
+                </List>
+                {next ? (
+                  <Chip label="Show more" disabled={busy} onClick={showMore}>
+                    {busy ? "Loading…" : "Show more"}
+                  </Chip>
+                ) : null}
+              </>
+            ) : (
+              <EmptyState compact art="search" title="No referrals found" body={q.trim() ? "Try a name, @username or Telegram ID." : undefined} />
+            )}
+          </Section>
+        </>
+      )}
     </Page>
   );
 }

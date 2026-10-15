@@ -31,7 +31,7 @@ const dayStart = () => {
 admin.get("/overview", async (c) => {
   const s = c.get("settings");
   const since = dayStart();
-  const [today, users, pending, attention] = await c.env.DB.batch([
+  const [today, users, pending, attention, joined] = await c.env.DB.batch([
     c.env.DB.prepare(
       `SELECT COUNT(*) AS orders, COALESCE(SUM(charge - refund), 0) AS sales, COALESCE(SUM(charge - refund - COALESCE(cost, 0)), 0) AS profit
        FROM orders WHERE created_at >= ?1 AND status != 'failed'`,
@@ -39,6 +39,7 @@ admin.get("/overview", async (c) => {
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM users"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status IN ('submitting','pending','processing','in_progress')"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM services WHERE present = 1 AND enabled = 1 AND fixed_rate IS NOT NULL AND fixed_rate < rate"),
+    c.env.DB.prepare("SELECT COUNT(*) AS n FROM referrals WHERE status != 'pending'"),
   ]);
   let npBalance: number | null = null;
   let npError: string | null = null;
@@ -54,6 +55,7 @@ admin.get("/overview", async (c) => {
     lowBalance: s.low_balance,
     today: t,
     users: (users.results[0] as { n: number }).n,
+    referralsJoined: (joined.results[0] as { n: number }).n,
     openOrders: (pending.results[0] as { n: number }).n,
     needsAttention: (attention.results[0] as { n: number }).n,
     defaultMarkup: s.default_markup_pct,
@@ -318,6 +320,102 @@ admin.get("/payments", async (c) => {
 admin.post("/payments/:id/refund", async (c) => {
   const r = await refundPayment(c.env, Number(c.req.param("id")));
   return r.ok ? c.json(r) : err(c, 400, r.error ?? "REFUND_FAILED");
+});
+
+// ---- Referrals ----
+
+interface RefTotals {
+  invited: number;
+  joined: number;
+  rewarded: number;
+  pending: number;
+  capped: number;
+  paid: number;
+  todayInvited: number;
+  todayPaid: number;
+}
+interface RefTop {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  invited: number;
+  joined: number;
+  earned: number;
+  last_at: number;
+}
+let refCache: { at: number; totals: RefTotals; top: RefTop[] } | null = null;
+
+const REF_TOTALS_SQL = `SELECT COUNT(*) AS invited,
+    COALESCE(SUM(status != 'pending'), 0) AS joined,
+    COALESCE(SUM(status = 'rewarded'), 0) AS rewarded,
+    COALESCE(SUM(status = 'pending'), 0) AS pending,
+    COALESCE(SUM(status = 'capped'), 0) AS capped,
+    COALESCE(SUM(CASE WHEN status = 'rewarded' THEN reward END), 0) AS paid,
+    COALESCE(SUM(created_at >= ?1), 0) AS todayInvited,
+    COALESCE(SUM(CASE WHEN status = 'rewarded' AND rewarded_at >= ?1 THEN reward END), 0) AS todayPaid
+  FROM referrals`;
+
+const REF_TOP_SQL = (where: string) => `SELECT g.referrer_id AS id, u.first_name, u.last_name, u.username, g.invited, g.joined, g.earned, g.last_at
+  FROM (SELECT referrer_id, COUNT(*) AS invited, SUM(status != 'pending') AS joined,
+          COALESCE(SUM(CASE WHEN status = 'rewarded' THEN reward END), 0) AS earned, MAX(created_at) AS last_at
+        FROM referrals ${where} GROUP BY referrer_id ORDER BY joined DESC, invited DESC LIMIT 20) g
+  LEFT JOIN users u ON u.id = g.referrer_id ORDER BY g.joined DESC, g.invited DESC`;
+
+admin.get("/referrals", async (c) => {
+  const s = c.get("settings");
+  const q = (c.req.query("q") ?? "").trim().replace(/^@/, "").slice(0, 64);
+  const beforeN = Number(c.req.query("before"));
+  const before = Number.isFinite(beforeN) && beforeN > 0 ? Math.floor(beforeN) : null;
+  const now = Date.now();
+  const cached = !q && refCache && now - refCache.at < 60_000 ? refCache : null;
+  const like = `%${q.replace(/[\\%_]/g, "")}%`;
+  const match = `SELECT id FROM users WHERE CAST(id AS TEXT) = ?1 OR username LIKE ?2 OR first_name LIKE ?2 OR last_name LIKE ?2 LIMIT 50`;
+
+  const stmts: D1PreparedStatement[] = [];
+  if (!cached) stmts.push(c.env.DB.prepare(REF_TOTALS_SQL).bind(dayStart()));
+  if (!cached || q) {
+    stmts.push(q ? c.env.DB.prepare(REF_TOP_SQL(`WHERE referrer_id IN (${match})`)).bind(q, like) : c.env.DB.prepare(REF_TOP_SQL("")));
+  }
+  const conds: string[] = [];
+  const binds: unknown[] = [];
+  if (q) {
+    binds.push(q, like);
+    conds.push(`(r.referrer_id IN (${match}) OR r.referred_id IN (${match}))`);
+  }
+  if (before) {
+    binds.push(before);
+    conds.push(`r.created_at < ?${binds.length}`);
+  }
+  stmts.push(
+    c.env.DB.prepare(
+      `SELECT r.referred_id, r.referrer_id, r.status, r.reward, r.created_at, r.rewarded_at,
+         f.first_name AS f_first, f.last_name AS f_last, f.username AS f_user,
+         u.first_name AS r_first, u.last_name AS r_last, u.username AS r_user
+       FROM referrals r LEFT JOIN users f ON f.id = r.referred_id LEFT JOIN users u ON u.id = r.referrer_id
+       ${conds.length ? `WHERE ${conds.join(" AND ")}` : ""} ORDER BY r.created_at DESC LIMIT 50`,
+    ).bind(...binds),
+  );
+  const res = await c.env.DB.batch(stmts);
+  let i = 0;
+  let totals: RefTotals;
+  let top: RefTop[];
+  if (cached) {
+    totals = cached.totals;
+    top = cached.top;
+  } else {
+    totals = res[i++].results[0] as unknown as RefTotals;
+    top = res[i++].results as unknown as RefTop[];
+    if (!q) refCache = { at: now, totals, top };
+  }
+  const recent = res[i].results as Record<string, unknown>[];
+  return c.json({
+    totals,
+    top,
+    recent,
+    next: recent.length === 50 ? recent[49].created_at : null,
+    settings: { enabled: !!s.referral_enabled, rewardStars: s.referral_reward_stars, dailyCap: s.referral_daily_cap, starsPerUsd: s.stars_per_usd },
+  });
 });
 
 // ---- Users ----
