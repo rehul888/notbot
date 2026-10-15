@@ -114,6 +114,81 @@ function Loader<T>({ res, skeleton, children }: { res: { data: T | undefined; er
   return <>{children(res.data)}</>;
 }
 
+interface Paged<T> {
+  items: T[];
+  next: string | number | null;
+}
+
+/**
+ * Cursor-paged admin list: loads `url` (debounced, newest request wins), then "Show more" appends the next page
+ * with `&<cursorKey>=<next>`. `extra` is the first response (e.g. cached totals). `url === null` keeps it idle.
+ */
+function usePaged<T, X = unknown>(url: string | null, delay = 0, cursorKey = "before") {
+  const [items, setItems] = useState<T[] | null>(null);
+  const [next, setNext] = useState<Paged<T>["next"]>(null);
+  const [extra, setExtra] = useState<(Paged<T> & X) | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
+  const seq = useRef(0);
+  useEffect(() => {
+    if (url === null) {
+      seq.current++;
+      setItems(null);
+      return;
+    }
+    const n = ++seq.current;
+    setErr(null);
+    const id = setTimeout(
+      () =>
+        api<Paged<T> & X>(url).then(
+          (r) => {
+            if (n !== seq.current) return;
+            setItems(r.items);
+            setNext(r.next);
+            setExtra(r);
+            setBusy(false);
+          },
+          (e) => {
+            if (n !== seq.current) return;
+            setItems(null);
+            setErr(e);
+          },
+        ),
+      delay,
+    );
+    return () => clearTimeout(id);
+  }, [url, tick]);
+  const more = async () => {
+    if (url === null || next === null || busy) return;
+    const n = seq.current;
+    setBusy(true);
+    try {
+      const r = await api<Paged<T>>(`${url}${url.includes("?") ? "&" : "?"}${cursorKey}=${enc(String(next))}`);
+      if (n === seq.current) {
+        setItems((l) => [...(l ?? []), ...r.items]);
+        setNext(r.next);
+      }
+    } catch (e) {
+      fail(e);
+    }
+    setBusy(false);
+  };
+  /** Reload from the first page, keeping the current rows on screen meanwhile. */
+  const reload = () => setTick((t) => t + 1);
+  /** Clears the rows so the skeleton shows (used when a filter chip changes). */
+  const reset = () => setItems(null);
+  return { items, next, extra, err, busy, more, reload, reset };
+}
+
+function ShowMore({ next, busy, onClick }: { next: unknown; busy: boolean; onClick: () => void }) {
+  return next !== null && next !== undefined ? (
+    <Chip label="Show more" disabled={busy} onClick={onClick}>
+      {busy ? "Loading…" : "Show more"}
+    </Chip>
+  ) : null;
+}
+
 /** One key/value line in a `dl.card`. With `id`, the label focuses that input. */
 function Kv({ label, id, children }: { label: string; id?: string; children: ComponentChildren }) {
   return (
@@ -344,38 +419,15 @@ function AdminPrices({ q: initialQ }: { q: string }) {
   const [markup, setMarkup] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState(attention ? "" : initialQ);
-  const [results, setResults] = useState<AdminServiceRow[] | null>(null);
-  const [searchErr, setSearchErr] = useState<unknown>(null);
   const [edit, setEdit] = useState<AdminServiceRow | null>(null);
-  const seq = useRef(0);
+  // Search needs 2+ characters; the attention view lists straight away. Pages of 50 via "Show more".
+  const pg = usePaged<AdminServiceRow>(attention ? "/admin/services?attention=1" : q.trim().length >= 2 ? `/admin/services?q=${enc(q.trim())}` : null, attention ? 0 : 300, "offset");
+  const results = pg.items;
+  const search = pg.reload;
 
   useEffect(() => {
     if (settings.data) setMarkup(settings.data.default_markup_pct);
   }, [settings.data]);
-
-  // Only the newest request may fill the list (typing fires several).
-  const search = () => {
-    const n = ++seq.current;
-    setSearchErr(null);
-    api<AdminServiceRow[]>(attention ? "/admin/services?attention=1" : `/admin/services?q=${enc(q.trim())}`).then(
-      (r) => n === seq.current && setResults(r),
-      (e) => {
-        if (n !== seq.current) return;
-        if (attention) setSearchErr(e);
-        else fail(e);
-      },
-    );
-  };
-  useEffect(() => {
-    if (attention) return void search();
-    if (q.trim().length < 2) {
-      seq.current++;
-      setResults(null);
-      return;
-    }
-    const id = setTimeout(search, 300);
-    return () => clearTimeout(id);
-  }, [q]);
 
   const dirty = markup !== null && !!settings.data && markup !== settings.data.default_markup_pct;
   const save = async () => {
@@ -397,18 +449,21 @@ function AdminPrices({ q: initialQ }: { q: string }) {
     attention || results ? (
       <Section header={attention ? undefined : "Services"}>
         {results ? (
-          <AdminServiceList
-            items={results}
-            onEdit={setEdit}
-            onChanged={search}
-            empty={
-              attention
-                ? { title: "Nothing needs attention", body: "Every fixed price is above NotPanel's cost." }
-                : { title: `No services match “${q.trim()}”`, body: "Try another name or a service ID." }
-            }
-          />
-        ) : searchErr ? (
-          <ErrorState error={searchErr} onRetry={search} />
+          <>
+            <AdminServiceList
+              items={results}
+              onEdit={setEdit}
+              onChanged={search}
+              empty={
+                attention
+                  ? { title: "Nothing needs attention", body: "Every fixed price is above NotPanel's cost." }
+                  : { title: `No services match “${q.trim()}”`, body: "Try another name or a service ID." }
+              }
+            />
+            <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
+          </>
+        ) : pg.err ? (
+          <ErrorState error={pg.err} onRetry={search} />
         ) : (
           <SkeletonList rows={5} lead="none" />
         )}
@@ -603,7 +658,7 @@ function AdminPlatform({ platform }: { platform: string }) {
 function AdminCategory({ platform, category }: { platform: string; category: string }) {
   const settings = useAsync(() => api<{ default_markup_pct: number }>("/admin/settings"), []);
   const cats = useAsync(() => api<AdminCategoryRow[]>(`/admin/categories?platform=${enc(platform)}`), [platform]);
-  const services = useAsync(() => api<AdminServiceRow[]>(`/admin/services?platform=${enc(platform)}&category=${enc(category)}`), [platform, category]);
+  const services = usePaged<AdminServiceRow>(`/admin/services?platform=${enc(platform)}&category=${enc(category)}`, 0, "offset");
   const [edit, setEdit] = useState<AdminServiceRow | null>(null);
   const c = cats.data?.find((x) => x.name === category);
   const rule = useRule(platform, category, c, settings.data?.default_markup_pct, () => (cats.reload(), services.reload()));
@@ -626,9 +681,16 @@ function AdminCategory({ platform, category }: { platform: string; category: str
         rule.body
       )}
       <Section header="Services" footer="Tap a service to rename it or give it its own price.">
-        <Loader res={services} skeleton={<SkeletonList rows={5} lead="none" />}>
-          {(list) => <AdminServiceList items={list} onEdit={setEdit} onChanged={services.reload} empty={{ title: "No services in this category" }} />}
-        </Loader>
+        {services.err && !services.items ? (
+          <ErrorState compact error={services.err} onRetry={services.reload} />
+        ) : !services.items ? (
+          <SkeletonList rows={5} lead="none" />
+        ) : (
+          <>
+            <AdminServiceList items={services.items} onEdit={setEdit} onChanged={services.reload} empty={{ title: "No services in this category" }} />
+            <ShowMore next={services.next} busy={services.busy} onClick={services.more} />
+          </>
+        )}
       </Section>
     </Page>
   );
@@ -830,45 +892,53 @@ interface PriceChange {
 }
 
 function AdminChanges() {
-  const res = useAsync(() => api<PriceChange[]>("/admin/price-changes"), []);
+  const [q, setQ] = useState("");
+  const pg = usePaged<PriceChange>(`/admin/price-changes?q=${enc(q.trim())}`, q ? 300 : 0);
+  const list = pg.items;
   return (
     <Page back="/admin" title="Price changes" sub="NotPanel cost changes found by the automatic sync">
-      <Loader res={res} skeleton={<SkeletonList rows={6} lead="logo" />}>
-        {(list) =>
-          list.length ? (
-            <List stagger>
-              {list.map((c) => {
-                const d = c.old_rate ? ((c.new_rate - c.old_rate) / c.old_rate) * 100 : 0;
-                return (
-                  <Row
-                    key={c.id}
-                    wrap
-                    lead={<PlatformLogo slug={c.platform ?? ""} size={36} radius={10} />}
-                    title={c.name ?? `Service #${c.service_id}`}
-                    meta={
-                      <>
-                        <Num>#{c.service_id}</Num> ·{" "}
-                        <Num>
-                          {money(c.old_rate)} → {money(c.new_rate)}
-                        </Num>{" "}
-                        · {dateTime(c.changed_at)}
-                      </>
-                    }
-                    value={
-                      <span class={`status ${d > 0 ? "st-cancel" : d < 0 ? "st-done" : "st-pending"}`}>
-                        <Num>{delta(d)}</Num>
-                      </span>
-                    }
-                    chevron={false}
-                  />
-                );
-              })}
-            </List>
-          ) : (
-            <EmptyState compact art="search" title="No price changes yet" body="They appear here after each sync." />
-          )
-        }
-      </Loader>
+      <SearchField value={q} onInput={setQ} placeholder="Service name or ID" />
+      {pg.err && !list ? (
+        <ErrorState error={pg.err} onRetry={pg.reload} />
+      ) : !list ? (
+        <SkeletonList rows={6} lead="logo" />
+      ) : list.length ? (
+        <>
+          <List stagger>
+            {list.map((c) => {
+              const d = c.old_rate ? ((c.new_rate - c.old_rate) / c.old_rate) * 100 : 0;
+              return (
+                <Row
+                  key={c.id}
+                  wrap
+                  lead={<PlatformLogo slug={c.platform ?? ""} size={36} radius={10} />}
+                  title={c.name ?? `Service #${c.service_id}`}
+                  meta={
+                    <>
+                      <Num>#{c.service_id}</Num> ·{" "}
+                      <Num>
+                        {money(c.old_rate)} → {money(c.new_rate)}
+                      </Num>{" "}
+                      · {dateTime(c.changed_at)}
+                    </>
+                  }
+                  value={
+                    <span class={`status ${d > 0 ? "st-cancel" : d < 0 ? "st-done" : "st-pending"}`}>
+                      <Num>{delta(d)}</Num>
+                    </span>
+                  }
+                  chevron={false}
+                />
+              );
+            })}
+          </List>
+          <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
+        </>
+      ) : q.trim() ? (
+        <EmptyState compact art="search" title="No price changes found" body="Try a service name or ID." />
+      ) : (
+        <EmptyState compact art="search" title="No price changes yet" body="They appear here after each sync." />
+      )}
     </Page>
   );
 }
@@ -887,8 +957,18 @@ interface PaymentRow {
   username: string | null;
 }
 
+const PAY_FILTERS: [string, string][] = [
+  ["", "All"],
+  ["paid", "Paid"],
+  ["refunded", "Refunded"],
+];
+
 function AdminPayments() {
-  const res = useAsync(() => api<{ items: PaymentRow[]; totals: { stars: number; amount: number } }>("/admin/payments"), []);
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const pg = usePaged<PaymentRow, { totals: { stars: number; amount: number } }>(`/admin/payments?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
+  const list = pg.items;
+  const totals = pg.extra?.totals;
   const [refunding, setRefunding] = useState<number | null>(null);
   const refund = async (p: PaymentRow) => {
     haptic.warn();
@@ -898,7 +978,7 @@ function AdminPayments() {
     try {
       await api(`/admin/payments/${p.id}/refund`, { method: "POST" });
       toast("Refunded", "ok");
-      res.reload();
+      pg.reload();
     } catch (e) {
       fail(e);
     }
@@ -906,65 +986,80 @@ function AdminPayments() {
   };
   return (
     <Page back="/admin" title="Payments" sub="Telegram Stars">
-      <Loader
-        res={res}
-        skeleton={
-          <>
-            <Skeleton h={76} radius={16} />
-            <SkeletonList rows={5} />
-          </>
-        }
-      >
-        {(d) => (
-          <>
-            <div class="grid2 stagger">
-              <Stat label="Stars received">
-                <StarIcon size={18} /> <Num>{num(d.totals.stars)}</Num>
-              </Stat>
-              <Stat label="Balance sold">
-                <Num>{money(d.totals.amount)}</Num>
-              </Stat>
-            </div>
-            <Section footer={d.items.length ? "A refund is possible while the user still has that much unspent balance." : undefined}>
-              {d.items.length ? (
-                <List stagger>
-                  {d.items.map((p) => (
-                    <Row
-                      key={p.id}
-                      icon="star"
-                      plate="var(--cream)"
-                      title={`${p.first_name ?? p.user_id}${p.username ? ` @${p.username}` : ""}`}
-                      meta={
-                        <>
-                          <Num>{num(p.stars)}</Num> Stars · <Num>{money(p.amount)}</Num>
-                          {p.order_id ? (
-                            <>
-                              {" "}
-                              · order <Num>#{p.order_id}</Num>
-                            </>
-                          ) : null}
-                          {p.paid_at ? ` · ${dateTime(p.paid_at)}` : ""}
-                        </>
-                      }
-                      control={
-                        p.status === "paid" ? (
-                          <Chip label={`Refund ${p.first_name ?? p.user_id}`} disabled={refunding === p.id} onClick={() => refund(p)}>
-                            Refund
-                          </Chip>
-                        ) : (
-                          <span class="status st-cancel">Refunded</span>
-                        )
-                      }
-                    />
-                  ))}
-                </List>
-              ) : (
-                <EmptyState compact art="wallet" title="No payments yet." />
-              )}
-            </Section>
-          </>
-        )}
-      </Loader>
+      {totals ? (
+        <div class="grid2 stagger">
+          <Stat label="Stars received">
+            <StarIcon size={18} /> <Num>{num(totals.stars)}</Num>
+          </Stat>
+          <Stat label="Balance sold">
+            <Num>{money(totals.amount)}</Num>
+          </Stat>
+        </div>
+      ) : !pg.err ? (
+        <Skeleton h={76} radius={16} />
+      ) : null}
+      <div class="chips scroll" role="group" aria-label="Filter by status">
+        {PAY_FILTERS.map(([v, l]) => (
+          <Chip
+            key={v}
+            selected={status === v}
+            onClick={() => {
+              if (status === v) return;
+              pg.reset();
+              setStatus(v);
+            }}
+          >
+            {l}
+          </Chip>
+        ))}
+      </div>
+      <SearchField value={q} onInput={setQ} placeholder="Payment ID, user ID, @username or charge ID" />
+      {pg.err && !list ? (
+        <ErrorState error={pg.err} onRetry={pg.reload} />
+      ) : !list ? (
+        <SkeletonList rows={5} />
+      ) : (
+        <Section footer={list.length ? "A refund is possible while the user still has that much unspent balance." : undefined}>
+          {list.length ? (
+            <>
+              <List stagger>
+                {list.map((p) => (
+                  <Row
+                    key={p.id}
+                    icon="star"
+                    plate="var(--cream)"
+                    title={`${p.first_name ?? p.user_id}${p.username ? ` @${p.username}` : ""}`}
+                    meta={
+                      <>
+                        <Num>{num(p.stars)}</Num> Stars · <Num>{money(p.amount)}</Num>
+                        {p.order_id ? (
+                          <>
+                            {" "}
+                            · order <Num>#{p.order_id}</Num>
+                          </>
+                        ) : null}
+                        {p.paid_at ? ` · ${dateTime(p.paid_at)}` : ""}
+                      </>
+                    }
+                    control={
+                      p.status === "paid" ? (
+                        <Chip label={`Refund ${p.first_name ?? p.user_id}`} disabled={refunding === p.id} onClick={() => refund(p)}>
+                          Refund
+                        </Chip>
+                      ) : (
+                        <span class="status st-cancel">Refunded</span>
+                      )
+                    }
+                  />
+                ))}
+              </List>
+              <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
+            </>
+          ) : (
+            <EmptyState compact art="wallet" title={q.trim() || status ? "No payments found" : "No payments yet."} body={q.trim() || status ? "Try another filter or search." : undefined} />
+          )}
+        </Section>
+      )}
     </Page>
   );
 }
@@ -1178,41 +1273,31 @@ const fullName = (u: UserRow) => `${u.first_name} ${u.last_name}`.trim() || `Use
 
 function AdminUsers() {
   const [q, setQ] = useState("");
-  const [list, setList] = useState<UserRow[] | null>(null);
-  const [err, setErr] = useState<unknown>(null);
   const [sel, setSel] = useState<UserRow | null>(null);
-  const seq = useRef(0);
-  const load = () => {
-    const n = ++seq.current;
-    setErr(null);
-    api<UserRow[]>(`/admin/users?q=${enc(q.trim())}`).then(
-      (r) => n === seq.current && setList(r),
-      (e) => n === seq.current && setErr(e),
-    );
-  };
-  useEffect(() => {
-    const id = setTimeout(load, q ? 300 : 0);
-    return () => clearTimeout(id);
-  }, [q]);
+  const pg = usePaged<UserRow>(`/admin/users?q=${enc(q.trim())}`, q ? 300 : 0);
+  const list = pg.items;
   return (
-    <Page back="/admin" title="Users" overlay={sel ? <UserSheet u={sel} onClose={() => setSel(null)} onSaved={() => (setSel(null), load())} onChanged={load} /> : null}>
+    <Page back="/admin" title="Users" overlay={sel ? <UserSheet u={sel} onClose={() => setSel(null)} onSaved={() => (setSel(null), pg.reload())} onChanged={pg.reload} /> : null}>
       <SearchField value={q} onInput={setQ} placeholder="Name, @username or Telegram ID" />
-      {err && !list ? (
-        <ErrorState error={err} onRetry={load} />
+      {pg.err && !list ? (
+        <ErrorState error={pg.err} onRetry={pg.reload} />
       ) : !list ? (
         <SkeletonList rows={6} lead="none" />
       ) : list.length ? (
-        <List stagger>
-          {list.map((u) => (
-            <Row
-              key={u.id}
-              title={fullName(u)}
-              meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${money(u.paid)}${u.banned ? " · blocked" : ""}`}
-              value={<Num>{money(u.balance)}</Num>}
-              onClick={() => setSel(u)}
-            />
-          ))}
-        </List>
+        <>
+          <List stagger>
+            {list.map((u) => (
+              <Row
+                key={u.id}
+                title={fullName(u)}
+                meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${money(u.paid)}${u.banned ? " · blocked" : ""}`}
+                value={<Num>{money(u.balance)}</Num>}
+                onClick={() => setSel(u)}
+              />
+            ))}
+          </List>
+          <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
+        </>
       ) : (
         <EmptyState compact art="search" title="No users found" body={q.trim() ? "Try a name, @username or Telegram ID." : undefined} />
       )}
@@ -1318,29 +1403,8 @@ const ORDER_FILTERS: [string, string][] = [
 function AdminOrders() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
-  const [list, setList] = useState<AdminOrder[] | null>(null);
-  const [err, setErr] = useState<unknown>(null);
-  const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    let live = true;
-    setErr(null);
-    const id = setTimeout(
-      () =>
-        api<AdminOrder[]>(`/admin/orders?status=${status}&q=${enc(q.trim())}`).then(
-          (r) => live && setList(r),
-          (e) => {
-            if (!live) return;
-            setList(null);
-            setErr(e);
-          },
-        ),
-      q ? 300 : 0,
-    );
-    return () => {
-      live = false;
-      clearTimeout(id);
-    };
-  }, [status, q, retry]);
+  const pg = usePaged<AdminOrder>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
+  const list = pg.items;
   return (
     <Page back="/admin" title="All orders">
       <div class="chips scroll" role="group" aria-label="Filter by status">
@@ -1350,7 +1414,7 @@ function AdminOrders() {
             selected={status === v}
             onClick={() => {
               if (status === v) return;
-              setList(null);
+              pg.reset();
               setStatus(v);
             }}
           >
@@ -1359,47 +1423,50 @@ function AdminOrders() {
         ))}
       </div>
       <SearchField value={q} onInput={setQ} placeholder="Order #, NotPanel #, user ID or link" />
-      {err ? (
-        <ErrorState error={err} onRetry={() => setRetry((n) => n + 1)} />
+      {pg.err ? (
+        <ErrorState error={pg.err} onRetry={pg.reload} />
       ) : !list ? (
         <SkeletonList rows={5} lead="logo" />
       ) : list.length ? (
-        <List stagger>
-          {list.map((o) => {
-            const paid = o.charge - o.refund;
-            return (
-              <Row
-                key={o.id}
-                wrap
-                lead={<PlatformLogo slug={o.platform} size={36} radius={10} />}
-                title={o.serviceName}
-                meta={
-                  <>
-                    internal <Num>#{o.id}</Num>
-                    {o.npOrderId ? (
-                      <>
-                        {" "}
-                        · NotPanel <Num>#{o.npOrderId}</Num>
-                      </>
-                    ) : null}{" "}
-                    · {o.userName}
-                    {o.username ? ` @${o.username}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
-                    <br />
-                    Paid <Num>{money(paid)}</Num> · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
-                    {o.cost !== null ? (
-                      <>
-                        {" "}
-                        · profit <Num>{money(paid - o.cost)}</Num>
-                      </>
-                    ) : null}
-                    {o.error ? ` · ${o.error}` : ""}
-                  </>
-                }
-                control={<StatusPill status={o.status} />}
-              />
-            );
-          })}
-        </List>
+        <>
+          <List stagger>
+            {list.map((o) => {
+              const paid = o.charge - o.refund;
+              return (
+                <Row
+                  key={o.id}
+                  wrap
+                  lead={<PlatformLogo slug={o.platform} size={36} radius={10} />}
+                  title={o.serviceName}
+                  meta={
+                    <>
+                      internal <Num>#{o.id}</Num>
+                      {o.npOrderId ? (
+                        <>
+                          {" "}
+                          · NotPanel <Num>#{o.npOrderId}</Num>
+                        </>
+                      ) : null}{" "}
+                      · {o.userName}
+                      {o.username ? ` @${o.username}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
+                      <br />
+                      Paid <Num>{money(paid)}</Num> · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
+                      {o.cost !== null ? (
+                        <>
+                          {" "}
+                          · profit <Num>{money(paid - o.cost)}</Num>
+                        </>
+                      ) : null}
+                      {o.error ? ` · ${o.error}` : ""}
+                    </>
+                  }
+                  control={<StatusPill status={o.status} />}
+                />
+              );
+            })}
+          </List>
+          <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
+        </>
       ) : (
         <EmptyState compact art="orders" title="No orders" body={q.trim() || status ? "Try another filter or search." : undefined} />
       )}

@@ -86,6 +86,8 @@ export interface Me {
   /** Show the "join the update channel" step before the app */
   channelRequired: boolean;
   referralEnabled: boolean;
+  /** Micro-USD a referrer earns per friend who joins */
+  referralReward: number;
   botUsername: string | null;
   recent: RecentOrder[];
 }

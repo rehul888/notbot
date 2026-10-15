@@ -197,6 +197,21 @@ admin.put("/rule", async (c) => {
   return c.json({ ok: true });
 });
 
+const PAGE = 50;
+/** Escapes LIKE wildcards in user input */
+const likeOf = (q: string) => `%${q.replace(/[\\%_]/g, "")}%`;
+/** Positive integer query param, or null */
+const intParam = (v: string | undefined) => {
+  const n = Number(v);
+  return v && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+};
+/** Trims the extra look-ahead row and builds the `{ items, next }` page */
+function page<T>(rows: T[], cursor: (last: T) => string | number) {
+  const more = rows.length > PAGE;
+  const items = more ? rows.slice(0, PAGE) : rows;
+  return { items, next: more ? cursor(items[PAGE - 1]) : null };
+}
+
 admin.get("/services", async (c) => {
   const s = c.get("settings");
   const platform = c.req.query("platform");
@@ -214,14 +229,15 @@ admin.get("/services", async (c) => {
     where.push(`s.category = ?${vals.length}`);
   }
   if (q) {
-    vals.push(/^\d+$/.test(q) ? Number(q) : -1, `%${q}%`);
+    vals.push(/^\d+$/.test(q) ? Number(q) : -1, likeOf(q));
     where.push(`(s.id = ?${vals.length - 1} OR s.name LIKE ?${vals.length} OR s.custom_name LIKE ?${vals.length})`);
   }
   if (attention) where.push("s.fixed_rate IS NOT NULL AND s.fixed_rate < s.rate");
+  const offset = Math.min(intParam(c.req.query("offset")) ?? 0, 100_000);
   const { results } = await c.env.DB.prepare(
     `SELECT s.id, s.name, s.custom_name, s.platform, s.category, s.rate, s.min, s.max, s.enabled, s.markup_pct, s.fixed_rate,
        ${MARKUP_SQL} AS markup, (SELECT old_rate FROM price_changes p WHERE p.service_id = s.id ORDER BY p.id DESC LIMIT 1) AS prev_rate
-     FROM services s ${RULE_JOINS} WHERE ${where.join(" AND ")} ORDER BY s.sort LIMIT 200`,
+     FROM services s ${RULE_JOINS} WHERE ${where.join(" AND ")} ORDER BY s.sort, s.id LIMIT ${PAGE + 1} OFFSET ${offset}`,
   )
     .bind(...vals)
     .all<{
@@ -239,8 +255,10 @@ admin.get("/services", async (c) => {
       markup: number;
       prev_rate: number | null;
     }>();
-  return c.json(
-    results.map((r) => ({
+  const pg = page(results, () => offset + PAGE);
+  return c.json({
+    next: pg.next,
+    items: pg.items.map((r) => ({
       id: r.id,
       name: r.name,
       customName: r.custom_name,
@@ -256,7 +274,7 @@ admin.get("/services", async (c) => {
       max: r.max,
       enabled: !!r.enabled,
     })),
-  );
+  });
 });
 
 admin.put("/services/:id", async (c) => {
@@ -289,11 +307,26 @@ admin.put("/services/:id", async (c) => {
 });
 
 admin.get("/price-changes", async (c) => {
+  const q = (c.req.query("q") ?? "").trim().slice(0, 100);
+  const before = intParam(c.req.query("before"));
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (before) {
+    vals.push(before);
+    where.push(`p.id < ?${vals.length}`);
+  }
+  if (q) {
+    vals.push(/^\d+$/.test(q) ? Number(q) : -1, likeOf(q));
+    where.push(`(p.service_id = ?${vals.length - 1} OR s.name LIKE ?${vals.length} OR s.custom_name LIKE ?${vals.length})`);
+  }
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.service_id, p.old_rate, p.new_rate, p.changed_at, s.name, s.platform, s.category
-     FROM price_changes p LEFT JOIN services s ON s.id = p.service_id ORDER BY p.id DESC LIMIT 100`,
-  ).all();
-  return c.json(results);
+     FROM price_changes p LEFT JOIN services s ON s.id = p.service_id
+     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY p.id DESC LIMIT ${PAGE + 1}`,
+  )
+    .bind(...vals)
+    .all<{ id: number }>();
+  return c.json(page(results, (r) => r.id));
 });
 
 // ---- Payments ----
@@ -310,11 +343,32 @@ async function paymentTotals(env: AppEnv["Bindings"]): Promise<unknown> {
 }
 
 admin.get("/payments", async (c) => {
+  const q = (c.req.query("q") ?? "").trim().replace(/^[@#]/, "").slice(0, 100);
+  const status = c.req.query("status");
+  const before = intParam(c.req.query("before"));
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (status === "paid" || status === "refunded") {
+    vals.push(status);
+    where.push(`p.status = ?${vals.length}`);
+  } else where.push("p.status != 'pending'");
+  if (before) {
+    vals.push(before);
+    where.push(`p.id < ?${vals.length}`);
+  }
+  if (q) {
+    vals.push(q, likeOf(q));
+    where.push(
+      `(CAST(p.id AS TEXT) = ?${vals.length - 1} OR CAST(p.user_id AS TEXT) = ?${vals.length - 1} OR p.charge_id = ?${vals.length - 1} OR u.username LIKE ?${vals.length} OR u.first_name LIKE ?${vals.length})`,
+    );
+  }
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.user_id, p.stars, p.amount, p.status, p.order_id, p.paid_at, p.created_at, u.first_name, u.last_name, u.username
-     FROM payments p LEFT JOIN users u ON u.id = p.user_id WHERE p.status != 'pending' ORDER BY p.id DESC LIMIT 100`,
-  ).all();
-  return c.json({ items: results, totals: await paymentTotals(c.env) });
+     FROM payments p LEFT JOIN users u ON u.id = p.user_id WHERE ${where.join(" AND ")} ORDER BY p.id DESC LIMIT ${PAGE + 1}`,
+  )
+    .bind(...vals)
+    .all<{ id: number }>();
+  return c.json({ ...page(results, (r) => r.id), totals: await paymentTotals(c.env) });
 });
 
 admin.post("/payments/:id/refund", async (c) => {
@@ -421,16 +475,28 @@ admin.get("/referrals", async (c) => {
 // ---- Users ----
 
 admin.get("/users", async (c) => {
-  const q = (c.req.query("q") ?? "").trim().replace(/^@/, "");
+  const q = (c.req.query("q") ?? "").trim().replace(/^@/, "").slice(0, 100);
+  // Cursor "lastSeenAt_id" keeps paging stable when many users share a timestamp.
+  const m = /^(\d+)_(\d+)$/.exec(c.req.query("before") ?? "");
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (q) {
+    vals.push(q, likeOf(q));
+    where.push(`(CAST(id AS TEXT) = ?1 OR username LIKE ?2 OR first_name LIKE ?2 OR last_name LIKE ?2)`);
+  }
+  if (m) {
+    vals.push(Number(m[1]), Number(m[2]));
+    where.push(`(last_seen_at < ?${vals.length - 1} OR (last_seen_at = ?${vals.length - 1} AND id < ?${vals.length}))`);
+  }
   const { results } = await c.env.DB.prepare(
     `SELECT u.*, (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS orders,
        (SELECT COALESCE(SUM(amount), 0) FROM payments p WHERE p.user_id = u.id AND p.status = 'paid') AS paid
-     FROM (SELECT * FROM users ${q ? "WHERE CAST(id AS TEXT) = ?1 OR username LIKE ?2 OR first_name LIKE ?2" : ""} ORDER BY last_seen_at DESC LIMIT 100) u
-     ORDER BY u.last_seen_at DESC`,
+     FROM (SELECT * FROM users ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY last_seen_at DESC, id DESC LIMIT ${PAGE + 1}) u
+     ORDER BY u.last_seen_at DESC, u.id DESC`,
   )
-    .bind(...(q ? [q, `%${q}%`] : []))
-    .all();
-  return c.json(results);
+    .bind(...vals)
+    .all<{ id: number; last_seen_at: number }>();
+  return c.json(page(results, (u) => `${u.last_seen_at}_${u.id}`));
 });
 
 admin.post("/users/:id/balance", async (c) => {
@@ -467,26 +533,33 @@ admin.post("/users/:id/ban", async (c) => {
 admin.get("/orders", async (c) => {
   const status = c.req.query("status");
   const q = (c.req.query("q") ?? "").trim().replace(/^#/, "");
+  const before = intParam(c.req.query("before"));
   const where: string[] = [];
   const vals: unknown[] = [];
+  if (before) {
+    vals.push(before);
+    where.push(`o.id < ?${vals.length}`);
+  }
   if (status === "open") where.push("o.status IN ('submitting','pending','processing','in_progress')");
   else if (status) {
     vals.push(status);
     where.push(`o.status = ?${vals.length}`);
   }
   if (q) {
-    vals.push(q, `%${q}%`);
+    vals.push(q.slice(0, 200), likeOf(q.slice(0, 200)));
     where.push(`(CAST(o.id AS TEXT) = ?${vals.length - 1} OR CAST(o.np_order_id AS TEXT) = ?${vals.length - 1} OR CAST(o.user_id AS TEXT) = ?${vals.length - 1} OR o.link LIKE ?${vals.length})`);
   }
   const { results } = await c.env.DB.prepare(
     `SELECT o.*, u.first_name, u.username FROM orders o LEFT JOIN users u ON u.id = o.user_id
-     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT 100`,
+     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT ${PAGE + 1}`,
   )
     .bind(...vals)
     .all<OrderRow & { first_name: string; username: string | null }>();
-  return c.json(
-    results.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),
-  );
+  const pg = page(results, (o) => o.id);
+  return c.json({
+    next: pg.next,
+    items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),
+  });
 });
 
 // ---- Connection: NotPanel webhook + bot setup ----

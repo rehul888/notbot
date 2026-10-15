@@ -52,7 +52,7 @@ export const en = {
   // Invite friends (referrals)
   "invite.title": "Invite friends",
   "invite.sub": "Earn {amount} for every friend who joins",
-  "invite.reward": "{stars} ⭐ worth of balance per friend",
+  "invite.reward": "{stars} Stars per friend",
   "invite.yourLink": "Your invite link",
   "invite.copy": "Copy link",
   "invite.share": "Share",
@@ -268,7 +268,7 @@ export const en = {
   "profile.account": "Telegram account",
   "profile.language": "Language",
   "profile.languageAuto": "Same as Telegram",
-  "profile.notify": "Order updates in chat",
+  "profile.notify": "Notifications",
   "profile.notifySub": "The bot messages you when orders finish",
   "profile.home": "Add to Home Screen",
   "profile.homeAdded": "Added",

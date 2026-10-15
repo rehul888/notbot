@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { LANGS, langLabel, type Lang } from "../../shared/types";
+import { LANGS, LANG_NAMES, langLabel, type Lang } from "../../shared/types";
 import { clearApiCache } from "../api";
 import { getLang, setLang, t } from "../i18n";
 import { Icon } from "../icons";
+import { money } from "../format";
 import { updateMe } from "../me";
 import { meStore } from "../store";
 import { haptic, homeScreen, isDark, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
@@ -119,7 +120,7 @@ export function Profile() {
 
       {me.referralEnabled ? (
         <List>
-          <Row icon="users" plate="var(--lime)" title={t("invite.title")} meta={t("invite.cta")} href="/invite" accent />
+          <Row icon="users" plate="var(--lime)" title={t("invite.title")} meta={t("invite.sub", { amount: money(me.referralReward) })} href="/invite" />
         </List>
       ) : null}
 
@@ -169,7 +170,7 @@ export function Profile() {
           icon="globe"
           plate="var(--lavender-strong)"
           title={t("profile.language")}
-          value={<span lang={me.lang}>{langLabel(me.lang)}</span>}
+          value={<span lang={me.lang}>{me.lang === "en" ? LANG_NAMES.en : langLabel(me.lang)}</span>}
           onClick={() => setSheet("lang")}
         />
       </List>

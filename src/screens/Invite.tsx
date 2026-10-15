@@ -2,7 +2,7 @@ import type { ReferralStats } from "../../shared/types";
 import { api } from "../api";
 import { dateTime, money, num, prettyLink } from "../format";
 import { t } from "../i18n";
-import { Icon } from "../icons";
+import { Icon, StarIcon } from "../icons";
 import { useCountUp } from "../motion";
 import { back } from "../router";
 import { haptic, openTelegramLink } from "../tg";
@@ -63,7 +63,7 @@ function Body({ r }: { r: ReferralStats }) {
       <LargeTitle align="center" size="title" title={t("invite.title")} sub={t("invite.sub", { amount: money(r.reward) })} />
       <div class="inv-chip">
         <span>
-          <Icon name="star" size={14} stroke={2} />
+          <StarIcon size={16} />
           {t("invite.reward", { stars: num(r.rewardStars) })}
         </span>
       </div>
@@ -108,7 +108,7 @@ function Body({ r }: { r: ReferralStats }) {
       <Section header={t("invite.friends")}>
         {r.recent.length ? (
           <List>
-            {r.recent.map((f, i) => (
+            {r.recent.slice(0, 10).map((f, i) => (
               <Row
                 key={i}
                 icon="users"

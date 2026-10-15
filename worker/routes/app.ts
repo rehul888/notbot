@@ -6,7 +6,7 @@ import { type Env, isOwner } from "../env";
 import { botPlain } from "../i18n";
 import { cancelOrder, getOrderRow, OrderError, orderView, placeOrder, refillOrder, refreshOrder, type OrderRow } from "../orders";
 import { createInvoice, TooManyInvoices } from "../payments";
-import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, verifyChannel } from "../growth";
+import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, rewardMicro, verifyChannel } from "../growth";
 import { checkDraft, orderCharge } from "../pricing";
 import { getSettings, type Settings } from "../settings";
 
@@ -144,6 +144,7 @@ async function meView(c: C, background?: (p: Promise<unknown>) => void): Promise
     channelUrl: s.channel_url || null,
     channelRequired: await channelGateRequired(c.env, s, u, { background }),
     referralEnabled: !!s.referral_enabled,
+    referralReward: rewardMicro(s),
     botUsername: s.bot_username || null,
     recent: results.map((r) => ({ id: r.id, serviceId: r.service_id, serviceName: r.service_name, platform: r.platform, link: r.link, quantity: r.quantity })),
   };

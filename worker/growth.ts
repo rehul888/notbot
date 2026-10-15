@@ -192,7 +192,7 @@ export async function referralStats(env: Env, s: Settings, userId: number): Prom
     ).bind(userId),
     env.DB.prepare(
       `SELECT u.first_name AS name, r.status, COALESCE(r.rewarded_at, r.created_at) AS at FROM referrals r
-       LEFT JOIN users u ON u.id = r.referred_id WHERE r.referrer_id = ?1 ORDER BY r.created_at DESC LIMIT 20`,
+       LEFT JOIN users u ON u.id = r.referred_id WHERE r.referrer_id = ?1 ORDER BY r.created_at DESC LIMIT 10`,
     ).bind(userId),
   ]);
   const t = totals.results[0] as { invited: number; joined: number | null; earned: number };

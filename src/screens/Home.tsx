@@ -164,7 +164,7 @@ export function Home() {
 
           {me.referralEnabled ? (
             <List>
-              <Row icon="users" plate="var(--lime)" size="lg" title={t("invite.cta")} onClick={() => navigate("/invite")} />
+              <Row icon="users" plate="var(--lime)" size="lg" title={t("invite.title")} meta={t("invite.sub", { amount: money(me.referralReward) })} onClick={() => navigate("/invite")} />
             </List>
           ) : null}
 

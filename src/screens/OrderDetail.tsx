@@ -75,7 +75,7 @@ function StatusCard({ o }: { o: OrderView }) {
   const ofTotal = t("detail.delivered", { total: num(o.quantity) });
   // "N left to deliver" only while it still can be; a finished order's remainder was refunded instead.
   const left = o.remains && !FINAL_STATUSES.includes(o.status) ? t("detail.left", { n: num(o.remains) }) : null;
-  const foot = [o.startCount !== null ? t("detail.startedAt", { n: num(o.startCount) }) : null, left].filter(Boolean).join(" · ");
+  const foot = [o.startCount ?  t("detail.startedAt", { n: num(o.startCount) }) : null, left].filter(Boolean).join(" · ");
   const reason = o.reasonCode
     ? t((KNOWN_REASONS.includes(o.reasonCode) ? `reason.${o.reasonCode}` : "reason.generic") as Key)
     : o.refund > 0
@@ -104,7 +104,7 @@ function StatusCard({ o }: { o: OrderView }) {
         <StatusPill status={o.status} />
       </div>
       <Progress size="lg" value={done} max={o.quantity} label={`${num(done)} ${ofTotal}`} />
-      {foot ? <span class="t-footnote hint">{foot}</span> : null}
+      {foot && !(ended && done === 0) ? <span class="t-footnote hint">{foot}</span> : null}
       {ended ? (
         reason ? (
           <Notice tone="warn">{reason}</Notice>
