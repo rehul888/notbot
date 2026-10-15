@@ -3,9 +3,9 @@ import type { Env } from "./env";
 export const DEFAULTS = {
   default_markup_pct: 30,
   stars_per_usd: 77, // ≈ break-even with Telegram's Stars payout rate; markup is the profit
-  // Top-up limits in whole Stars (users see and pay everything in Stars)
+  // Top-up limits in whole Stars (users see and pay in Stars; the balance is credited their dollar value)
   min_topup_stars: 50,
-  max_topup_stars: 50_000,
+  max_topup_stars: 10_000,
   sync_enabled: 1,
   sync_every_hours: 6,
   auto_enable_new: 1,

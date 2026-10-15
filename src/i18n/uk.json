@@ -219,6 +219,7 @@
   "topup.title": "Поповнити",
   "topup.balance": "Баланс {amount}",
   "topup.amount": "Сума в Stars",
+  "topup.custom": "Своя",
   "topup.note": "Telegram відкриє власне вікно оплати. Баланс оновиться одразу після оплати.",
   "topup.limits": "Від {min} до {max}",
   "topup.pay": "Сплатити {stars} ⭐",

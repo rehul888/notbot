@@ -219,6 +219,7 @@
   "topup.title": "충전",
   "topup.balance": "잔액 {amount}",
   "topup.amount": "금액 (Stars)",
+  "topup.custom": "직접 입력",
   "topup.note": "Telegram 결제 화면이 열려요. 결제하면 바로 잔액에 반영돼요.",
   "topup.limits": "{min} ~ {max}",
   "topup.pay": "{stars} ⭐ 결제",

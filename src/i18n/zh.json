@@ -219,6 +219,7 @@
   "topup.title": "充值",
   "topup.balance": "余额 {amount}",
   "topup.amount": "金额（Stars）",
+  "topup.custom": "自定义",
   "topup.note": "Telegram 会打开自己的支付页面。付款后余额会立即更新。",
   "topup.limits": "{min} 至 {max}",
   "topup.pay": "支付 {stars} ⭐",

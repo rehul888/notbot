@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { platformName } from "../../shared/platforms";
+import { balanceStars, MAX_STARS_PER_PAYMENT, shownStars, starsCredit } from "../../shared/stars";
 import { LANGS, type Lang } from "../../shared/types";
 import { sendPreviews } from "../botMessages";
 import { botPlain } from "../i18n";
@@ -9,7 +10,7 @@ import { isOwner } from "../env";
 import { np, usdToMicro } from "../notpanel";
 import { orderView, type OrderRow } from "../orders";
 import { refundPayment } from "../payments";
-import { sellRate, sellStars } from "../pricing";
+import { sellRate } from "../pricing";
 import { bumpCatalogStmt, DEFAULTS, getSettings, setSettings, setSettingsStmts, type Settings } from "../settings";
 import { startSync, syncProgress } from "../sync";
 import { tg } from "../telegram";
@@ -33,12 +34,10 @@ admin.get("/overview", async (c) => {
   const since = dayStart();
   const [today, users, pending, attention, joined] = await c.env.DB.batch([
     c.env.DB.prepare(
-      // charge/refund are whole Stars; USD uses the rate each order was sold at; cost is NotPanel's USD
-      `SELECT COUNT(*) AS orders, COALESCE(SUM(charge - refund), 0) AS salesStars,
-         COALESCE(SUM((charge - refund) * 1000000.0 / COALESCE(rate, ?2)), 0) AS sales,
-         COALESCE(SUM((charge - refund) * 1000000.0 / COALESCE(rate, ?2) - COALESCE(cost, 0)), 0) AS profit
+      // All micro-USD: what users paid (charge - refund) and NotPanel's cost
+      `SELECT COUNT(*) AS orders, COALESCE(SUM(charge - refund), 0) AS sales, COALESCE(SUM(charge - refund - COALESCE(cost, 0)), 0) AS profit
        FROM orders WHERE created_at >= ?1 AND status != 'failed'`,
-    ).bind(since, s.stars_per_usd),
+    ).bind(since),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM users"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status IN ('submitting','pending','processing','in_progress')"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM services WHERE present = 1 AND enabled = 1 AND fixed_rate IS NOT NULL AND fixed_rate < rate"),
@@ -51,8 +50,8 @@ admin.get("/overview", async (c) => {
   } catch (e) {
     npError = (e as Error).message;
   }
-  const r = today.results[0] as { orders: number; salesStars: number; sales: number; profit: number };
-  const t = { orders: r.orders, salesStars: r.salesStars, sales: Math.round(r.sales), profit: Math.round(r.profit) };
+  const r = today.results[0] as { orders: number; sales: number; profit: number };
+  const t = { ...r, salesStars: shownStars(r.sales, s.stars_per_usd) };
   return c.json({
     npBalance,
     npError,
@@ -133,7 +132,7 @@ admin.put("/settings", async (c) => {
   const minTopup = values.min_topup_stars ?? cur.min_topup_stars;
   const maxTopup = values.max_topup_stars ?? cur.max_topup_stars;
   if (!Number.isInteger(minTopup) || minTopup < 1) return bad("min_topup_stars");
-  if (!Number.isInteger(maxTopup) || maxTopup < minTopup || maxTopup > 1_000_000) return bad("max_topup_stars");
+  if (!Number.isInteger(maxTopup) || maxTopup < minTopup || maxTopup > MAX_STARS_PER_PAYMENT) return bad("max_topup_stars");
   if (values.support_username) values.support_username = values.support_username.replace(/^@/, "");
   if (values.channel_url && !/^https:\/\/t\.me\//.test(values.channel_url)) return err(c, 400, "INVALID_VALUE", { key: "channel_url" });
   if (values.channel_id && !/^-100\d{5,}$/.test(values.channel_id)) return err(c, 400, "INVALID_VALUE", { key: "channel_id" });
@@ -272,7 +271,7 @@ admin.get("/services", async (c) => {
       cost: r.rate,
       prevCost: r.prev_rate,
       sell: sellRate(r.rate, r.markup, r.fixed_rate),
-      sellStars: sellStars(r.rate, r.markup, r.fixed_rate, s.stars_per_usd),
+      sellStars: shownStars(sellRate(r.rate, r.markup, r.fixed_rate), s.stars_per_usd),
       starsPerUsd: s.stars_per_usd,
       markup: r.markup,
       markupPct: r.markup_pct,
@@ -375,7 +374,7 @@ admin.get("/payments", async (c) => {
   )
     .bind(...vals)
     .all<{ id: number }>();
-  // stars/amount are whole Stars; starsPerUsd is only the current rate, so USD figures are estimates
+  // stars = Stars paid; amount = micro-USD credited for them
   return c.json({ ...page(results, (r) => r.id), totals: await paymentTotals(c.env), starsPerUsd: c.get("settings").stars_per_usd });
 });
 
@@ -511,11 +510,17 @@ admin.post("/users/:id/balance", async (c) => {
   const b = await readBody<{ amount: number; note?: string }>(c);
   if (!b) return err(c, 400, "INVALID_BODY");
   const { amount, note } = b;
-  // Whole Stars
-  const delta = Number(amount);
-  if (!Number.isInteger(delta)) return err(c, 400, "INVALID_AMOUNT");
-  if (!Number.isFinite(delta) || delta === 0) return err(c, 400, "INVALID_AMOUNT");
+  // Entered in whole Stars, applied as their dollar value
+  const stars = Number(amount);
+  if (!Number.isInteger(stars) || stars === 0 || Math.abs(stars) > 1_000_000) return err(c, 400, "INVALID_AMOUNT");
   const id = Number(c.req.param("id"));
+  const rate = c.get("settings").stars_per_usd;
+  let delta = Math.sign(stars) * starsCredit(Math.abs(stars), rate);
+  if (delta < 0) {
+    // Removing exactly the shown balance clears it completely (no leftover fraction of a Star)
+    const cur = await c.env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(id).first<{ balance: number }>();
+    if (cur && cur.balance > 0 && -stars === balanceStars(cur.balance, rate)) delta = -cur.balance;
+  }
   const now = Math.floor(Date.now() / 1000);
   const [upd] = await c.env.DB.batch([
     c.env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND balance + ?2 >= 0").bind(id, delta),
@@ -568,7 +573,7 @@ admin.get("/orders", async (c) => {
   const pg = page(results, (o) => o.id);
   return c.json({
     next: pg.next,
-    // charge/refund are whole Stars; cost is NotPanel's USD; rate is Stars per $1 the order was sold at (null on very old rows)
+    // charge/refund/cost are micro-USD; rate is Stars per $1 when the order was placed (null on very old rows)
     starsPerUsd: c.get("settings").stars_per_usd,
     items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, rate: o.rate, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),
   });

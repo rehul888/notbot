@@ -1,4 +1,19 @@
+import { balanceStars, shownStars } from "../shared/stars";
 import { getLang } from "./i18n";
+import { meStore } from "./store";
+
+/** Stars per $1 from the server (every amount is stored in micro-USD and only shown as Stars) */
+export const starsRate = () => meStore.get()?.starsPerUsd ?? 0;
+
+/** A micro-USD price, charge, refund or credit → "2 ⭐" (rounded up, like every price users see) */
+export function amount(micro: number, opts: { sign?: boolean } = {}): string {
+  return stars(shownStars(micro, starsRate()), opts);
+}
+
+/** A micro-USD balance → "1 ⭐" (rounded down: never shows more than the user has) */
+export function balance(micro: number): string {
+  return stars(balanceStars(micro, starsRate()));
+}
 
 /** Whole Telegram Stars → "1,250 ⭐" (digits per locale, see num()); `sign` adds "+" / "−" for ledger deltas. */
 export function stars(n: number, opts: { sign?: boolean } = {}): string {

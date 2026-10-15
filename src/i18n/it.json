@@ -219,6 +219,7 @@
   "topup.title": "Aggiungi fondi",
   "topup.balance": "Saldo {amount}",
   "topup.amount": "Importo in Stars",
+  "topup.custom": "Altro",
   "topup.note": "Telegram apre la sua schermata di pagamento. Il saldo si aggiorna appena paghi.",
   "topup.limits": "Da {min} a {max}",
   "topup.pay": "Paga {stars} ⭐",

@@ -5,7 +5,7 @@ import { platformName } from "../../shared/platforms";
 import { ApiError, api, cachedApi } from "../api";
 import { refreshMe } from "../me";
 import { ArtHomeHero } from "../art";
-import { iso, num, prettyLink, stars } from "../format";
+import { balance, iso, num, prettyLink, stars } from "../format";
 import { getLang, t } from "../i18n";
 import { Icon } from "../icons";
 import { once } from "../motion";
@@ -118,11 +118,11 @@ export function Home() {
           <button
             type="button"
             class="bal glass-pill press"
-            aria-label={t("home.balanceAria", { amount: iso(stars(me.balance)) })}
+            aria-label={t("home.balanceAria", { amount: iso(balance(me.balance)) })}
             onClick={() => (haptic.tap(), navigate("/wallet", { replace: true }))}
           >
             <Icon name="wallet" size={17} />
-            <Num>{stars(me.balance)}</Num>
+            <Num>{balance(me.balance)}</Num>
           </button>
           <button type="button" class="add white-pill press" onClick={() => (haptic.tap(), navigate("/topup"))}>
             <Icon name="plus" size={16} stroke={2.6} />

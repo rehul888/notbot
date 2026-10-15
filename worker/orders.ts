@@ -1,9 +1,9 @@
 import { FINAL_STATUSES, type Lang, type OrderStatus, type OrderView, pickLang } from "../shared/types";
 import type { Env } from "./env";
 import { botText } from "./i18n";
-import { linkText, starsText } from "./botMessages";
+import { amountText, linkText } from "./botMessages";
 import { NotPanelError, np, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
-import { orderCharge, starsToUsd } from "./pricing";
+import { orderCharge } from "./pricing";
 import { getSettings } from "./settings";
 import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 import type { ServiceDetail } from "../shared/types";
@@ -137,7 +137,7 @@ export async function placeOrder(
   dripMinutes: number | undefined,
 ): Promise<OrderRow> {
   assertOrdersAllowed(env);
-  // svc.rate is the sell price per 1,000 in whole Stars; the charge is whole Stars
+  // svc.rate is the sell price per 1,000 in micro-USD; the charge is micro-USD (users see it as Stars)
   const charge = orderCharge(svc.rate, quantity, svc.quantityMode);
   const starsPerUsd = (await getSettings(env)).stars_per_usd;
   const now = Math.floor(Date.now() / 1000);
@@ -182,7 +182,7 @@ export async function placeOrder(
     const r = await np<NpAddResult>(env.NOTPANEL_API_KEY, "add", params);
     const addStatus = normStatus(r.status_key) ?? "pending";
     const addCost = usdToMicro(r.charge);
-    if (addCost > starsToUsd(charge, starsPerUsd)) console.warn("order sold below cost", { order: id, chargeStars: charge, cost: addCost });
+    if (addCost > charge) console.warn("order sold below cost", { order: id, charge, cost: addCost });
     await env.DB.prepare(
       `UPDATE orders SET np_order_id = ?1, status = ?2, cost = ?3, can_cancel = ?4, cancel_before = ?5, updated_at = ?6 WHERE id = ?7`,
     )
@@ -259,7 +259,7 @@ export function refundFor(o: OrderRow, status: OrderStatus, remains: number | nu
   if (status === "partial" || status === "cancelled") {
     if (status === "partial" || (remains !== null && remains > 0 && remains < o.quantity)) {
       const left = Math.max(0, Math.min(remains ?? 0, o.quantity));
-      // Whole Stars, rounded up in the user's favour, never more than they paid
+      // Rounded up in the user's favour, never more than they paid
       return Math.min(o.charge, Math.ceil((o.charge * left) / o.quantity - 1e-9));
     }
     return o.charge;
@@ -328,7 +328,7 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
     id: String(o.np_order_id ?? o.id),
     service: o.service_name,
     quantity: o.quantity.toLocaleString("en-US"),
-    refund: starsText(o.refund),
+    refund: amountText(o.refund, s),
     link: linkText(o.link),
   });
   try {

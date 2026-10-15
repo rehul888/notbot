@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { platformName } from "../../shared/platforms";
 import type { OrderView } from "../../shared/types";
 import { api, clearApiCache } from "../api";
-import { dateTime, num } from "../format";
+import { balanceStars, shownStars } from "../../shared/stars";
+import { dateTime, num, starsRate } from "../format";
 import { Icon, type IconName } from "../icons";
+import { refreshMe } from "../me";
 import { back as goBack, enc, navigate } from "../router";
 import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
 import {
@@ -74,10 +76,12 @@ function money(micro: number): string {
   if (digits > 2) t = t.replace(/(\.\d\d\d*?)0+$/, "$1");
   return `${micro < 0 ? "−" : ""}$${t}`;
 }
-/** Whole Telegram Stars, e.g. "1,250 ⭐". Balances, charges, refunds, payments and rewards are all stored in Stars. */
+/** Whole Telegram Stars, e.g. "1,250 ⭐" (Stars paid in Telegram, settings in Stars). */
 const starsText = (n: number) => `${num(Math.round(n))} ⭐`;
-/** Whole Stars at a Stars-per-$1 rate → micro-USD (for "≈ $X" estimates). */
-const starsUsd = (stars: number, starsPerUsd: number) => (starsPerUsd > 0 ? Math.round((stars * 1e6) / starsPerUsd) : 0);
+/** A micro-USD amount as users see it in Stars (rounded up). Money is stored in micro-USD everywhere. */
+const usdStars = (micro: number) => starsText(shownStars(micro, starsRate()));
+/** A micro-USD balance, or a sum of credits, as users see it in Stars (rounded down). */
+const balStars = (micro: number) => starsText(balanceStars(micro, starsRate()));
 const invalidate = () => clearApiCache();
 const fail = (e: unknown) => toast(errText(e), "error");
 
@@ -800,7 +804,7 @@ function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose
   const [markup, setMarkup] = useState(s.markupPct ?? s.markup);
   const rate = s.starsPerUsd;
   // The fixed price is typed in whole Stars per 1K; it is stored as micro-USD at today's Stars-per-$1 rate
-  const [fixed, setFixed] = useState(String(s.fixedRate !== null ? Math.max(1, Math.ceil((s.fixedRate * rate) / 1e6 - 1e-9)) : s.sellStars));
+  const [fixed, setFixed] = useState(String(s.fixedRate !== null ? shownStars(s.fixedRate, rate) : s.sellStars));
   const [fixedErr, setFixedErr] = useState<string | null>(null);
   const [name, setName] = useState(s.customName ?? "");
   const [busy, setBusy] = useState(false);
@@ -808,7 +812,7 @@ function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose
   // Rounded down so converting back (rounding up to whole Stars) lands on exactly the Stars typed
   const fixedMicro = rate > 0 ? Math.floor((fixedStars * 1e6) / rate) : 0;
   const preview = mode === "fixed" ? (fixedMicro > 0 ? fixedMicro : null) : mode === "markup" ? sellFor(s.cost, markup) : null;
-  const previewStars = preview === null ? 0 : mode === "fixed" ? fixedStars : Math.max(1, Math.ceil((preview * rate) / 1e6 - 1e-9));
+  const previewStars = preview === null ? 0 : shownStars(preview, rate);
   const diff = priceDiff(s);
 
   const save = async () => {
@@ -899,7 +903,7 @@ function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose
           </Notice>
         ) : (
           <p class="note">
-            New price <Num>{starsText(previewStars)}</Num> / 1K · profit <Num>{money(starsUsd(previewStars, rate) - s.cost)}</Num> per 1K
+            New price <Num>{starsText(previewStars)}</Num> / 1K · profit <Num>{money(preview - s.cost)}</Num> per 1K
           </p>
         )}
       </Section>
@@ -998,11 +1002,10 @@ function AdminPayments() {
   const pg = usePaged<PaymentRow, { totals: { stars: number; amount: number }; starsPerUsd: number }>(`/admin/payments?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
   const list = pg.items;
   const totals = pg.extra?.totals;
-  const payRate = pg.extra?.starsPerUsd ?? 0;
   const [refunding, setRefunding] = useState<number | null>(null);
   const refund = async (p: PaymentRow) => {
     haptic.warn();
-    const ok = await confirmDialog(`Refund ${starsText(p.stars)} to ${p.first_name ?? p.user_id}? ${starsText(p.amount)} is taken from their balance.`, "Refund", "Cancel", true);
+    const ok = await confirmDialog(`Refund ${starsText(p.stars)} to ${p.first_name ?? p.user_id}? ${money(p.amount)} (${usdStars(p.amount)}) is taken from their balance.`, "Refund", "Cancel", true);
     if (!ok) return;
     setRefunding(p.id);
     try {
@@ -1021,8 +1024,8 @@ function AdminPayments() {
           <Stat label="Stars received">
             <Num>{starsText(totals.stars)}</Num>
           </Stat>
-          <Stat label="Worth about (USD)">
-            <Num>≈ {money(starsUsd(totals.stars, payRate))}</Num>
+          <Stat label="Credited (USD)">
+            <Num>{money(totals.amount)}</Num>
           </Stat>
         </div>
       ) : !pg.err ? (
@@ -1061,7 +1064,7 @@ function AdminPayments() {
                     title={`${p.first_name ?? p.user_id}${p.username ? ` @${p.username}` : ""}`}
                     meta={
                       <>
-                        <Num>{starsText(p.stars)}</Num> · ≈ <Num>{money(starsUsd(p.stars, payRate))}</Num>
+                        <Num>{starsText(p.stars)}</Num> · <Num>{money(p.amount)}</Num>
                         {p.order_id ? (
                           <>
                             {" "}
@@ -1208,11 +1211,11 @@ function AdminReferrals() {
               ok
               sub={
                 <>
-                  ≈ <Num>{money(starsUsd(data.totals.paid, data.settings.starsPerUsd))}</Num>
+                  <Num>{money(data.totals.paid)}</Num>
                 </>
               }
             >
-              <Num>{starsText(data.totals.paid)}</Num>
+              <Num>{balStars(data.totals.paid)}</Num>
             </Stat>
             <Stat label="Waiting">
               <Num>{num(data.totals.pending)}</Num>
@@ -1220,7 +1223,7 @@ function AdminReferrals() {
             <Stat label="Over daily limit">
               <Num>{num(data.totals.capped)}</Num>
             </Stat>
-            <Stat label={`Today · ${starsText(data.totals.todayPaid)} paid`}>
+            <Stat label={`Today · ${balStars(data.totals.todayPaid)} paid`}>
               <Num>{num(data.totals.todayInvited)}</Num>
             </Stat>
           </div>
@@ -1235,7 +1238,7 @@ function AdminReferrals() {
                     key={t.id}
                     title={refName(t.id, { first: t.first_name, last: t.last_name, user: t.username })}
                     meta={`${t.username ? `@${t.username} · ` : ""}${num(t.invited)} invited · ${num(t.joined)} joined`}
-                    value={<Num>{starsText(t.earned)}</Num>}
+                    value={<Num>{balStars(t.earned)}</Num>}
                     onClick={() => setQ(String(t.id))}
                   />
                 ))}
@@ -1248,7 +1251,7 @@ function AdminReferrals() {
           <Section
             header="Recent referrals"
             footer={`A referral counts when a new user opens the bot from a link, picks a language, joins the update channel (confirmed by Telegram) and reaches the home screen. ${
-              data.settings.enabled ? `Reward ${starsText(data.settings.rewardStars)} (≈ ${money(starsUsd(data.settings.rewardStars, data.settings.starsPerUsd))}), at most ${num(data.settings.dailyCap)} paid per referrer per day.` : "The referral program is currently off."
+              data.settings.enabled ? `Reward ${starsText(data.settings.rewardStars)} (≈ ${money(Math.round((data.settings.rewardStars * 1e6) / data.settings.starsPerUsd))}), at most ${num(data.settings.dailyCap)} paid per referrer per day.` : "The referral program is currently off."
             }`}
           >
             {recent.length ? (
@@ -1266,7 +1269,7 @@ function AdminReferrals() {
                             {r.status === "rewarded" ? (
                               <>
                                 {" "}
-                                <Num>{starsText(r.reward)}</Num>
+                                <Num>{usdStars(r.reward)}</Num>
                               </>
                             ) : null}{" "}
                             · {dateTime(r.rewarded_at ?? r.created_at)}
@@ -1328,8 +1331,8 @@ function AdminUsers() {
               <Row
                 key={u.id}
                 title={fullName(u)}
-                meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${starsText(u.paid)}${u.banned ? " · blocked" : ""}`}
-                value={<Num>{starsText(u.balance)}</Num>}
+                meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${balStars(u.paid)}${u.banned ? " · blocked" : ""}`}
+                value={<Num>{balStars(u.balance)}</Num>}
                 onClick={() => setSel(u)}
               />
             ))}
@@ -1386,12 +1389,14 @@ function UserSheet({ u, onClose, onSaved, onChanged }: { u: UserRow; onClose: ()
       <dl class="card">
         <Kv label="Balance">
           <b>
-            <Num>{starsText(u.balance)}</Num>
+            <Num>{balStars(u.balance)}</Num>
           </b>
+          {" · "}
+          <Num>{money(u.balance)}</Num>
         </Kv>
         <Kv label="Orders">{num(u.orders)}</Kv>
         <Kv label="Paid with Stars">
-          <Num>{starsText(u.paid)}</Num>
+          <Num>{money(u.paid)}</Num>
         </Kv>
         <Kv label="Last seen">{dateTime(u.last_seen_at)}</Kv>
       </dl>
@@ -1488,11 +1493,11 @@ function AdminOrders() {
                       · {o.userName}
                       {o.username ? ` @${o.username}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
                       <br />
-                      Paid <Num>{starsText(paid)}</Num> · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
+                      Paid <Num>{usdStars(paid)}</Num> (<Num>{money(paid)}</Num>) · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
                       {o.cost !== null ? (
                         <>
                           {" "}
-                          · profit <Num>{money(starsUsd(paid, o.rate ?? pg.extra?.starsPerUsd ?? 0) - o.cost)}</Num>
+                          · profit <Num>{money(paid - o.cost)}</Num>
                         </>
                       ) : null}
                       {o.error ? ` · ${o.error}` : ""}
@@ -1569,6 +1574,8 @@ function AdminSettings() {
     try {
       await api("/admin/settings", { method: "PUT", body: draft });
       invalidate();
+      // The app converts USD to Stars with the rate from /me
+      if (draft.stars_per_usd !== undefined) void refreshMe().catch(() => {});
       res.set({ ...res.data, ...draft });
       setDraft({});
       setTexts({});
@@ -1659,7 +1666,7 @@ function AdminSettings() {
         )
       ) : (
         <>
-          <Section header="Telegram Stars" footer="Telegram pays out roughly $0.013 per Star, so 77 Stars per $1 is about break-even. Your markup is the profit. Changing the rate only affects future prices: balances, past orders and payments stay in Stars.">
+          <Section header="Telegram Stars" footer="Telegram pays out roughly $0.013 per Star, so 77 Stars per $1 is about break-even. Your markup is the profit. Money is kept in USD; Stars are only how users see it. Changing the rate re-prices everything: every price, balance and past amount is shown at the new rate (100 ⭐ bought at 77 shows as 130 ⭐ at 100).">
             <dl class="card">
               <Kv label="Stars per $1 (sets prices)" id="set-stars">
                 {numInput("stars_per_usd", "set-stars")}

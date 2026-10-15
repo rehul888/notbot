@@ -1,8 +1,9 @@
+import { starsCredit } from "../shared/stars";
 import { type Lang, type OrderDraft, pickLang } from "../shared/types";
 import { getService } from "./catalog";
 import type { Env } from "./env";
 import { botPlain, botText } from "./i18n";
-import { linkText, starsText } from "./botMessages";
+import { balanceText, linkText, starsText } from "./botMessages";
 import { OrderError, placeOrder } from "./orders";
 import { checkDraft } from "./pricing";
 import { getSettings } from "./settings";
@@ -12,7 +13,9 @@ import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 interface PaymentRow {
   id: number;
   user_id: number;
+  /** Whole Stars the user pays */
   stars: number;
+  /** micro-USD credited to the balance for those Stars (fixed when the invoice is created) */
   amount: number;
   draft: string | null;
   status: string;
@@ -24,17 +27,21 @@ interface PaymentRow {
 /** Thrown by createInvoice when the user already has too many unpaid invoices (routes answer 429). */
 export class TooManyInvoices extends Error {}
 
-/** Creates a pending payment and a Stars invoice link for the Mini App to open with openInvoice. */
+/**
+ * Creates a pending payment and a Stars invoice link for the Mini App to open with openInvoice. The user pays whole
+ * Stars; the balance is credited their dollar value at today's rate (1 ⭐ = 1/stars_per_usd USD).
+ */
 export async function createInvoice(
   env: Env,
   userId: number,
   lang: Lang,
   stars: number,
+  starsPerUsd: number,
   draft: (OrderDraft & { label: string }) | null,
 ): Promise<{ link: string; stars: number; paymentId: number }> {
-  // Whole Stars in, the same Stars credited to the balance
-  const amount = Math.max(1, Math.round(stars));
-  stars = amount;
+  stars = Math.max(1, Math.round(stars));
+  const amount = starsCredit(stars, starsPerUsd);
+  if (!(amount > 0)) throw new Error("invalid stars_per_usd");
   const now = Math.floor(Date.now() / 1000);
   // The cap is part of the INSERT so concurrent requests can't slip past it
   const row = await env.DB.prepare(
@@ -48,7 +55,7 @@ export async function createInvoice(
   if (!row) throw new TooManyInvoices();
   const id = row.id;
   const title = botPlain(lang, "invoiceTitle").slice(0, 32);
-  const description = (draft ? draft.label : botPlain(lang, "invoiceTopup", { amount: starsText(amount) })).slice(0, 255);
+  const description = (draft ? draft.label : botPlain(lang, "invoiceTopup", { amount: starsText(stars) })).slice(0, 255);
   const link = await tg<string>(env.BOT_TOKEN, "createInvoiceLink", {
     title,
     description,
@@ -137,6 +144,8 @@ export async function onSuccessfulPayment(
   const user = await env.DB.prepare("SELECT lang, language_code FROM users WHERE id = ?1").bind(p.user_id).first<{ lang: string | null; language_code: string | null }>();
   const lang = pickLang(user?.lang ?? user?.language_code ?? from.language_code);
   const s = await getSettings(env);
+  // The user paid p.stars; show exactly that (the credit is its dollar value)
+  const paid = starsText(p.stars);
   const button = (id?: number) =>
     s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, id ? "viewOrder" : "open"), `${s.app_url}/#/${id ? `order/${id}` : "wallet"}`, id ? VIEW_ORDER_ICON_EMOJI_ID : undefined)]] } : undefined;
 
@@ -144,7 +153,7 @@ export async function onSuccessfulPayment(
     const bal = await env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(p.user_id).first<{ balance: number }>();
     await tg(env.BOT_TOKEN, "sendMessage", {
       chat_id: p.user_id,
-      text: botText(lang, "topupDone", { amount: starsText(p.amount), balance: starsText(bal?.balance ?? p.amount) }),
+      text: botText(lang, "topupDone", { amount: paid, balance: balanceText(bal?.balance ?? p.amount, s) }),
       parse_mode: "HTML",
       reply_markup: button(),
     });
@@ -169,7 +178,7 @@ export async function onSuccessfulPayment(
     const reason = e instanceof OrderError ? e.code : "ERROR";
     await tg(env.BOT_TOKEN, "sendMessage", {
       chat_id: p.user_id,
-      text: botText(lang, "orderNotPlaced", { amount: starsText(p.amount), reason }),
+      text: botText(lang, "orderNotPlaced", { amount: paid, reason }),
       parse_mode: "HTML",
       reply_markup: button(),
     });

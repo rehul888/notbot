@@ -3,7 +3,7 @@ import { useState } from "preact/hooks";
 import type { CategoryItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
-import { stars } from "../format";
+import { amount } from "../format";
 import { t } from "../i18n";
 import { categoryLook, Icon } from "../icons";
 import { back, enc, navigate } from "../router";
@@ -17,7 +17,7 @@ function fromPrice(rate: number) {
   return (
     <>
       {before}
-      <Num>{stars(rate)}</Num>
+      <Num>{amount(rate)}</Num>
       {after}
     </>
   );

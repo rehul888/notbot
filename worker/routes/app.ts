@@ -3,6 +3,7 @@ import { type LedgerItem, type Me, type OrderDraft, pickLang, type Lang, LANGS }
 import { validateInitData, type TgUser } from "../auth";
 import { getService, listCategories, listPlatforms, listServices, searchServices } from "../catalog";
 import { type Env, isOwner } from "../env";
+import { MAX_STARS_PER_PAYMENT, starsToCover } from "../../shared/stars";
 import { starsText } from "../botMessages";
 import { botPlain } from "../i18n";
 import { cancelOrder, getOrderRow, OrderError, orderView, placeOrder, refillOrder, refreshOrder, type OrderRow } from "../orders";
@@ -140,7 +141,7 @@ async function meView(c: C, background?: (p: Promise<unknown>) => void): Promise
     isAdmin: isOwner(c.env, u.id),
     starsPerUsd: s.stars_per_usd,
     minTopup: s.min_topup_stars,
-    maxTopup: s.max_topup_stars,
+    maxTopup: Math.min(s.max_topup_stars, MAX_STARS_PER_PAYMENT),
     supportUsername: s.support_username || null,
     channelUrl: s.channel_url || null,
     channelRequired: await channelGateRequired(c.env, s, u, { background }),
@@ -267,7 +268,11 @@ app.post("/orders", async (c) => {
     if (draft.payWith === "stars") {
       const lang = c.get("lang");
       const label = botPlain(lang, "invoiceOrder", { service: svc.name, quantity: check.quantity.toLocaleString("en-US") });
-      const inv = await createInvoice(c.env, c.get("user").id, lang, charge, {
+      // Fewest whole Stars whose dollar value covers the charge; any change stays on the balance
+      const rate = c.get("settings").stars_per_usd;
+      const stars = starsToCover(charge, rate);
+      if (stars > MAX_STARS_PER_PAYMENT) return err(c, 400, "INVALID_AMOUNT", { min: starsText(1), max: starsText(MAX_STARS_PER_PAYMENT) });
+      const inv = await createInvoice(c.env, c.get("user").id, lang, stars, rate, {
         serviceId: svc.id,
         link,
         quantity: check.quantity,
@@ -371,10 +376,11 @@ app.post("/wallet/topup", async (c) => {
   const s = c.get("settings");
   // Whole Stars only
   const stars = Number(b.stars);
-  if (!Number.isInteger(stars) || stars < s.min_topup_stars || stars > s.max_topup_stars)
-    return err(c, 400, "INVALID_AMOUNT", { min: starsText(s.min_topup_stars), max: starsText(s.max_topup_stars) });
+  const max = Math.min(s.max_topup_stars, MAX_STARS_PER_PAYMENT);
+  if (!Number.isInteger(stars) || stars < s.min_topup_stars || stars > max)
+    return err(c, 400, "INVALID_AMOUNT", { min: starsText(s.min_topup_stars), max: starsText(max) });
   try {
-    const inv = await createInvoice(c.env, c.get("user").id, c.get("lang"), stars, null);
+    const inv = await createInvoice(c.env, c.get("user").id, c.get("lang"), stars, s.stars_per_usd, null);
     return c.json({ invoice: inv.link, stars: inv.stars, paymentId: inv.paymentId });
   } catch (e) {
     if (e instanceof TooManyInvoices) return err(c, 429, "TOO_MANY_REQUESTS");

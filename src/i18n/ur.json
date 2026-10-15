@@ -219,6 +219,7 @@
   "topup.title": "رقم شامل کریں",
   "topup.balance": "بیلنس {amount}",
   "topup.amount": "رقم Stars میں",
+  "topup.custom": "اپنی رقم",
   "topup.note": "Telegram اپنی ادائیگی کی شیٹ کھولتا ہے۔ ادائیگی کرتے ہی آپ کا بیلنس اپ ڈیٹ ہو جاتا ہے۔",
   "topup.limits": "{min} سے {max} تک",
   "topup.pay": "{stars} ⭐ ادا کریں",

@@ -219,6 +219,7 @@
   "topup.title": "إضافة رصيد",
   "topup.balance": "الرصيد {amount}",
   "topup.amount": "المبلغ بالنجوم",
+  "topup.custom": "مبلغ آخر",
   "topup.note": "يفتح تيليجرام شاشة الدفع الخاصة به. يتحدّث رصيدك فور الدفع.",
   "topup.limits": "من {min} إلى {max}",
   "topup.pay": "ادفع {stars} ⭐",

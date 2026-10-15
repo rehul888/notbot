@@ -219,6 +219,7 @@
   "topup.title": "افزایش موجودی",
   "topup.balance": "موجودی {amount}",
   "topup.amount": "مبلغ به Stars",
+  "topup.custom": "دلخواه",
   "topup.note": "Telegram صفحه پرداخت خودش را باز می‌کند. موجودی شما به‌محض پرداخت به‌روز می‌شود.",
   "topup.limits": "از {min} تا {max}",
   "topup.pay": "پرداخت {stars} ⭐",

@@ -2,7 +2,7 @@ import { NP_LANGS, type CategoryItem, type DripFeed, type Lang, type PlatformIte
 import { PLATFORM_ORDER, platformName } from "../shared/platforms";
 import type { Env } from "./env";
 import { np } from "./notpanel";
-import { linesField, quantityMode, sellStars, toStars } from "./pricing";
+import { linesField, quantityMode, sellRate } from "./pricing";
 import type { Settings } from "./settings";
 
 // Shared SQL pieces. `cr` = category rule, `pr` = platform-wide rule (category = '').
@@ -49,14 +49,14 @@ interface Row {
 const ROW_COLS = `s.id, ${NAME_SQL} AS name, s.custom_name IS NOT NULL OR sn.name IS NOT NULL AS name_found, s.platform, s.category,
   s.category_slug, s.rate, ${MARKUP_SQL} AS markup, s.fixed_rate, s.min, s.max, s.refill, s.cancel, s.avg_minutes`;
 
-/** Catalog row → item with the sell price per 1,000 in whole Stars */
-function toItem(r: Row, starsPerUsd: number): ServiceItem {
+/** Catalog row → item with the sell price per 1,000 in micro-USD */
+function toItem(r: Row): ServiceItem {
   return {
     id: r.id,
     name: r.name,
     platform: r.platform,
     category: r.category,
-    rate: sellStars(r.rate, r.markup, r.fixed_rate, starsPerUsd),
+    rate: sellRate(r.rate, r.markup, r.fixed_rate),
     min: r.min,
     max: r.max,
     refill: !!r.refill,
@@ -98,7 +98,7 @@ export function listCategories(env: Env, s: Settings, platform: string): Promise
       .bind(platform)
       .all<{ name: string; count: number; from_rate: number }>();
     // Same $0.0001 rounding as sellRate, so "from" never undercuts the cheapest listed price
-    return results.map((r) => ({ name: r.name, count: r.count, fromRate: Math.max(1, toStars(Math.ceil(r.from_rate / 100 - 1e-9) * 100, s.stars_per_usd)) }));
+    return results.map((r) => ({ name: r.name, count: r.count, fromRate: Math.ceil(r.from_rate / 100 - 1e-9) * 100 }));
   });
 }
 
@@ -155,7 +155,7 @@ export async function listServices(
   return cached(`s:${s.catalog_version}:${lang}:${platform}:${category}:${page}`, async () => {
     const rows = await run();
     await fillNames(env, lang, rows.slice(0, PAGE), page);
-    return { items: rows.slice(0, PAGE).map((r) => toItem(r, s.stars_per_usd)), more: rows.length > PAGE };
+    return { items: rows.slice(0, PAGE).map((r) => toItem(r)), more: rows.length > PAGE };
   });
 }
 
@@ -184,7 +184,7 @@ async function runSearch(env: Env, s: Settings, lang: Lang, term: string): Promi
   )
     .bind(s.default_markup_pct, lang, like, ...(isId ? [Number(term)] : []))
     .all<Row>();
-  return results.map((r) => toItem(r, s.stars_per_usd));
+  return results.map((r) => toItem(r));
 }
 
 interface DetailRow extends Row {
@@ -208,7 +208,7 @@ export async function getService(env: Env, s: Settings, lang: Lang, id: number):
   if (!r.name_found && lang !== "en") await fillNames(env, lang, [Object.assign(r, { category_slug: "" })], 0);
   const drip = r.dripfeed && r.drip_feed ? (JSON.parse(r.drip_feed) as DripFeed) : null;
   return {
-    ...toItem(r, s.stars_per_usd),
+    ...toItem(r),
     cost: r.rate,
     typeKey: r.type_key,
     quantityMode: quantityMode(r.type_key),

@@ -2,7 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { LedgerItem } from "../../shared/types";
 import { api } from "../api";
 import { ArtBalanceCard } from "../art";
-import { dateTime, isoIds, stars } from "../format";
+import { balanceStars } from "../../shared/stars";
+import { amount as amountText, dateTime, isoIds, stars, starsRate } from "../format";
 import { t } from "../i18n";
 import { Icon, StarIcon, type IconName } from "../icons";
 import { useCountUp } from "../motion";
@@ -48,7 +49,7 @@ function LedgerRow({ item }: { item: LedgerItem }) {
   // The sign is always shown; green only reinforces money coming in (never colour alone).
   const amount = (
     <b class={item.delta > 0 ? "num-s ok-text" : "num-s fg-text"}>
-      <Num>{stars(item.delta, { sign: true })}</Num>
+      <Num>{amountText(item.delta, { sign: true })}</Num>
     </b>
   );
   return (
@@ -64,7 +65,9 @@ function LedgerRow({ item }: { item: LedgerItem }) {
   );
 }
 
-function BalanceCard({ balance }: { balance: number }) {
+function BalanceCard({ balance: micro }: { balance: number }) {
+  // Stored in micro-USD, shown as whole Stars (rounded down)
+  const balance = balanceStars(micro, starsRate());
   // Count up only when the balance went up since the last visit. `from` is read once, at mount.
   const [from] = useState(() => (lastSeenBalance !== undefined && balance > lastSeenBalance ? lastSeenBalance : undefined));
   const shown = useCountUp(balance, { from, delay: 200, step: 1 });

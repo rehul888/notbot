@@ -2,7 +2,8 @@ import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, pollDelay } from "../api";
 import { ArtTopUpSuccess } from "../art";
-import { num, stars } from "../format";
+import { balanceStars } from "../../shared/stars";
+import { balance, num, stars, starsRate } from "../format";
 import { t, type Key } from "../i18n";
 import { Icon, StarIcon } from "../icons";
 import { refreshMe } from "../me";
@@ -12,7 +13,9 @@ import { meStore } from "../store";
 import { haptic, openInvoice } from "../tg";
 import { BackNav, BottomButtons, LargeTitle, Num, Presets, Screen, Section, errText, toast } from "../ui";
 
-const PRESETS = [50, 100, 250, 500, 1000, 2500];
+const PRESETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000];
+/** The "Custom" chip: clears the field for any amount within the limits */
+const CUSTOM = -1;
 /** Pre-selected amount when the route has no `?amount=`. */
 const DEFAULT_STARS = 250;
 
@@ -116,7 +119,7 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string | null; onDone
 
   return (
     <Screen bottom="native" overlay={<BottomButtons main={{ text: t("topup.pay", { stars: num(amount > 0 ? amount : me.minTopup) }), onClick: pay, progress: busy, shine: true }} secondary={{ text: t("common.back"), onClick: () => back(backTo) }} />}>
-      <LargeTitle size="title" title={t("topup.title")} sub={tn("topup.balance", { amount: <Num>{stars(me.balance)}</Num> })} />
+      <LargeTitle size="title" title={t("topup.title")} sub={tn("topup.balance", { amount: <Num>{balance(me.balance)}</Num> })} />
 
       <Section
         labelFor="amt"
@@ -138,6 +141,8 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string | null; onDone
               enterKeyHint="done"
               dir="ltr"
               autoComplete="off"
+              placeholder={num(me.minTopup)}
+              aria-label={t("topup.amount")}
               value={text}
               aria-invalid={err ? true : undefined}
               aria-describedby={err ? "amt-err" : undefined}
@@ -147,12 +152,15 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string | null; onDone
             />
           </div>
           <Presets
-            value={presets.includes(amount) ? amount : null}
-            options={presets.map((p): [number, string] => [p, stars(p)])}
+            value={presets.includes(amount) ? amount : CUSTOM}
+            options={[...presets.map((p): [number, string] => [p, stars(p)]), [CUSTOM, t("topup.custom")]]}
             label={t("topup.amount")}
             onChange={(v) => {
-              setText(String(v));
               setShowErr(false);
+              if (v === CUSTOM) {
+                setText("");
+                input.current?.focus();
+              } else setText(String(v));
             }}
           />
         </div>
@@ -176,8 +184,9 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string | null; onDone
 
 function TopUpSuccess({ added, oldBalance, paymentId, confirmed, ret }: Done & { ret: string | null }) {
   const me = meStore.use()!;
-  // Count from the balance before paying to the new one (once, at mount); follows a late credit too.
-  const shown = useCountUp(me.balance, { from: oldBalance, duration: 900, delay: 300 });
+  // Count from the balance before paying to the new one (once, at mount); follows a late credit too. Whole Stars.
+  const now = balanceStars(me.balance, starsRate());
+  const shown = useCountUp(now, { from: balanceStars(oldBalance, starsRate()), duration: 900, delay: 300 });
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -234,7 +243,7 @@ function TopUpSuccess({ added, oldBalance, paymentId, confirmed, ret }: Done & {
         <b class="num-xl count" dir="ltr" aria-hidden="true">
           {stars(shown)}
         </b>
-        <span class="sr">{stars(me.balance)}</span>
+        <span class="sr">{stars(now)}</span>
       </div>
     </Screen>
   );

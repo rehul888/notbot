@@ -219,6 +219,7 @@
   "topup.title": "チャージ",
   "topup.balance": "残高 {amount}",
   "topup.amount": "金額（Stars）",
+  "topup.custom": "カスタム",
   "topup.note": "Telegramの支払い画面が開きます。支払い後すぐに残高へ反映されます。",
   "topup.limits": "{min}〜{max}",
   "topup.pay": "{stars} ⭐を支払う",

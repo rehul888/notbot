@@ -219,6 +219,7 @@
   "topup.title": "पैसे जोड़ें",
   "topup.balance": "बैलेंस {amount}",
   "topup.amount": "Stars में राशि",
+  "topup.custom": "कस्टम",
   "topup.note": "Telegram अपनी भुगतान स्क्रीन खोलता है। भुगतान करते ही आपका बैलेंस अपडेट हो जाता है।",
   "topup.limits": "{min} से {max} तक",
   "topup.pay": "{stars} ⭐ चुकाएँ",

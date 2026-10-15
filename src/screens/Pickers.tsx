@@ -4,7 +4,7 @@ import { useLayoutEffect } from "preact/hooks";
 import type { CategoryItem, PlatformItem, ServiceItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
-import { stars, num, short } from "../format";
+import { amount, num, short } from "../format";
 import { t } from "../i18n";
 import { categoryLook } from "../icons";
 import { enc } from "../router";
@@ -88,7 +88,7 @@ export function ServiceSheet({ platform, category, current, onPick, onClose }: {
               checked={s.id === current}
               title={s.name}
               meta={`${t("common.min")} ${short(s.min)} · ${t("common.max")} ${short(s.max)}`}
-              value={<span class="num-s acc">{stars(s.rate)}</span>}
+              value={<span class="num-s acc">{amount(s.rate)}</span>}
               onClick={() => onPick(s)}
             />
           ))}

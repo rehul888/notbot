@@ -219,6 +219,7 @@
   "topup.title": "Adicionar fundos",
   "topup.balance": "Saldo {amount}",
   "topup.amount": "Valor em Stars",
+  "topup.custom": "Outro",
   "topup.note": "O Telegram abre a própria tela de pagamento. Seu saldo é atualizado assim que você paga.",
   "topup.limits": "De {min} a {max}",
   "topup.pay": "Pagar {stars} ⭐",

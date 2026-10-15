@@ -219,6 +219,7 @@
   "topup.title": "Guthaben aufladen",
   "topup.balance": "Guthaben {amount}",
   "topup.amount": "Betrag in Stars",
+  "topup.custom": "Eigener",
   "topup.note": "Telegram öffnet sein eigenes Zahlungsfenster. Dein Guthaben wird aktualisiert, sobald du bezahlt hast.",
   "topup.limits": "Von {min} bis {max}",
   "topup.pay": "{stars} ⭐ bezahlen",

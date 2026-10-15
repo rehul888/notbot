@@ -219,6 +219,7 @@
   "topup.title": "Ajouter des fonds",
   "topup.balance": "Solde {amount}",
   "topup.amount": "Montant en Stars",
+  "topup.custom": "Autre",
   "topup.note": "Telegram ouvre sa propre fenêtre de paiement. Votre solde est mis à jour dès que vous payez.",
   "topup.limits": "De {min} à {max}",
   "topup.pay": "Payer {stars} ⭐",

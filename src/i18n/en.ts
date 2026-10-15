@@ -251,6 +251,7 @@ export const en = {
   "topup.title": "Add funds",
   "topup.balance": "Balance {amount}",
   "topup.amount": "Amount in Stars",
+  "topup.custom": "Custom",
   "topup.note": "Telegram opens its own payment sheet. Your balance updates as soon as you pay.",
   "topup.limits": "From {min} to {max}",
   "topup.pay": "Pay {stars} ⭐",

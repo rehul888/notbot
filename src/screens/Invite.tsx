@@ -1,6 +1,6 @@
 import type { ReferralStats } from "../../shared/types";
 import { api } from "../api";
-import { dateTime, iso, num, prettyLink, stars } from "../format";
+import { balance, dateTime, iso, num, prettyLink, stars } from "../format";
 import { t } from "../i18n";
 import { Icon } from "../icons";
 import { useCountUp } from "../motion";
@@ -60,7 +60,7 @@ function Body({ r }: { r: ReferralStats }) {
   return (
     <>
       <Hero />
-      <LargeTitle align="center" size="title" title={t("invite.title")} sub={t("invite.sub", { amount: iso(stars(r.reward)) })} />
+      <LargeTitle align="center" size="title" title={t("invite.title")} sub={t("invite.sub", { amount: iso(stars(r.rewardStars)) })} />
 
       {live ? (
         <Section header={t("invite.yourLink")}>
@@ -82,13 +82,13 @@ function Body({ r }: { r: ReferralStats }) {
         <div class="inv-stats">
           <Stat label={t("invite.invited")} value={r.invited} text={(n) => num(n)} />
           <Stat label={t("invite.joined")} value={r.joined} text={(n) => num(n)} />
-          <Stat label={t("invite.earned")} value={r.earned} text={(n) => stars(n)} count={false} />
+          <Stat label={t("invite.earned")} value={r.earned} text={(n) => balance(n)} count={false} />
         </div>
       </Section>
 
       <Section header={t("invite.how")}>
         <ol class="card inv-steps">
-          {[t("invite.how1"), t("invite.how2"), t("invite.how3", { amount: iso(stars(r.reward)) })].map((s, i) => (
+          {[t("invite.how1"), t("invite.how2"), t("invite.how3", { amount: iso(stars(r.rewardStars)) })].map((s, i) => (
             <li key={i}>
               <span class="n">
                 <Num>{num(i + 1)}</Num>

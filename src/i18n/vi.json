@@ -219,6 +219,7 @@
   "topup.title": "Nạp tiền",
   "topup.balance": "Số dư {amount}",
   "topup.amount": "Số tiền bằng Stars",
+  "topup.custom": "Tùy chọn",
   "topup.note": "Telegram sẽ mở cửa sổ thanh toán riêng. Số dư cập nhật ngay khi bạn thanh toán.",
   "topup.limits": "Từ {min} đến {max}",
   "topup.pay": "Thanh toán {stars} ⭐",

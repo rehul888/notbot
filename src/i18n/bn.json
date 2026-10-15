@@ -219,6 +219,7 @@
   "topup.title": "টাকা যোগ করুন",
   "topup.balance": "ব্যালেন্স {amount}",
   "topup.amount": "Stars-এ পরিমাণ",
+  "topup.custom": "কাস্টম",
   "topup.note": "Telegram নিজস্ব পেমেন্ট শিট খুলবে। পেমেন্ট করামাত্র ব্যালেন্স আপডেট হবে।",
   "topup.limits": "{min} থেকে {max}",
   "topup.pay": "{stars} ⭐ পেমেন্ট করুন",

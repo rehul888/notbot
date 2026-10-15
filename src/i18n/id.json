@@ -219,6 +219,7 @@
   "topup.title": "Tambah saldo",
   "topup.balance": "Saldo {amount}",
   "topup.amount": "Jumlah dalam Stars",
+  "topup.custom": "Lainnya",
   "topup.note": "Telegram membuka layar pembayarannya sendiri. Saldomu diperbarui begitu kamu membayar.",
   "topup.limits": "Dari {min} hingga {max}",
   "topup.pay": "Bayar {stars} ⭐",

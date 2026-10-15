@@ -3,7 +3,7 @@ import { useState } from "preact/hooks";
 import type { ServiceItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
-import { duration, stars, short } from "../format";
+import { amount, duration, short } from "../format";
 import { t, type Key } from "../i18n";
 import { categoryLook, Icon } from "../icons";
 import { back, enc, navigate } from "../router";
@@ -51,7 +51,7 @@ function ServiceRow({ s, showPlatform }: { s: ServiceItem; showPlatform?: boolea
     >
       <span class="price">
         <b class="num-s">
-          <Num>{stars(s.rate)}</Num>
+          <Num>{amount(s.rate)}</Num>
         </b>
         <span>{t("common.per1k")}</span>
       </span>

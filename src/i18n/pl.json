@@ -219,6 +219,7 @@
   "topup.title": "Doładuj",
   "topup.balance": "Saldo {amount}",
   "topup.amount": "Kwota w Stars",
+  "topup.custom": "Inna",
   "topup.note": "Telegram otworzy własne okno płatności. Saldo zaktualizuje się zaraz po zapłacie.",
   "topup.limits": "Od {min} do {max}",
   "topup.pay": "Zapłać {stars} ⭐",
