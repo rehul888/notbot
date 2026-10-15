@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { LANG_NAMES, LANGS, pickLang } from "../shared/types";
 import { timingSafeEqual } from "./auth";
+import { sendPreviews } from "./botMessages";
 import type { Env } from "./env";
 import { pollOpenOrders } from "./orders";
 import { admin, connectAll } from "./routes/admin";
@@ -24,6 +26,19 @@ app.get("/setup/:secret", async (c) => {
   } catch (e) {
     return c.json({ ok: false, error: (e as Error).message }, 500);
   }
+});
+
+/** Sends every bot message type to the owner(s) as a preview: /setup/<TG_WEBHOOK_SECRET>/preview[?lang=ru] */
+app.get("/setup/:secret/preview", async (c) => {
+  if (!timingSafeEqual(c.req.param("secret"), c.env.TG_WEBHOOK_SECRET)) return c.text("Not found", 404);
+  const lang = pickLang(c.req.query("lang"));
+  const owners = c.env.OWNER_IDS.split(",").map((s) => Number(s.trim())).filter(Boolean);
+  let sent = 0;
+  for (const id of owners) {
+    const u = await c.env.DB.prepare("SELECT first_name FROM users WHERE id = ?1").bind(id).first<{ first_name: string }>();
+    sent += await sendPreviews(c.env, id, lang, u?.first_name ?? "", LANGS, LANG_NAMES);
+  }
+  return c.json({ ok: true, owners: owners.length, sent });
 });
 
 app.onError((e, c) => {

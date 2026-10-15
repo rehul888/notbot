@@ -2,6 +2,7 @@ import { type Lang, type OrderDraft, pickLang } from "../shared/types";
 import { getService } from "./catalog";
 import type { Env } from "./env";
 import { botPlain, botText } from "./i18n";
+import { linkText } from "./botMessages";
 import { OrderError, placeOrder } from "./orders";
 import { checkDraft } from "./pricing";
 import { getSettings, type Settings } from "./settings";
@@ -108,7 +109,13 @@ export async function onSuccessfulPayment(
     s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, id ? "viewOrder" : "open"), `${s.app_url}/#/${id ? `order/${id}` : "wallet"}`)]] } : undefined;
 
   if (!p.draft) {
-    await tg(env.BOT_TOKEN, "sendMessage", { chat_id: p.user_id, text: botText(lang, "topupDone", { amount: usd(p.amount) }), parse_mode: "HTML", reply_markup: button() });
+    const bal = await env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(p.user_id).first<{ balance: number }>();
+    await tg(env.BOT_TOKEN, "sendMessage", {
+      chat_id: p.user_id,
+      text: botText(lang, "topupDone", { amount: usd(p.amount), balance: usd(bal?.balance ?? p.amount) }),
+      parse_mode: "HTML",
+      reply_markup: button(),
+    });
     return;
   }
   const draft = JSON.parse(p.draft) as OrderDraft;
@@ -121,7 +128,8 @@ export async function onSuccessfulPayment(
     await env.DB.prepare("UPDATE payments SET order_id = ?2 WHERE id = ?1").bind(p.id, order.id).run();
     await tg(env.BOT_TOKEN, "sendMessage", {
       chat_id: p.user_id,
-      text: botText(lang, "orderPlaced", { id: String(order.id), service: order.service_name, quantity: order.quantity.toLocaleString("en-US") }),
+      text: botText(lang, "orderPlaced", { id: String(order.id), service: order.service_name, quantity: order.quantity.toLocaleString("en-US"), link: linkText(order.link) }),
+      link_preview_options: { is_disabled: true },
       parse_mode: "HTML",
       reply_markup: button(order.id),
     });

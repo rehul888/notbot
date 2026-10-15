@@ -4,22 +4,82 @@ import bot from "./bot-strings.json";
 
 const en = {
   welcome:
-    "<b>NotPanel Bot</b>\n\nWelcome to NotPanel Bot, {name}! 👋\nGet followers, views, likes and more for Telegram, Instagram, TikTok, YouTube and other platforms.\n\nTo use our services, tap the button below 👇",
-  open: "Open NotPanel",
-  chooseLanguage: "🌐 Choose your language",
-  viewOrder: "View order",
-  orderCompleted: "✅ <b>Order #{id} completed</b>\n{service} · {quantity}",
-  orderPartial: "🟡 <b>Order #{id} partly delivered</b>\n{service} · {quantity}\n{refund} was refunded to your balance.",
-  orderCancelled: "⛔️ <b>Order #{id} canceled</b>\n{service} · {quantity}\n{refund} was refunded to your balance.",
-  orderFailed: "⚠️ <b>Order #{id} could not be started</b>\n{service}\n{refund} was refunded to your balance.",
-  topupDone: "⭐️ <b>{amount} added to your balance.</b>",
-  orderPlaced: "🚀 <b>Order #{id} placed</b>\n{service} · {quantity}",
-  orderNotPlaced: "⭐️ Payment received: <b>{amount}</b> was added to your balance, but the order could not be placed ({reason}). You can try again from the app.",
+    "┏━━ 👋 <b>Welcome, {name}!</b>\n\n" +
+    "<b>NotPanel</b> helps you grow any social account in a few taps.\n\n" +
+    "🚀 <b>WHAT YOU CAN GET</b>\n" +
+    "  ┣ 👥 <i>Followers, subscribers & members</i>\n" +
+    "  ┣ 👁 <i>Views & story views</i>\n" +
+    "  ┣ ❤️ <i>Likes & reactions</i>\n" +
+    "  ┣ 💬 <i>Comments & shares</i>\n" +
+    "  ┗ 📊 <i>Live tracking for every order</i>\n\n" +
+    "📱 <b>PLATFORMS</b>\n" +
+    "  Telegram · Instagram · TikTok · YouTube · X and more\n\n" +
+    "⭐️ <b>Pay with Telegram Stars.</b> Anything not delivered is refunded to your balance automatically.\n\n" +
+    "┗━━━━━━━━━━━━━━━━━━━━━━┛\n" +
+    "👇 <b>Tap Open NotPanel to start</b>",
+  open: "🚀 Open NotPanel",
+  chooseLanguage: "🌐 <b>Choose your language</b>\n\nTap a language below. You can change it any time with /language.",
+  viewOrder: "📊 View order",
+  orderPlaced:
+    "🚀 <b>ORDER PLACED</b>\n\n" +
+    "  ┣ 🧾 Order: <b>#{id}</b>\n" +
+    "  ┣ 📦 {service}\n" +
+    "  ┣ 🔢 Quantity: <b>{quantity}</b>\n" +
+    "  ┗ 🔗 {link}\n\n" +
+    "⏱ <i>We'll message you here as soon as it's done.</i>",
+  orderCompleted:
+    "✅ <b>ORDER COMPLETED</b>\n\n" +
+    "  ┣ 🧾 Order: <b>#{id}</b>\n" +
+    "  ┣ 📦 {service}\n" +
+    "  ┣ 🔢 Quantity: <b>{quantity}</b>\n" +
+    "  ┗ 🔗 {link}\n\n" +
+    "🎉 <i>Thanks for ordering with NotPanel!</i>",
+  orderPartial:
+    "🟡 <b>ORDER PARTLY DELIVERED</b>\n\n" +
+    "  ┣ 🧾 Order: <b>#{id}</b>\n" +
+    "  ┣ 📦 {service}\n" +
+    "  ┣ 🔢 Quantity: <b>{quantity}</b>\n" +
+    "  ┗ 💸 Refunded: <b>{refund}</b>\n\n" +
+    "<i>The part that couldn't be delivered went back to your balance.</i>",
+  orderCancelled:
+    "⛔️ <b>ORDER CANCELED</b>\n\n" +
+    "  ┣ 🧾 Order: <b>#{id}</b>\n" +
+    "  ┣ 📦 {service}\n" +
+    "  ┣ 🔢 Quantity: <b>{quantity}</b>\n" +
+    "  ┗ 💸 Refunded: <b>{refund}</b>\n\n" +
+    "<i>The refund is already in your balance.</i>",
+  orderFailed:
+    "⚠️ <b>ORDER COULD NOT START</b>\n\n" +
+    "  ┣ 🧾 Order: <b>#{id}</b>\n" +
+    "  ┣ 📦 {service}\n" +
+    "  ┗ 💸 Refunded: <b>{refund}</b>\n\n" +
+    "<i>Please check the link is public and correct, then try again.</i>",
+  topupDone:
+    "⭐️ <b>BALANCE TOPPED UP</b>\n\n" +
+    "  ┣ 💰 Added: <b>{amount}</b>\n" +
+    "  ┗ 👛 Balance: <b>{balance}</b>\n\n" +
+    "<i>You're ready to order. Tap below.</i>",
+  orderNotPlaced:
+    "⭐️ <b>PAYMENT RECEIVED</b>\n\n" +
+    "  ┣ 💰 Added to balance: <b>{amount}</b>\n" +
+    "  ┗ ⚠️ The order couldn't be placed: <i>{reason}</i>\n\n" +
+    "<i>Your money is safe in your balance. Try again from the app.</i>",
+  help:
+    "ℹ️ <b>HELP</b>\n\n" +
+    "  ┣ 🚀 Open the app with the button below\n" +
+    "  ┣ 🌐 /language: change language\n" +
+    "  ┣ 💬 Support: {support}\n" +
+    "  ┗ 📄 Terms: notpanel.com/tos\n\n" +
+    "⭐️ <b>Payment questions?</b> Write to {support} with your payment date and amount. Telegram support can't help with purchases made in this bot.",
   paysupport:
-    "<b>Payment support</b>\n\nFor questions about a Stars payment, write to {support} with your payment date and amount. Telegram support can't help with purchases made in this bot.",
-  terms: "<b>Terms of service</b>\n\n{terms}",
-  termsButton: "Read full terms",
-  help: "Tap the button below to open the app. Commands: /terms · /paysupport",
+    "⭐️ <b>PAYMENT SUPPORT</b>\n\n" +
+    "  ┣ 💬 Write to: {support}\n" +
+    "  ┗ 🧾 Include your payment date and amount\n\n" +
+    "<i>Telegram support can't help with purchases made in this bot.</i>",
+  termsButton: "📄 Terms of service",
+  cmdStart: "Open NotPanel",
+  cmdLanguage: "Change language",
+  cmdHelp: "Help and support",
   invoiceTitle: "NotPanel balance",
   invoiceTopup: "Add {amount} to your NotPanel balance",
   invoiceOrder: "{service} · {quantity}",

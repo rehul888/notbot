@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import { LANG_NAMES, LANGS, pickLang, type Lang } from "../../shared/types";
 import { timingSafeEqual } from "../auth";
 import type { Env } from "../env";
+import { isOwner } from "../env";
 import { botText } from "../i18n";
+import { languageKeyboard, sendHelp, sendPreviews, sendWelcome } from "../botMessages";
 import { onPreCheckout, onSuccessfulPayment } from "../payments";
-import { getSettings } from "../settings";
-import { tg, webAppButton } from "../telegram";
+import { tg } from "../telegram";
 
 export const bot = new Hono<{ Bindings: Env }>();
 
@@ -30,12 +31,6 @@ bot.post("/", async (c) => {
   return c.text("ok");
 });
 
-function languageKeyboard() {
-  const rows: { text: string; callback_data: string }[][] = [];
-  for (let i = 0; i < LANGS.length; i += 2) rows.push(LANGS.slice(i, i + 2).map((l) => ({ text: LANG_NAMES[l], callback_data: `lang:${l}` })));
-  return { inline_keyboard: rows };
-}
-
 /** Language buttons → save the choice (shared with the Mini App) and show the welcome in that language. */
 async function onCallback(env: Env, q: any): Promise<void> {
   const m = /^lang:(\w+)$/.exec(q.data ?? "");
@@ -43,15 +38,9 @@ async function onCallback(env: Env, q: any): Promise<void> {
   const lang = m[1] as Lang;
   await env.DB.prepare("UPDATE users SET lang = ?2 WHERE id = ?1").bind(q.from.id, lang).run();
   await tg(env.BOT_TOKEN, "answerCallbackQuery", { callback_query_id: q.id, text: LANG_NAMES[lang] });
-  const s = await getSettings(env);
-  if (q.message)
-    await tg(env.BOT_TOKEN, "editMessageText", {
-      chat_id: q.message.chat.id,
-      message_id: q.message.message_id,
-      text: botText(lang, "welcome", { name: q.from.first_name ?? "" }),
-      parse_mode: "HTML",
-      reply_markup: s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "open"), s.app_url)]] } : undefined,
-    });
+  // Swap the language picker for the photo welcome in the chosen language
+  if (q.message) await tg(env.BOT_TOKEN, "deleteMessage", { chat_id: q.message.chat.id, message_id: q.message.message_id }).catch(() => undefined);
+  await sendWelcome(env, q.from.id, lang, q.from.first_name ?? "");
 }
 
 async function handle(env: Env, u: any): Promise<void> {
@@ -86,22 +75,22 @@ async function handle(env: Env, u: any): Promise<void> {
     await onSuccessfulPayment(env, from, m.successful_payment);
     return;
   }
-  const text: string = m.text ?? "";
-  const s = await getSettings(env);
-  const openBtn = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "open"), s.app_url)]] } : undefined;
+  const text: string = (m.text ?? "").trim();
+  const cmd = /^\/(\w+)/.exec(text)?.[1]?.toLowerCase() ?? "";
   const send = (t: string, markup?: unknown) =>
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: from.id, text: t, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: markup });
+  const pickLanguage = () => send(botText(lang, "chooseLanguage"), languageKeyboard(LANGS, LANG_NAMES));
 
-  if (text.startsWith("/terms"))
-    return void (await send(botText(lang, "terms", { terms: s.terms_text }), {
-      inline_keyboard: [[{ text: botText(lang, "termsButton"), url: "https://notpanel.com/tos" }]],
-    }));
-  if (text.startsWith("/paysupport") || text.startsWith("/support")) {
-    const support = s.support_username ? "@" + s.support_username : "the bot owner";
-    return void (await send(botText(lang, "paysupport", { support })));
+  // /paysupport stays answered (Telegram requires it for Stars) but isn't in the command menu.
+  if (cmd === "paysupport" || cmd === "support") return void (await sendHelp(env, from.id, lang, "paysupport"));
+  if (cmd === "language") return void (await pickLanguage());
+  if (cmd === "start") return void (await (user?.lang ? sendWelcome(env, from.id, lang, from.first_name) : pickLanguage()));
+  // Owner only: one of every message, e.g. "/preview" or "/preview ru"
+  if (cmd === "preview" && isOwner(env, from.id)) {
+    const arg = text.split(/\s+/)[1] as Lang | undefined;
+    const l = arg && (LANGS as readonly string[]).includes(arg) ? arg : lang;
+    await sendPreviews(env, from.id, l, from.first_name, LANGS, LANG_NAMES);
+    return;
   }
-  if (text.startsWith("/language") || (text.startsWith("/start") && !user?.lang))
-    return void (await send(botText(lang, "chooseLanguage"), languageKeyboard()));
-  if (text.startsWith("/start")) return void (await send(botText(lang, "welcome", { name: from.first_name }), openBtn));
-  await send(botText(lang, "help"), openBtn);
+  await sendHelp(env, from.id, lang);
 }

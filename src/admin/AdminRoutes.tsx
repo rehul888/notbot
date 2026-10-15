@@ -1287,6 +1287,18 @@ function AdminSettings() {
     }
     setSyncing(false);
   };
+  const [previewing, setPreviewing] = useState(false);
+  const previewMessages = async () => {
+    if (previewing) return;
+    setPreviewing(true);
+    try {
+      const r = await api<{ sent: number }>("/admin/preview-messages", { body: {} });
+      toast(`Sent ${r.sent} message previews to your chat with the bot`, "ok");
+    } catch (e) {
+      fail(e);
+    }
+    setPreviewing(false);
+  };
   const reconnect = async () => {
     if (connecting) return;
     setConnecting(true);
@@ -1481,6 +1493,14 @@ function AdminSettings() {
             </dl>
             <List>
               <Row accent title={connecting ? "Reconnecting…" : "Reconnect bot & NotPanel updates"} onClick={reconnect} disabled={connecting} chevron={false} />
+              <Row
+                accent
+                title={previewing ? "Sending previews…" : "Preview bot messages"}
+                meta="Sends every bot message to your chat in your app language (or type /preview ru in the bot)"
+                onClick={previewMessages}
+                disabled={previewing}
+                chevron={false}
+              />
             </List>
           </Section>
         </>

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { platformName } from "../../shared/platforms";
-import { MICRO } from "../../shared/types";
+import { LANG_NAMES, LANGS, MICRO, type Lang } from "../../shared/types";
+import { sendPreviews } from "../botMessages";
+import { botPlain } from "../i18n";
 import { MARKUP_SQL, rebuildSummaryStmts, RULE_JOINS } from "../catalog";
 import { isOwner } from "../env";
 import { np, usdToMicro } from "../notpanel";
@@ -354,6 +356,19 @@ admin.get("/orders", async (c) => {
 
 // ---- Connection: NotPanel webhook + bot setup ----
 
+/** Sends one of every bot message (sample data) to the owner's chat */
+admin.post("/preview-messages", async (c) => {
+  const { lang } = await c.req.json<{ lang?: string }>().catch(() => ({ lang: undefined }));
+  const u = c.get("user");
+  const l = (LANGS as readonly string[]).includes(lang ?? "") ? (lang as Lang) : c.get("lang");
+  try {
+    const sent = await sendPreviews(c.env, u.id, l, u.first_name, LANGS, LANG_NAMES);
+    return c.json({ ok: true, sent });
+  } catch (e) {
+    return err(c, 400, "SEND_FAILED", { message: (e as Error).message });
+  }
+});
+
 admin.post("/connect", async (c) => {
   const url = new URL(c.req.url).origin;
   const result = await connectAll(c.env, url);
@@ -371,14 +386,15 @@ export async function connectAll(env: AppEnv["Bindings"], origin: string) {
     allowed_updates: ["message", "callback_query", "pre_checkout_query", "my_chat_member"],
     drop_pending_updates: false,
   });
-  await tg(env.BOT_TOKEN, "setMyCommands", {
-    commands: [
-      { command: "start", description: "Open NotPanel" },
-      { command: "language", description: "Change language" },
-      { command: "terms", description: "Terms of service" },
-      { command: "paysupport", description: "Payment support" },
-    ],
-  });
+  // Command menu in every language (Telegram picks it by the user's app language; English is the default)
+  for (const l of LANGS) {
+    const commands = [
+      { command: "start", description: botPlain(l, "cmdStart") },
+      { command: "language", description: botPlain(l, "cmdLanguage") },
+      { command: "help", description: botPlain(l, "cmdHelp") },
+    ];
+    await tg(env.BOT_TOKEN, "setMyCommands", l === "en" ? { commands } : { commands, language_code: l });
+  }
   await tg(env.BOT_TOKEN, "setChatMenuButton", { menu_button: { type: "web_app", text: "Open", web_app: { url: origin } } });
   const values: Partial<Settings> = { app_url: origin, bot_username: me.username };
   // NotPanel webhook for instant order updates (the cron job is the backup)

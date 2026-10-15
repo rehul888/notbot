@@ -22,6 +22,7 @@ export const DEFAULTS = {
   last_catalog_at: "",
   catalog_version: 1,
   app_url: "",
+  welcome_photo: "", // "<banner url>|<telegram file_id>"
   bot_username: "",
   np_webhook_id: "",
   np_webhook_secret: "",

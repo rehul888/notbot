@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{width:1200px;height:900px;overflow:hidden}
+body{position:relative;background:radial-gradient(900px 700px at 78% 30%,#4a7bff 0%,#2457ff 55%,#1c47e0 100%);font-family:'DM Sans',sans-serif;color:#fff}
+.ring{position:absolute;border:6px dashed rgba(255,255,255,.16);border-radius:50%}
+.r1{width:980px;height:980px;right:-300px;top:-90px}
+.r2{width:560px;height:560px;left:-220px;bottom:-250px;border-width:4px;border-color:rgba(255,255,255,.1)}
+.dot{position:absolute;border-radius:50%;background:rgba(255,255,255,.35)}
+.brand{position:absolute;left:84px;top:84px;display:flex;align-items:center;gap:26px}
+.mark{width:120px;height:120px;border-radius:50%;border:7px solid #fff;display:block;box-sizing:content-box;margin:-7px}
+.word{font:700 116px/1 'Space Grotesk',sans-serif;letter-spacing:-4px;margin-left:8px}
+.tag{position:absolute;left:84px;top:300px;width:540px;font:700 56px/1.12 'DM Sans',sans-serif;letter-spacing:-1px}
+.chips{position:absolute;left:84px;top:520px;width:520px;display:flex;flex-wrap:wrap;gap:16px}
+.chip{background:#fff;color:#2457ff;font:700 32px/1 'DM Sans';padding:16px 30px;border-radius:99px;box-shadow:4px 6px 0 rgba(10,24,90,.3)}
+.stars{position:absolute;left:84px;bottom:78px;font:500 30px 'DM Sans';opacity:.75}
+.s{position:absolute;background:#fff;border-radius:36px;box-shadow:10px 14px 0 rgba(10,24,90,.35);display:flex;align-items:center;justify-content:center;border:4px solid #152044}
+.s img{width:58%;height:58%}
+.t{font:700 54px 'Space Grotesk'}
+</style></head><body>
+<div class="ring r1"></div><div class="ring r2"></div>
+<i class="dot" style="left:640px;top:70px;width:16px;height:16px"></i>
+<i class="dot" style="left:1110px;top:120px;width:12px;height:12px"></i>
+<i class="dot" style="left:640px;top:800px;width:14px;height:14px"></i>
+<i class="dot" style="left:1130px;top:560px;width:18px;height:18px"></i>
+<i class="dot" style="left:700px;top:430px;width:10px;height:10px"></i>
+<div class="brand"><img class="mark" src="../../public/brand/mark.svg"><div class="word">notpanel</div></div>
+
+<style>.ic{position:absolute;left:84px;top:330px;display:flex;gap:16px}.ic span{background:#fff;width:114px;height:96px;border-radius:99px;display:flex;align-items:center;justify-content:center;box-shadow:4px 6px 0 rgba(10,24,90,.3)}</style><div class="ic"><span><svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="#2457ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.6"/><path d="M17.5 14.2c2.4 0 4 1.7 4 4.3"/></svg></span><span><svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="#2457ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3.2"/></svg></span><span><svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="#2457ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/></svg></span><span><svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="#2457ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/></svg></span></div>
+<div class="s" style="left:100px;top:510px;width:170px;height:170px;background:#ffcf33;transform:rotate(-10deg)"><svg width="110" height="110" viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" fill="#fff3b0" stroke="#b67c00" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+<div class="s" style="left:320px;top:560px;width:130px;height:130px;background:#e2fb98;transform:rotate(9deg)"><svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#2457ff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></div>
+<div class="s" style="left:930px;top:80px;width:170px;height:170px;transform:rotate(8deg)"><img src="../../public/platforms/instagram.svg"></div>
+<div class="s" style="left:800px;top:120px;width:96px;height:96px;border-radius:28px;background:#e2fb98;transform:rotate(-10deg)"><svg width="54" height="54" viewBox="0 0 24 24"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z" fill="#2457ff"/></svg></div>
+<div class="s" style="left:690px;top:270px;width:190px;height:190px;transform:rotate(-9deg)"><img src="../../public/platforms/telegram.svg"></div>
+<div class="s" style="left:940px;top:300px;width:190px;height:190px;transform:rotate(6deg)"><img src="../../public/platforms/youtube.svg"></div>
+<div class="s" style="left:670px;top:540px;width:140px;height:140px;transform:rotate(-14deg)"><img src="../../public/platforms/tiktok.svg"></div>
+<div class="s" style="left:850px;top:560px;width:160px;height:160px;transform:rotate(12deg)"><img src="../../public/platforms/twitter-x.svg"></div>
+<div class="s" style="left:1040px;top:580px;width:110px;height:110px;border-radius:30px;transform:rotate(-8deg)"><img src="../../public/platforms/facebook.svg"></div>
+<div class="s" style="left:720px;top:740px;width:92px;height:92px;border-radius:26px;background:#ffd6e8;transform:rotate(-12deg)"><svg width="52" height="52" viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z" fill="#152044"/></svg></div>
+</body></html>

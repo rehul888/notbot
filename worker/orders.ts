@@ -1,6 +1,7 @@
 import { FINAL_STATUSES, type Lang, type OrderStatus, type OrderView, pickLang } from "../shared/types";
 import type { Env } from "./env";
 import { botText } from "./i18n";
+import { linkText, usdText } from "./botMessages";
 import { NotPanelError, np, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
 import { orderCharge } from "./pricing";
 import { getSettings } from "./settings";
@@ -263,12 +264,12 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
     o.status as "completed" | "partial" | "cancelled" | "failed"
   ];
   if (!key) return;
-  const money = (m: number) => "$" + (m / 1e6).toFixed(m < 100_000 ? 3 : 2);
   const text = botText(lang, key, {
     id: String(o.id),
     service: o.service_name,
     quantity: o.quantity.toLocaleString("en-US"),
-    refund: money(o.refund),
+    refund: usdText(o.refund),
+    link: linkText(o.link),
   });
   try {
     await tg(env.BOT_TOKEN, "sendMessage", {
