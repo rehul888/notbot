@@ -208,6 +208,8 @@
   "profile.support": "联系客服",
   "profile.terms": "服务条款",
   "profile.website": "访问 NotPanel",
+  "profile.channel": "加入更新频道",
+  "profile.channelSub": "资讯与优惠",
   "profile.admin": "管理面板",
   "profile.adminNote": "仅你可见：只对所有者的 Telegram 账号显示。",
   "profile.notifyDenied": "请允许机器人发送消息，以接收订单动态。",

@@ -16,7 +16,8 @@
     "invoiceTitle": "Saldo de NotPanel",
     "invoiceTopup": "Añadir {amount} a tu saldo de NotPanel",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 Elige tu idioma"
+    "chooseLanguage": "🌐 Elige tu idioma",
+    "termsButton": "Leer términos completos"
   },
   "pt": {
     "welcome": "<b>NotPanel Bot</b>\n\nBoas-vindas ao NotPanel Bot, {name}! 👋\nConsiga seguidores, visualizações, curtidas e mais para Telegram, Instagram, TikTok, YouTube e outras plataformas.\n\nPara usar nossos serviços, toque no botão abaixo 👇",
@@ -35,7 +36,8 @@
     "invoiceTitle": "Saldo do NotPanel",
     "invoiceTopup": "Adicionar {amount} ao seu saldo do NotPanel",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 Escolha seu idioma"
+    "chooseLanguage": "🌐 Escolha seu idioma",
+    "termsButton": "Ler termos completos"
   },
   "ru": {
     "welcome": "<b>NotPanel Bot</b>\n\nДобро пожаловать в NotPanel Bot, {name}! 👋\nПодписчики, просмотры, лайки и многое другое для Telegram, Instagram, TikTok, YouTube и других платформ.\n\nЧтобы воспользоваться услугами, нажмите кнопку ниже 👇",
@@ -54,7 +56,8 @@
     "invoiceTitle": "Баланс NotPanel",
     "invoiceTopup": "Пополнение баланса NotPanel на {amount}",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 Выберите язык"
+    "chooseLanguage": "🌐 Выберите язык",
+    "termsButton": "Полные условия"
   },
   "tr": {
     "welcome": "<b>NotPanel Bot</b>\n\nNotPanel Bot'a hoş geldin, {name}! 👋\nTelegram, Instagram, TikTok, YouTube ve diğer platformlar için takipçi, izlenme, beğeni ve daha fazlasını al.\n\nHizmetlerimizi kullanmak için aşağıdaki düğmeye dokun 👇",
@@ -73,7 +76,8 @@
     "invoiceTitle": "NotPanel bakiyesi",
     "invoiceTopup": "NotPanel bakiyene {amount} ekle",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 Dilini seç"
+    "chooseLanguage": "🌐 Dilini seç",
+    "termsButton": "Koşulların tamamını oku"
   },
   "ar": {
     "welcome": "<b>NotPanel Bot</b>\n\nمرحبًا بك في NotPanel Bot يا {name}! 👋\nاحصل على متابعين ومشاهدات وإعجابات والمزيد على Telegram وInstagram وTikTok وYouTube ومنصات أخرى.\n\nلاستخدام خدماتنا، اضغط على الزر أدناه 👇",
@@ -92,7 +96,8 @@
     "invoiceTitle": "رصيد NotPanel",
     "invoiceTopup": "إضافة {amount} إلى رصيدك في NotPanel",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 اختر لغتك"
+    "chooseLanguage": "🌐 اختر لغتك",
+    "termsButton": "قراءة الشروط كاملة"
   },
   "hi": {
     "welcome": "<b>NotPanel Bot</b>\n\nNotPanel Bot में आपका स्वागत है, {name}! 👋\nTelegram, Instagram, TikTok, YouTube और दूसरे प्लेटफ़ॉर्म के लिए फ़ॉलोअर्स, व्यूज़, लाइक्स और बहुत कुछ पाएं।\n\nहमारी सेवाओं का इस्तेमाल करने के लिए नीचे दिया गया बटन दबाएं 👇",
@@ -111,7 +116,8 @@
     "invoiceTitle": "NotPanel बैलेंस",
     "invoiceTopup": "अपने NotPanel बैलेंस में {amount} जोड़ें",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 अपनी भाषा चुनें"
+    "chooseLanguage": "🌐 अपनी भाषा चुनें",
+    "termsButton": "पूरी शर्तें पढ़ें"
   },
   "id": {
     "welcome": "<b>NotPanel Bot</b>\n\nSelamat datang di NotPanel Bot, {name}! 👋\nDapatkan pengikut, tayangan, suka, dan lainnya untuk Telegram, Instagram, TikTok, YouTube, dan platform lain.\n\nUntuk memakai layanan kami, ketuk tombol di bawah 👇",
@@ -130,7 +136,8 @@
     "invoiceTitle": "Saldo NotPanel",
     "invoiceTopup": "Tambah {amount} ke saldo NotPanel-mu",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 Pilih bahasamu"
+    "chooseLanguage": "🌐 Pilih bahasamu",
+    "termsButton": "Baca ketentuan lengkap"
   },
   "fr": {
     "welcome": "<b>NotPanel Bot</b>\n\nBienvenue sur NotPanel Bot, {name} ! 👋\nObtenez des abonnés, des vues, des likes et plus encore pour Telegram, Instagram, TikTok, YouTube et d'autres plateformes.\n\nPour utiliser nos services, appuyez sur le bouton ci-dessous 👇",
@@ -149,7 +156,8 @@
     "invoiceTitle": "Solde NotPanel",
     "invoiceTopup": "Ajouter {amount} à votre solde NotPanel",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 Choisissez votre langue"
+    "chooseLanguage": "🌐 Choisissez votre langue",
+    "termsButton": "Lire les conditions"
   },
   "zh": {
     "welcome": "<b>NotPanel Bot</b>\n\n欢迎使用 NotPanel Bot，{name}！👋\n为 Telegram、Instagram、TikTok、YouTube 等平台获取粉丝、浏览量、点赞等。\n\n使用我们的服务，请点击下方按钮 👇",
@@ -168,6 +176,7 @@
     "invoiceTitle": "NotPanel 余额",
     "invoiceTopup": "向你的 NotPanel 余额充值 {amount}",
     "invoiceOrder": "{service} · {quantity}",
-    "chooseLanguage": "🌐 选择你的语言"
+    "chooseLanguage": "🌐 选择你的语言",
+    "termsButton": "阅读完整条款"
   }
 }

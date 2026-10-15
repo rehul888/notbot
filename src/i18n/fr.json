@@ -208,6 +208,8 @@
   "profile.support": "Contacter le support",
   "profile.terms": "Conditions d'utilisation",
   "profile.website": "Visiter NotPanel",
+  "profile.channel": "Rejoindre le canal d'actualités",
+  "profile.channelSub": "Actus et offres",
   "profile.admin": "Panneau d'administration",
   "profile.adminNote": "Vous seul le voyez : il s'affiche pour le compte Telegram du propriétaire.",
   "profile.notifyDenied": "Autorisez les messages du bot pour recevoir le suivi de vos commandes.",

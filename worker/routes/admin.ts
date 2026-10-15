@@ -71,6 +71,7 @@ const EDITABLE: (keyof Settings)[] = [
   "only_timed",
   "low_balance",
   "support_username",
+  "channel_username",
   "terms_text",
 ];
 
@@ -103,6 +104,7 @@ admin.put("/settings", async (c) => {
   if (values.default_markup_pct !== undefined && values.default_markup_pct > 1000) return err(c, 400, "INVALID_VALUE", { key: "default_markup_pct" });
   if (values.sync_every_hours !== undefined && values.sync_every_hours < 1) return err(c, 400, "INVALID_VALUE", { key: "sync_every_hours" });
   if (values.support_username) values.support_username = values.support_username.replace(/^@/, "");
+  if (values.channel_username) values.channel_username = values.channel_username.replace(/^@/, "");
   await c.env.DB.batch([...setSettingsStmts(c.env, values), bumpCatalogStmt(c.env)]);
   const s = await getSettings(c.env);
   if (values.default_markup_pct !== undefined) await c.env.DB.batch(rebuildSummaryStmts(c.env, s));

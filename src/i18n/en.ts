@@ -238,6 +238,8 @@ export const en = {
   "profile.support": "Contact support",
   "profile.terms": "Terms of service",
   "profile.website": "Visit NotPanel",
+  "profile.channel": "Join update channel",
+  "profile.channelSub": "News and offers",
   "profile.admin": "Admin panel",
   "profile.adminNote": "Only you see this: it shows for the owner's Telegram account.",
   "profile.notifyDenied": "Allow messages from the bot to get order updates.",

@@ -5,8 +5,8 @@ import { ArtWelcome } from "../art";
 import { t } from "../i18n";
 import { Icon, type IconName } from "../icons";
 import { meStore } from "../store";
-import { haptic } from "../tg";
-import { BottomButtons, ErrorState, Screen, Sheet, Skeleton, errText, toast, useAsync } from "../ui";
+import { haptic, openLink } from "../tg";
+import { BottomButtons, Screen, errText, toast } from "../ui";
 
 // Icon plate colours are fixed in both themes (spec §5.3): sky/link, lime/star, pink/bell.
 const FEATURES: [IconName, string, "welcome.f1" | "welcome.f2" | "welcome.f3"][] = [
@@ -15,24 +15,12 @@ const FEATURES: [IconName, string, "welcome.f1" | "welcome.f2" | "welcome.f3"][]
   ["bell", "var(--pink)", "welcome.f3"],
 ];
 
-/** Fetched once per launch, so opening the terms a second time is instant. */
-let termsText: string | undefined;
-
-/** Terms of service in a large sheet. It opens straight away and fills in when the text arrives. */
-function TermsSheet({ onClose }: { onClose: () => void }) {
-  const q = useAsync(async () => (termsText ??= (await api<{ terms: string }>("/terms")).terms), []);
-  const text = q.data ?? termsText;
-  return (
-    <Sheet title={t("welcome.terms")} size="large" onClose={onClose}>
-      {text !== undefined ? <p class="desc">{text}</p> : q.error ? <ErrorState error={q.error} onRetry={q.reload} compact /> : <Skeleton h={16} n={8} />}
-    </Sheet>
-  );
-}
+/** NotPanel's terms of service page */
+export const TERMS_URL = "https://notpanel.com/tos";
 
 /** Shown until the terms are accepted: what the app does, in three lines, and one Continue. */
 export function Welcome() {
   const [busy, setBusy] = useState(false);
-  const [terms, setTerms] = useState(false);
   const accept = async () => {
     setBusy(true);
     try {
@@ -46,7 +34,7 @@ export function Welcome() {
   };
   const openTerms = () => {
     haptic.tap();
-    setTerms(true);
+    openLink(TERMS_URL);
   };
   // "By continuing you agree to the {terms}." with {terms} as an inline button, in any word order.
   const legal = t("welcome.legal", { terms: "\u0000" }).split("\u0000");
@@ -55,12 +43,7 @@ export function Welcome() {
     <Screen
       bottom="native"
       center
-      overlay={
-        <>
-          <BottomButtons main={{ text: t("welcome.continue"), onClick: accept, progress: busy }} />
-          {terms ? <TermsSheet onClose={() => setTerms(false)} /> : null}
-        </>
-      }
+      overlay={<BottomButtons main={{ text: t("welcome.continue"), onClick: accept, progress: busy }} />}
     >
       <ArtWelcome />
       <header class="lt lt-center rise" style="--d:140ms">

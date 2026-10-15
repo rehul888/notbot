@@ -53,6 +53,7 @@ export interface Me {
   minTopup: number;
   maxTopup: number;
   supportUsername: string | null;
+  channelUsername: string | null;
   botUsername: string | null;
   recent: RecentOrder[];
 }

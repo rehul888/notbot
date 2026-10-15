@@ -18,6 +18,7 @@ const en = {
   paysupport:
     "<b>Payment support</b>\n\nFor questions about a Stars payment, write to {support} with your payment date and amount. Telegram support can't help with purchases made in this bot.",
   terms: "<b>Terms of service</b>\n\n{terms}",
+  termsButton: "Read full terms",
   help: "Tap the button below to open the app. Commands: /terms · /paysupport",
   invoiceTitle: "NotPanel balance",
   invoiceTopup: "Add {amount} to your NotPanel balance",

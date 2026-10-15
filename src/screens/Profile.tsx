@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { LANG_NAMES, LANGS, type Lang } from "../../shared/types";
-import { api, clearApiCache } from "../api";
+import { clearApiCache } from "../api";
 import { getLang, setLang, t } from "../i18n";
 import { Icon } from "../icons";
 import { updateMe } from "../me";
 import { meStore } from "../store";
-import { homeScreen, isDark, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
-import { ErrorState, LargeTitle, List, Row, Screen, Section, Sheet, Skeleton, errText, toast } from "../ui";
+import { haptic, homeScreen, isDark, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
+import { LargeTitle, List, Row, Screen, Section, Sheet, errText, toast } from "../ui";
 
 /** First letter of each name, uppercased for the UI language (whole characters, so emoji and surrogates survive). */
 function initials(first: string, last: string): string {
@@ -26,9 +26,7 @@ function Avatar({ url, first, last }: { url: string | null; first: string; last:
 
 export function Profile() {
   const me = meStore.use()!;
-  const [sheet, setSheet] = useState<"lang" | "terms" | null>(null);
-  const [terms, setTerms] = useState<string | null>(null);
-  const [termsErr, setTermsErr] = useState<unknown>(null);
+  const [sheet, setSheet] = useState<"lang" | null>(null);
   const [home, setHome] = useState("unsupported");
   // While the notify request is in flight the switch shows the new state; the server's answer then wins.
   const [notifyPending, setNotifyPending] = useState<boolean | null>(null);
@@ -80,15 +78,6 @@ export function Profile() {
     }
   };
 
-  const loadTerms = () => {
-    setTermsErr(null);
-    api<{ terms: string }>("/terms").then((r) => setTerms(r.terms), setTermsErr);
-  };
-  const openTerms = () => {
-    setSheet("terms");
-    if (terms === null) loadTerms();
-  };
-
   const support = () =>
     me.supportUsername
       ? openTelegramLink(`https://t.me/${me.supportUsername}`)
@@ -107,19 +96,6 @@ export function Profile() {
             <Row key={l} radio checked={l === me.lang} title={<span lang={l}>{LANG_NAMES[l]}</span>} onClick={() => pickLang(l)} />
           ))}
         </List>
-      </Sheet>
-    ) : sheet === "terms" ? (
-      <Sheet size="large" title={t("profile.terms")} onClose={() => setSheet(null)}>
-        {termsErr ? (
-          <ErrorState compact error={termsErr} onRetry={loadTerms} />
-        ) : terms === null ? (
-          <Skeleton h={18} n={6} radius={6} />
-        ) : (
-          // The owner writes the terms in one language: let the text pick its own direction inside an RTL UI.
-          <p class="desc" dir="auto">
-            {terms}
-          </p>
-        )}
       </Sheet>
     ) : null;
 
@@ -140,6 +116,49 @@ export function Profile() {
           )
         }
       />
+
+      <div class={"link-tiles" + (me.channelUsername ? "" : " one")}>
+        {me.channelUsername ? (
+          <button
+            type="button"
+            class="link-tile press"
+            aria-label={`${t("profile.channel")}, @${me.channelUsername}`}
+            onClick={() => {
+              haptic.tap();
+              openTelegramLink(`https://t.me/${me.channelUsername}`);
+            }}
+          >
+            <span class="tile md brand">
+              <Icon name="plane" size={22} stroke={1.8} />
+            </span>
+            <Icon class="lt-out" name="out" size={16} stroke={2} />
+            <span class="lt-text">
+              <span class="lt-title">{t("profile.channel")}</span>
+              <span class="lt-hint" dir="ltr">
+                @{me.channelUsername}
+              </span>
+            </span>
+          </button>
+        ) : null}
+        <button
+          type="button"
+          class="link-tile press"
+          aria-label={`${t("profile.website")}, notpanel.com`}
+          onClick={() => {
+            haptic.tap();
+            openLink("https://notpanel.com");
+          }}
+        >
+          <img class="tile md" src="/brand/mark.svg" alt="" width={40} height={40} />
+          <Icon class="lt-out" name="out" size={16} stroke={2} />
+          <span class="lt-text">
+            <span class="lt-title">{t("profile.website")}</span>
+            <span class="lt-hint" dir="ltr">
+              notpanel.com
+            </span>
+          </span>
+        </button>
+      </div>
 
       <List>
         <Row
@@ -169,14 +188,7 @@ export function Profile() {
           />
         ) : null}
         <Row icon="chat" plate="var(--sky)" title={t("profile.support")} onClick={support} external />
-        <Row icon="doc" plate="var(--lavender)" title={t("profile.terms")} onClick={openTerms} />
-        <Row
-          lead={<img class="tile" src="/brand/mark.svg" alt="" width={32} height={32} />}
-          title={t("profile.website")}
-          meta="notpanel.com"
-          onClick={() => openLink("https://notpanel.com")}
-          external
-        />
+        <Row icon="doc" plate="var(--lavender)" title={t("profile.terms")} onClick={() => openLink("https://notpanel.com/tos")} external />
       </List>
 
       {me.isAdmin ? (

@@ -69,14 +69,17 @@ async function handle(env: Env, u: any): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   // Messaging the bot means it may message back
   const user = await env.DB.prepare(
-    `INSERT INTO users (id, first_name, last_name, username, language_code, can_message, created_at, last_seen_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)
+    `INSERT INTO users (id, first_name, last_name, username, language_code, can_message, notify, created_at, last_seen_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, 1, 1, ?6, ?6)
      ON CONFLICT(id) DO UPDATE SET can_message = 1, first_name = excluded.first_name, last_name = excluded.last_name,
        username = excluded.username, language_code = excluded.language_code
+     WHERE users.can_message = 0 OR users.first_name IS NOT excluded.first_name OR users.last_name IS NOT excluded.last_name
+       OR users.username IS NOT excluded.username OR users.language_code IS NOT excluded.language_code
      RETURNING lang, language_code`,
   )
     .bind(from.id, from.first_name ?? "", from.last_name ?? "", from.username ?? null, from.language_code ?? null, now)
-    .first<{ lang: string | null; language_code: string | null }>();
+    .first<{ lang: string | null; language_code: string | null }>()
+    .then((r) => r ?? env.DB.prepare("SELECT lang, language_code FROM users WHERE id = ?1").bind(from.id).first<{ lang: string | null; language_code: string | null }>());
   const lang = pickLang(user?.lang ?? user?.language_code);
 
   if (m.successful_payment) {
@@ -89,7 +92,10 @@ async function handle(env: Env, u: any): Promise<void> {
   const send = (t: string, markup?: unknown) =>
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: from.id, text: t, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: markup });
 
-  if (text.startsWith("/terms")) return void (await send(botText(lang, "terms", { terms: s.terms_text })));
+  if (text.startsWith("/terms"))
+    return void (await send(botText(lang, "terms", { terms: s.terms_text }), {
+      inline_keyboard: [[{ text: botText(lang, "termsButton"), url: "https://notpanel.com/tos" }]],
+    }));
   if (text.startsWith("/paysupport") || text.startsWith("/support")) {
     const support = s.support_username ? "@" + s.support_username : "the bot owner";
     return void (await send(botText(lang, "paysupport", { support })));

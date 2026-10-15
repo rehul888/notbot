@@ -34,6 +34,9 @@ function tn(key: Key, vars: Record<string, ComponentChildren>): ComponentChildre
     .map((part, i) => (i % 2 ? <Fragment key={i}>{vars[part]}</Fragment> : part));
 }
 
+/** The write-access prompt is shown at most once per app session. */
+let askedWriteAccess = false;
+
 /** An order the previous screen already has, so this screen can celebrate straight away instead of loading it. */
 let handoff: OrderView | null = null;
 
@@ -162,6 +165,16 @@ export function OrderPlaced({ orderId }: { orderId: number }) {
     const h = setTimeout(() => haptic.success(), 120);
     return () => clearTimeout(h);
   }, [celebrate]);
+
+  // Order updates are on by default, but the bot can only message users who allowed it: ask once, right after the order.
+  const shown = !!order;
+  useEffect(() => {
+    if (!shown || askedWriteAccess || !me.notify || me.canMessage) return;
+    askedWriteAccess = true;
+    requestWriteAccess()
+      .then((ok) => (ok ? updateMe({ canMessage: true }) : null))
+      .catch(() => {});
+  }, [shown]);
 
   const notifyOn = notifyPending ?? (me.notify && me.canMessage);
   const toggleNotify = async (on: boolean) => {

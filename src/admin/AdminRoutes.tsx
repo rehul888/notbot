@@ -1226,6 +1226,7 @@ interface AdminSettingsData {
   only_timed: number;
   low_balance: number;
   support_username: string;
+  channel_username: string;
   terms_text: string;
   last_sync_at: number;
   last_sync_summary: Overview["lastSync"];
@@ -1425,6 +1426,23 @@ function AdminSettings() {
                     value={s.support_username}
                     placeholder="your_support"
                     onInput={(e) => set("support_username", e.currentTarget.value.replace(/^@/, ""))}
+                  />
+                </Num>
+              </Kv>
+              <Kv label="Update channel" id="set-channel">
+                <Num>
+                  @
+                  <input
+                    id="set-channel"
+                    dir="ltr"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellcheck={false}
+                    enterKeyHint="done"
+                    size={14}
+                    value={s.channel_username}
+                    placeholder="your_channel"
+                    onInput={(e) => set("channel_username", e.currentTarget.value.replace(/^@/, ""))}
                   />
                 </Num>
               </Kv>

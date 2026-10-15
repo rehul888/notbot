@@ -31,17 +31,25 @@ type C = Context<AppEnv>;
 export const err = (c: C, status: number, code: string, details?: Record<string, unknown>) =>
   c.json({ error: code, code, details }, status as 400);
 
+/**
+ * Creates the user (order updates on by default) or refreshes their Telegram profile. To keep D1 writes low with many
+ * users, an existing row is only rewritten when the profile changed or last_seen_at is over an hour old.
+ */
 async function upsertUser(env: Env, u: TgUser): Promise<UserRow> {
   const now = Math.floor(Date.now() / 1000);
-  return (await env.DB.prepare(
-    `INSERT INTO users (id, first_name, last_name, username, photo_url, language_code, created_at, last_seen_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+  const row = await env.DB.prepare(
+    `INSERT INTO users (id, first_name, last_name, username, photo_url, language_code, notify, created_at, last_seen_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)
      ON CONFLICT(id) DO UPDATE SET first_name = excluded.first_name, last_name = excluded.last_name, username = excluded.username,
        photo_url = excluded.photo_url, language_code = excluded.language_code, last_seen_at = excluded.last_seen_at
+     WHERE users.first_name IS NOT excluded.first_name OR users.last_name IS NOT excluded.last_name
+       OR users.username IS NOT excluded.username OR users.photo_url IS NOT excluded.photo_url
+       OR users.language_code IS NOT excluded.language_code OR users.last_seen_at < excluded.last_seen_at - 3600
      RETURNING *`,
   )
     .bind(u.id, u.first_name ?? "", u.last_name ?? "", u.username ?? null, u.photo_url ?? null, u.language_code ?? null, now)
-    .first<UserRow>())!;
+    .first<UserRow>();
+  return row ?? (await env.DB.prepare("SELECT * FROM users WHERE id = ?1").bind(u.id).first<UserRow>())!;
 }
 
 export const app = new Hono<AppEnv>();
@@ -96,6 +104,7 @@ async function meView(c: C): Promise<Me> {
     minTopup: s.min_topup,
     maxTopup: s.max_topup,
     supportUsername: s.support_username || null,
+    channelUsername: s.channel_username || null,
     botUsername: s.bot_username || null,
     recent: results.map((r) => ({ id: r.id, serviceId: r.service_id, serviceName: r.service_name, platform: r.platform, link: r.link, quantity: r.quantity })),
   };

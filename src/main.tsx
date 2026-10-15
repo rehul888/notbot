@@ -3,10 +3,14 @@ import "./styles.css";
 import "./art"; // registers the empty-state art with ui.tsx
 import { App, applyStartRoute } from "./app";
 import { keyboardStore } from "./store";
-import { initTelegram } from "./tg";
+import { cachedApi } from "./api";
+import { initData, initTelegram } from "./tg";
 
 initTelegram();
 applyStartRoute();
+
+// Start the platform list now, in parallel with /api/me; Home reuses this in-flight request.
+if (initData || import.meta.env.DEV) cachedApi("/catalog/platforms").catch(() => {});
 
 // iOS WebKit applies :active (press states) only when the page has a touch listener.
 document.addEventListener("touchstart", () => {}, { passive: true });

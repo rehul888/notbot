@@ -208,6 +208,8 @@
   "profile.support": "Написать в поддержку",
   "profile.terms": "Условия использования",
   "profile.website": "Открыть сайт NotPanel",
+  "profile.channel": "Канал с новостями",
+  "profile.channelSub": "Новости и акции",
   "profile.admin": "Панель администратора",
   "profile.adminNote": "Видно только вам: показывается для Telegram-аккаунта владельца.",
   "profile.notifyDenied": "Разрешите сообщения от бота, чтобы получать уведомления о заказах.",

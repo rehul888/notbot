@@ -19,7 +19,7 @@ import { OrderDetail } from "./screens/OrderDetail";
 import { Wallet } from "./screens/Wallet";
 import { TopUp } from "./screens/TopUp";
 import { Profile } from "./screens/Profile";
-import { AdminRoutes } from "./admin/AdminRoutes";
+import { LazyAdminRoutes } from "./lazy";
 
 /** Deep links: t.me/<bot>?startapp=order_12 / s_2828 / wallet */
 function routeFromStartParam(p: string | null): string | null {
@@ -105,7 +105,7 @@ export function App() {
     else if (route.path === "/wallet") screen = <Wallet />;
     else if (route.path === "/topup") screen = <TopUp />;
     else if (route.path === "/profile") screen = <Profile />;
-    else if (a === "admin" && me.isAdmin) screen = <AdminRoutes parts={route.parts.slice(1)} query={route.query} />;
+    else if (a === "admin" && me.isAdmin) screen = <LazyAdminRoutes parts={route.parts.slice(1)} query={route.query} />;
     else screen = <Home />;
   }
 

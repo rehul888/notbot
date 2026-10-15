@@ -11,6 +11,7 @@ export const DEFAULTS = {
   only_timed: 1, // list only services that have a measured average delivery time
   low_balance: 5_000_000,
   support_username: "",
+  channel_username: "notpanel_com",
   terms_text:
     "By using this app you agree that services are delivered by third parties and delivery times are estimates. " +
     "Balance top-ups are paid in Telegram Stars and are credited to your in-app balance. Orders that cannot be " +
@@ -29,7 +30,18 @@ export const DEFAULTS = {
 export type Settings = typeof DEFAULTS;
 export type SettingKey = keyof Settings;
 
-export async function getSettings(env: Env): Promise<Settings> {
+let memo: { at: number; value: Settings } | null = null;
+const MEMO_MS = 15_000;
+
+/** Settings, cached per isolate for 15 s. Pass fresh for anything that coordinates work (the price sync). */
+export async function getSettings(env: Env, opts: { fresh?: boolean } = {}): Promise<Settings> {
+  if (!opts.fresh && memo && Date.now() - memo.at < MEMO_MS) return memo.value;
+  const value = await loadSettings(env);
+  memo = { at: Date.now(), value };
+  return value;
+}
+
+async function loadSettings(env: Env): Promise<Settings> {
   const { results } = await env.DB.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>();
   const s: any = { ...DEFAULTS };
   for (const r of results) {
@@ -40,6 +52,7 @@ export async function getSettings(env: Env): Promise<Settings> {
 }
 
 export function setSettingsStmts(env: Env, values: Partial<Settings>): D1PreparedStatement[] {
+  memo = null;
   return Object.entries(values).map(([k, v]) =>
     env.DB.prepare("INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(
       k,
@@ -49,11 +62,13 @@ export function setSettingsStmts(env: Env, values: Partial<Settings>): D1Prepare
 }
 
 export async function setSettings(env: Env, values: Partial<Settings>): Promise<void> {
+  memo = null;
   const stmts = setSettingsStmts(env, values);
   if (stmts.length) await env.DB.batch(stmts);
 }
 
 export function bumpCatalogStmt(env: Env): D1PreparedStatement {
+  memo = null;
   return env.DB.prepare(
     "INSERT INTO settings (key, value) VALUES ('catalog_version', '2') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
   );

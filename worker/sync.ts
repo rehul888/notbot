@@ -112,14 +112,14 @@ const UPSERT = `INSERT INTO services (id, platform, category, category_slug, nam
 
 /** One cron tick: start a run when due, then process the next few catalog pages. */
 export async function syncTick(env: Env): Promise<void> {
-  const s = await getSettings(env);
+  const s = await getSettings(env, { fresh: true });
   const now = Math.floor(Date.now() / 1000);
   let state = s.sync_state ? (JSON.parse(s.sync_state) as SyncState) : null;
   if (!state) {
     const due = !s.last_sync_at || (s.sync_enabled && now - s.last_sync_at >= s.sync_every_hours * 3600);
     if (!due) return;
     await startSync(env);
-    state = JSON.parse((await getSettings(env)).sync_state) as SyncState;
+    state = JSON.parse((await getSettings(env, { fresh: true })).sync_state) as SyncState;
   }
   if (now - state.startedAt > MAX_RUN_SECONDS) {
     await finish(env, s, { ...state.stats, error: "Sync took too long and was stopped" }, null);

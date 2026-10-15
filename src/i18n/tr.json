@@ -208,6 +208,8 @@
   "profile.support": "Destekle iletişime geç",
   "profile.terms": "Hizmet şartları",
   "profile.website": "NotPanel'i ziyaret et",
+  "profile.channel": "Güncelleme kanalına katıl",
+  "profile.channelSub": "Haberler ve fırsatlar",
   "profile.admin": "Yönetim paneli",
   "profile.adminNote": "Bunu yalnızca sen görürsün: sahibin Telegram hesabında görünür.",
   "profile.notifyDenied": "Sipariş güncellemelerini almak için bottan gelen mesajlara izin ver.",
