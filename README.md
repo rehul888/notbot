@@ -40,17 +40,24 @@ Trigger a cron tick locally (price sync step + order checks):
 curl -X POST "http://localhost:5173/cdn-cgi/local/explorer/api/local/scheduled?worker=notpanel-miniapp" -H 'content-type: application/json' -d '{"cron":"* * * * *"}'
 ```
 
+Local dev never places real NotPanel orders unless `ALLOW_LIVE_ORDERS=1` is set in `.dev.vars`.
+
 Checks before pushing: `npm run typecheck && npm test && npm run build`.
 
 ## Deploy (Cloudflare)
 
 1. `npx wrangler d1 create notpanel` → put the printed `database_id` in `wrangler.jsonc`.
 2. `npm run db:migrate:remote`
-3. Secrets: `npx wrangler secret put NOTPANEL_API_KEY`, `BOT_TOKEN`, `TG_WEBHOOK_SECRET` (any long random string).
+3. Secrets: `npx wrangler secret put NOTPANEL_API_KEY`, `BOT_TOKEN`, `TG_WEBHOOK_SECRET` and `SETUP_SECRET` (each a
+   different long random string). `TG_WEBHOOK_SECRET` only signs Telegram's webhook calls; `SETUP_SECRET` only protects
+   the one-time setup pages. If `SETUP_SECRET` is not set, the `/setup/*` pages do not exist (404).
 4. Set `OWNER_IDS` in `wrangler.jsonc` to your Telegram user ID (comma-separate several).
 5. `npm run deploy`
-6. Open `https://<worker-url>/setup/<TG_WEBHOOK_SECRET>` once. It connects the bot webhook, commands, menu button and
-   NotPanel order webhooks.
+6. Open `https://<worker-url>/setup/<SETUP_SECRET>` once. It connects the bot webhook, menu button and NotPanel order
+   webhooks. Then open `/setup/<SETUP_SECRET>/texts/0` and `/setup/<SETUP_SECRET>/texts/1` to set the bot's command
+   menus, About text and descriptions in all languages. (Optional: `/setup/<SETUP_SECRET>/channel` checks the update
+   channel, `/setup/<SETUP_SECRET>/preview` sends sample bot messages to the owner.) To lock setup again, delete the
+   secret: `npx wrangler secret delete SETUP_SECRET`.
 7. In @BotFather → your bot → Bot Settings → Configure Mini App / Menu Button, use `https://<worker-url>`.
 
 The first price sync starts within a minute of deploying and takes ~20 minutes.

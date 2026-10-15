@@ -47,7 +47,7 @@ const LOGOS = new Set([
 ]);
 
 export function platformName(slug: string): string {
-  return NAMES[slug] ?? slug.replace(/(^|-)(\w)/g, (_, s, c) => (s ? " " : "") + c.toUpperCase());
+  return Object.hasOwn(NAMES, slug) ? NAMES[slug] : slug.replace(/(^|-)(\w)/g, (_, s, c) => (s ? " " : "") + c.toUpperCase());
 }
 
 export function platformLogo(slug: string): string | null {

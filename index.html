@@ -9,10 +9,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Non-blocking: the app paints with system fonts and swaps in DM Sans / Space Grotesk when they arrive -->
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Space+Grotesk:wght@600..700&display=swap" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Space+Grotesk:wght@600..700&display=swap" /></noscript>
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600..700&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600..700&display=swap" /></noscript>
     <link rel="preload" as="image" href="/brand/mark.svg" />
     <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
+    <!-- Start /api/me now; the app picks this request up instead of waiting for the bundle -->
+    <script>
+      (function () {
+        try {
+          var w = window.Telegram && window.Telegram.WebApp;
+          if (w && w.initData) window.__mePromise = fetch("/api/me", { headers: { authorization: "tma " + w.initData } });
+        } catch (e) {}
+      })();
+    </script>
     <!-- Before first paint: theme, inside-Telegram flag and device class (CSS reads data-theme, data-tg, data-perf) -->
     <script>
       (function () {

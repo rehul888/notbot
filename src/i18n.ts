@@ -12,9 +12,23 @@ export function getLang(): Lang {
 
 let langSeq = 0;
 
+/** The language chosen last time, so translations can load before /me answers. */
+export function savedLang(): string | null {
+  try {
+    return localStorage.getItem("np_lang");
+  } catch {
+    return null;
+  }
+}
+
 /** Switches the UI language. Always updates <html lang/dir> (English included), together with the strings. */
 export async function setLang(code: string | null | undefined) {
   const lang = pickLang(code);
+  try {
+    localStorage.setItem("np_lang", lang);
+  } catch {
+    /* storage unavailable */
+  }
   const seq = ++langSeq;
   let dict: Record<string, string> = en;
   if (lang !== "en") {

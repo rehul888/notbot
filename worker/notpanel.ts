@@ -70,10 +70,11 @@ export async function np<T = unknown>(key: string, action: string, params: Recor
   }
   const text = await res.text();
   let data: any;
+  // An unparseable body is always retryable: the request may have been processed (callers recover by request_id)
   try {
     data = JSON.parse(text);
   } catch {
-    throw new NotPanelError(`Bad response from NotPanel (${res.status})`, "BAD_RESPONSE", res.status >= 500, res.status);
+    throw new NotPanelError(`Bad response from NotPanel (${res.status})`, "BAD_RESPONSE", true, res.status);
   }
   if (data && typeof data === "object" && !Array.isArray(data) && data.error && data.error_code) {
     throw new NotPanelError(data.error, data.error_code, !!data.retryable, res.status, data.details);

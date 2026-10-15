@@ -22,8 +22,10 @@ interface TgFrom {
 
 bot.post("/", async (c) => {
   const secret = c.req.header("x-telegram-bot-api-secret-token") ?? "";
-  if (!timingSafeEqual(secret, c.env.TG_WEBHOOK_SECRET)) return c.text("forbidden", 403);
-  const update = await c.req.json<any>();
+  // An unset secret must never match an empty header
+  if (!c.env.TG_WEBHOOK_SECRET || !timingSafeEqual(secret, c.env.TG_WEBHOOK_SECRET)) return c.text("forbidden", 403);
+  const update = await c.req.json<any>().catch(() => null);
+  if (!update || typeof update !== "object") return c.text("ok");
   // pre_checkout must be answered within 10 s — do it inline; everything else can run after we reply.
   if (update.pre_checkout_query) {
     await onPreCheckout(c.env, update.pre_checkout_query);
@@ -43,6 +45,28 @@ async function onCallback(env: Env, q: any): Promise<void> {
   // Swap the language picker for the photo welcome in the chosen language
   if (q.message) await tg(env.BOT_TOKEN, "deleteMessage", { chat_id: q.message.chat.id, message_id: q.message.message_id }).catch(() => undefined);
   await sendWelcome(env, q.from.id, lang, q.from.first_name ?? "");
+}
+
+/** Telegram refunded Stars on its side (e.g. a dispute): take the credited balance back, even if that makes it negative. */
+async function onRefundedPayment(env: Env, r: { currency?: string; total_amount?: number; telegram_payment_charge_id?: string }): Promise<void> {
+  const charge = r.telegram_payment_charge_id;
+  if (!charge) return;
+  const p = await env.DB.prepare("SELECT id, stars FROM payments WHERE charge_id = ?1 AND status = 'paid'").bind(charge).first<{ id: number; stars: number }>();
+  if (!p) return; // unknown, or already refunded (our own admin refund also triggers this message)
+  if (r.currency !== "XTR" || r.total_amount !== p.stars) {
+    console.error("telegram refund mismatch, not applied", charge, r.currency, r.total_amount);
+    return;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE payments SET status = 'refunded' WHERE id = ?1 AND status = 'paid'").bind(p.id),
+    env.DB.prepare(
+      "INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) SELECT user_id, -amount, 'stars_refund', id, 'telegram refund', ?2 FROM payments WHERE id = ?1 AND changes() = 1",
+    ).bind(p.id, now),
+    env.DB.prepare(
+      "UPDATE users SET balance = balance - (SELECT amount FROM payments WHERE id = ?1) WHERE id = (SELECT user_id FROM payments WHERE id = ?1) AND changes() = 1",
+    ).bind(p.id),
+  ]);
 }
 
 async function handle(env: Env, u: any): Promise<void> {
@@ -75,6 +99,10 @@ async function handle(env: Env, u: any): Promise<void> {
 
   if (m.successful_payment) {
     await onSuccessfulPayment(env, from, m.successful_payment);
+    return;
+  }
+  if (m.refunded_payment) {
+    await onRefundedPayment(env, m.refunded_payment);
     return;
   }
   const text: string = (m.text ?? "").trim();

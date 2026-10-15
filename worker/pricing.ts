@@ -35,6 +35,9 @@ export function countLines(text: string | undefined): number {
   return (text ?? "").split("\n").map((l) => l.trim()).filter(Boolean).length;
 }
 
+const MAX_FIELD_LENGTH = 2000; // single-value fields without their own max_length
+const MAX_LINES = 10_000;
+
 export interface DraftCheck {
   quantity: number;
   fields: Record<string, string>;
@@ -45,11 +48,18 @@ export function checkDraft(
   svc: { type_key: string; min: number; max: number; step: number; fields: ServiceField[]; dripfeed: boolean; dripMax: number | null },
   draft: { link?: string; quantity?: number; fields?: Record<string, string>; dripMinutes?: number },
 ): DraftCheck | { error: string; details?: Record<string, unknown> } {
-  if (!draft.link || draft.link.trim().length < 2 || draft.link.length > 2048) return { error: "INVALID_LINK" };
+  // The draft comes straight from user JSON, so check types at runtime rather than trusting the declared ones
+  if (typeof draft.link !== "string" || draft.link.trim().length < 2 || draft.link.length > 2048) return { error: "INVALID_LINK" };
   const mode = quantityMode(svc.type_key);
   const fields: Record<string, string> = {};
+  const raw = draft.fields as unknown;
+  if (raw !== undefined && raw !== null) {
+    if (typeof raw !== "object" || Array.isArray(raw)) return { error: "INVALID_FIELD" };
+    for (const [k, val] of Object.entries(raw)) if (typeof val !== "string") return { error: "INVALID_FIELD", details: { field: k } };
+  }
   for (const f of svc.fields) {
-    const v = (draft.fields?.[f.key] ?? "").trim();
+    const given = raw && Object.hasOwn(raw, f.key) ? (raw as Record<string, string>)[f.key] : "";
+    const v = given.trim();
     if (!v) {
       if (f.required) return { error: "MISSING_FIELD", details: { field: f.key } };
       continue;
@@ -60,9 +70,10 @@ export function checkDraft(
         return { error: "INVALID_FIELD", details: { field: f.key } };
     }
     if (f.kind === "choice" && f.choices && !f.choices.includes(v)) return { error: "INVALID_FIELD", details: { field: f.key } };
-    if (f.max_length && f.kind !== "lines" && v.length > f.max_length) return { error: "INVALID_FIELD", details: { field: f.key } };
+    if (f.kind !== "lines" && v.length > (f.max_length || MAX_FIELD_LENGTH)) return { error: "INVALID_FIELD", details: { field: f.key } };
     if (f.kind === "lines") {
       const lines = v.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (lines.length > MAX_LINES) return { error: "INVALID_FIELD", details: { field: f.key } };
       if (f.max_length && lines.some((l) => l.length > f.max_length!)) return { error: "INVALID_FIELD", details: { field: f.key } };
       fields[f.key] = lines.join("\n");
       continue;
@@ -78,9 +89,9 @@ export function checkDraft(
     if (quantity > svc.max) return { error: "MAXIMUM_QUANTITY", details: { n: svc.max } };
     if (svc.step > 1 && quantity % svc.step !== 0) return { error: "QUANTITY_STEP", details: { n: svc.step } };
   }
-  if (draft.dripMinutes) {
+  if (draft.dripMinutes !== undefined && draft.dripMinutes !== null) {
     if (!svc.dripfeed || !svc.dripMax) return { error: "DRIP_FEED_NOT_AVAILABLE" };
-    if (draft.dripMinutes < 1 || draft.dripMinutes > svc.dripMax) return { error: "DRIP_FEED_INVALID" };
+    if (!Number.isInteger(draft.dripMinutes) || draft.dripMinutes < 1 || draft.dripMinutes > svc.dripMax) return { error: "DRIP_FEED_INVALID" };
   }
   return { quantity, fields };
 }

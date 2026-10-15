@@ -13,7 +13,7 @@ import { sellRate } from "../pricing";
 import { bumpCatalogStmt, DEFAULTS, getSettings, setSettings, setSettingsStmts, type Settings } from "../settings";
 import { startSync, syncProgress } from "../sync";
 import { tg } from "../telegram";
-import { type AppEnv, err } from "./app";
+import { type AppEnv, err, readBody } from "./app";
 
 export const admin = new Hono<AppEnv>();
 
@@ -98,7 +98,8 @@ admin.get("/settings", (c) => {
 });
 
 admin.put("/settings", async (c) => {
-  const body = await c.req.json<Partial<Settings>>();
+  const body = await readBody<Partial<Settings>>(c);
+  if (!body) return err(c, 400, "INVALID_BODY");
   const values: Partial<Settings> = {};
   for (const k of EDITABLE) {
     if (body[k] === undefined) continue;
@@ -110,7 +111,22 @@ admin.put("/settings", async (c) => {
     } else (values as Record<string, unknown>)[k] = String(v).slice(0, 4000);
   }
   if (values.default_markup_pct !== undefined && values.default_markup_pct > 1000) return err(c, 400, "INVALID_VALUE", { key: "default_markup_pct" });
-  if (values.sync_every_hours !== undefined && values.sync_every_hours < 1) return err(c, 400, "INVALID_VALUE", { key: "sync_every_hours" });
+  const bad = (key: string) => err(c, 400, "INVALID_VALUE", { key });
+  const inRange = (key: keyof Settings, lo: number, hi: number) => {
+    const v = values[key] as number | undefined;
+    return v === undefined || (v >= lo && v <= hi);
+  };
+  if (!inRange("stars_per_usd", 1, 1000)) return bad("stars_per_usd");
+  if (!inRange("referral_reward_stars", 0, 100)) return bad("referral_reward_stars");
+  if (!inRange("referral_daily_cap", 0, 10000)) return bad("referral_daily_cap");
+  if (!inRange("sync_every_hours", 1, 168)) return bad("sync_every_hours");
+  if (!inRange("low_balance", 0, Number.MAX_SAFE_INTEGER)) return bad("low_balance");
+  // Top-up limits are compared against the merged current + new values
+  const cur = c.get("settings");
+  const minTopup = values.min_topup ?? cur.min_topup;
+  const maxTopup = values.max_topup ?? cur.max_topup;
+  if (minTopup <= 0) return bad("min_topup");
+  if (maxTopup < minTopup) return bad("max_topup");
   if (values.support_username) values.support_username = values.support_username.replace(/^@/, "");
   if (values.channel_url && !/^https:\/\/t\.me\//.test(values.channel_url)) return err(c, 400, "INVALID_VALUE", { key: "channel_url" });
   if (values.channel_id && !/^-100\d{5,}$/.test(values.channel_id)) return err(c, 400, "INVALID_VALUE", { key: "channel_id" });
@@ -163,8 +179,9 @@ admin.get("/categories", async (c) => {
 
 /** Platform rule when category is "" — enable/disable or set a markup for a whole platform or category */
 admin.put("/rule", async (c) => {
-  const b = await c.req.json<{ platform: string; category?: string; enabled?: boolean; markupPct?: number | null }>();
-  if (!b.platform) return err(c, 400, "MISSING_PLATFORM");
+  const b = await readBody<{ platform: string; category?: string; enabled?: boolean; markupPct?: number | null }>(c);
+  if (!b) return err(c, 400, "INVALID_BODY");
+  if (!b.platform || typeof b.platform !== "string") return err(c, 400, "MISSING_PLATFORM");
   const markup = b.markupPct === undefined ? undefined : b.markupPct === null ? null : Number(b.markupPct);
   if (markup !== undefined && markup !== null && (!Number.isFinite(markup) || markup < 0 || markup > 1000)) return err(c, 400, "INVALID_VALUE");
   await c.env.DB.batch([
@@ -241,7 +258,8 @@ admin.get("/services", async (c) => {
 });
 
 admin.put("/services/:id", async (c) => {
-  const b = await c.req.json<{ enabled?: boolean; markupPct?: number | null; fixedRate?: number | null; customName?: string | null }>();
+  const b = await readBody<{ enabled?: boolean; markupPct?: number | null; fixedRate?: number | null; customName?: string | null }>(c);
+  if (!b) return err(c, 400, "INVALID_BODY");
   const sets: string[] = [];
   const vals: unknown[] = [];
   const set = (col: string, v: unknown) => {
@@ -278,15 +296,23 @@ admin.get("/price-changes", async (c) => {
 
 // ---- Payments ----
 
+// Lifetime paid totals scan the whole payments table, so cache them per isolate for 5 minutes.
+let totalsMemo: { at: number; value: unknown } | null = null;
+async function paymentTotals(env: AppEnv["Bindings"]): Promise<unknown> {
+  if (totalsMemo && Date.now() - totalsMemo.at < 5 * 60_000) return totalsMemo.value;
+  const value = await env.DB.prepare(
+    "SELECT COALESCE(SUM(stars), 0) AS stars, COALESCE(SUM(amount), 0) AS amount FROM payments WHERE status = 'paid'",
+  ).first();
+  totalsMemo = { at: Date.now(), value };
+  return value;
+}
+
 admin.get("/payments", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.user_id, p.stars, p.amount, p.status, p.order_id, p.paid_at, p.created_at, u.first_name, u.last_name, u.username
      FROM payments p LEFT JOIN users u ON u.id = p.user_id WHERE p.status != 'pending' ORDER BY p.id DESC LIMIT 100`,
   ).all();
-  const totals = await c.env.DB.prepare(
-    "SELECT COALESCE(SUM(stars), 0) AS stars, COALESCE(SUM(amount), 0) AS amount FROM payments WHERE status = 'paid'",
-  ).first();
-  return c.json({ items: results, totals });
+  return c.json({ items: results, totals: await paymentTotals(c.env) });
 });
 
 admin.post("/payments/:id/refund", async (c) => {
@@ -301,8 +327,8 @@ admin.get("/users", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT u.*, (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS orders,
        (SELECT COALESCE(SUM(amount), 0) FROM payments p WHERE p.user_id = u.id AND p.status = 'paid') AS paid
-     FROM users u ${q ? "WHERE CAST(u.id AS TEXT) = ?1 OR u.username LIKE ?2 OR u.first_name LIKE ?2" : ""}
-     ORDER BY u.last_seen_at DESC LIMIT 100`,
+     FROM (SELECT * FROM users ${q ? "WHERE CAST(id AS TEXT) = ?1 OR username LIKE ?2 OR first_name LIKE ?2" : ""} ORDER BY last_seen_at DESC LIMIT 100) u
+     ORDER BY u.last_seen_at DESC`,
   )
     .bind(...(q ? [q, `%${q}%`] : []))
     .all();
@@ -310,7 +336,9 @@ admin.get("/users", async (c) => {
 });
 
 admin.post("/users/:id/balance", async (c) => {
-  const { amount, note } = await c.req.json<{ amount: number; note?: string }>();
+  const b = await readBody<{ amount: number; note?: string }>(c);
+  if (!b) return err(c, 400, "INVALID_BODY");
+  const { amount, note } = b;
   const delta = Math.round(Number(amount) * MICRO);
   if (!Number.isFinite(delta) || delta === 0) return err(c, 400, "INVALID_AMOUNT");
   const id = Number(c.req.param("id"));
@@ -329,7 +357,9 @@ admin.post("/users/:id/balance", async (c) => {
 });
 
 admin.post("/users/:id/ban", async (c) => {
-  const { banned } = await c.req.json<{ banned: boolean }>();
+  const b = await readBody<{ banned: boolean }>(c);
+  if (!b) return err(c, 400, "INVALID_BODY");
+  const { banned } = b;
   await c.env.DB.prepare("UPDATE users SET banned = ?2 WHERE id = ?1").bind(Number(c.req.param("id")), banned ? 1 : 0).run();
   return c.json({ ok: true });
 });
@@ -365,7 +395,7 @@ admin.get("/orders", async (c) => {
 
 /** Sends one of every bot message (sample data) to the owner's chat */
 admin.post("/preview-messages", async (c) => {
-  const { lang } = await c.req.json<{ lang?: string }>().catch(() => ({ lang: undefined }));
+  const lang = (await readBody<{ lang?: string }>(c))?.lang;
   const u = c.get("user");
   const l = (LANGS as readonly string[]).includes(lang ?? "") ? (lang as Lang) : c.get("lang");
   try {

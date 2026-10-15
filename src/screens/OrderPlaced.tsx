@@ -1,7 +1,7 @@
 import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { OrderView } from "../../shared/types";
-import { ApiError, api } from "../api";
+import { ApiError, api, pollDelay } from "../api";
 import { ArtOrderSuccess } from "../art";
 import { money, num } from "../format";
 import { t, type Key } from "../i18n";
@@ -12,9 +12,8 @@ import { meStore } from "../store";
 import { haptic, requestWriteAccess } from "../tg";
 import { BottomButtons, ErrorState, LargeTitle, List, Notice, Num, Row, Screen, errText, toast } from "../ui";
 
-// Waiting for a Stars payment (spec §5.7): poll every 1.5s for 30s, then every 5s, and stop after 3 minutes.
+// Waiting for a Stars payment (spec §5.7): back off from 1s to 5s between polls, and stop after 3 minutes.
 const FAST_MS = 1500;
-const SLOW_MS = 5000;
 const SLOW_AFTER_MS = 30_000;
 const STOP_AFTER_MS = 180_000;
 /** Paid, but still no order after this many polls: the order couldn't be placed and the money went to the balance. */
@@ -81,6 +80,7 @@ export function OrderPlaced({ orderId }: { orderId: number }) {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let paidPolls = 0;
+    let n = 0;
     const started = Date.now();
     setPolling(true);
     const slowTimer = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
@@ -108,7 +108,7 @@ export function OrderPlaced({ orderId }: { orderId: number }) {
       if (!live) return;
       const elapsed = Date.now() - started;
       if (elapsed >= STOP_AFTER_MS) setPolling(false);
-      else timer = setTimeout(poll, elapsed < SLOW_AFTER_MS ? FAST_MS : SLOW_MS);
+      else timer = setTimeout(poll, pollDelay(n++));
     };
     void poll();
     return () => {

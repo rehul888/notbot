@@ -126,7 +126,12 @@ export function OrderDetail({ orderId }: { orderId: number }) {
   // Keep an open order fresh while it's on screen
   useEffect(() => {
     if (!o || FINAL_STATUSES.includes(o.status)) return;
-    const id = setInterval(() => api<OrderView>(`/orders/${orderId}`).then(res.set, () => undefined), 15000);
+    const started = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - started >= 600_000) return clearInterval(id); // stop after 10 minutes on screen
+      if (document.hidden) return;
+      api<OrderView>(`/orders/${orderId}`).then(res.set, () => undefined);
+    }, 30000);
     return () => clearInterval(id);
   }, [o?.status]);
 

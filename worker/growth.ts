@@ -46,15 +46,29 @@ export interface GateUser {
  * membership are re-checked once a day (cheap) so leaving the channel brings the step back. If Telegram can't
  * answer, the user is let through but stays unconfirmed (no referral reward without a real confirmation).
  */
-export async function channelGateRequired(env: Env, s: Settings, u: GateUser): Promise<boolean> {
+export async function channelGateRequired(
+  env: Env,
+  s: Settings,
+  u: GateUser,
+  opts: { background?: (p: Promise<unknown>) => void } = {},
+): Promise<boolean> {
   if (!s.channel_gate || !s.channel_id || isOwner(env, u.id)) return false;
   const now = Math.floor(Date.now() / 1000);
   if (u.channel_ok === NOT_CONFIRMED) return true;
   // Member, or let through while Telegram was unavailable: re-check once a day
   if (u.channel_checked_at && now - u.channel_checked_at < DAY) return false;
-  const r = await checkChannel(env, s, u.id).catch(() => "unavailable" as const);
-  const next = r === "member" ? MEMBER_OK : r === "not_member" ? NOT_CONFIRMED : u.channel_ok;
-  await env.DB.prepare("UPDATE users SET channel_ok = ?2, channel_checked_at = ?3 WHERE id = ?1").bind(u.id, next, now).run();
+  const recheck = async () => {
+    const r = await checkChannel(env, s, u.id).catch(() => "unavailable" as const);
+    const next = r === "member" ? MEMBER_OK : r === "not_member" ? NOT_CONFIRMED : u.channel_ok;
+    await env.DB.prepare("UPDATE users SET channel_ok = ?2, channel_checked_at = ?3 WHERE id = ?1").bind(u.id, next, now).run();
+    return next;
+  };
+  if (opts.background) {
+    // Answer from the cached state now; the result applies on the next request (leaving the channel brings the step back then)
+    opts.background(recheck().catch((e) => console.warn("channel recheck failed", (e as Error).message)));
+    return false;
+  }
+  const next = await recheck();
   u.channel_ok = next;
   u.channel_checked_at = now;
   return next === NOT_CONFIRMED;

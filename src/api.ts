@@ -6,9 +6,27 @@ export class ApiError extends Error {
   }
 }
 
+/** Delay before poll number `i` (0-based): about 1s, 1.5s, 2s, 3s, 4s, then 5s. */
+const BACKOFF_MS = [1000, 1500, 2000, 3000, 4000];
+export const pollDelay = (i: number) => BACKOFF_MS[i] ?? 5000;
+
+declare global {
+  interface Window {
+    /** Started by an inline script in index.html, before this bundle arrives. */
+    __mePromise?: Promise<Response>;
+  }
+}
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    method: opts.method ?? (opts.body ? "POST" : "GET"),
+  const method = opts.method ?? (opts.body ? "POST" : "GET");
+  // The first GET /me reuses the request index.html already started (once).
+  let early: Promise<Response> | undefined;
+  if (path === "/me" && method === "GET" && !opts.body) {
+    early = window.__mePromise;
+    window.__mePromise = undefined;
+  }
+  const res = (early && (await early.catch(() => undefined))) || await fetch(`/api${path}`, {
+    method,
     headers: {
       ...(initData ? { authorization: `tma ${initData}` } : {}),
       ...(opts.body ? { "content-type": "application/json" } : {}),

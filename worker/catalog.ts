@@ -158,9 +158,22 @@ export async function listServices(
   });
 }
 
+// Per-isolate memo for search results (separate from the browse memo so searches can't evict it).
+const searchMemo = new Map<string, ServiceItem[]>();
+
 export async function searchServices(env: Env, s: Settings, lang: Lang, q: string): Promise<ServiceItem[]> {
   const term = q.trim().slice(0, 80);
   if (term.length < 2 && !/^\d+$/.test(term)) return [];
+  const key = `${s.catalog_version}:${lang}:${term.toLowerCase()}`;
+  const hit = searchMemo.get(key);
+  if (hit) return hit;
+  const items = await runSearch(env, s, lang, term);
+  if (searchMemo.size >= 200) searchMemo.clear();
+  searchMemo.set(key, items);
+  return items;
+}
+
+async function runSearch(env: Env, s: Settings, lang: Lang, term: string): Promise<ServiceItem[]> {
   const isId = /^\d+$/.test(term);
   const like = `%${term.replace(/[%_\\]/g, (c) => "\\" + c)}%`;
   const { results } = await env.DB.prepare(

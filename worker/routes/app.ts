@@ -5,7 +5,7 @@ import { getService, listCategories, listPlatforms, listServices, searchServices
 import { type Env, isOwner } from "../env";
 import { botPlain } from "../i18n";
 import { cancelOrder, getOrderRow, OrderError, orderView, placeOrder, refillOrder, refreshOrder, type OrderRow } from "../orders";
-import { createInvoice } from "../payments";
+import { createInvoice, TooManyInvoices } from "../payments";
 import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, verifyChannel } from "../growth";
 import { checkDraft, orderCharge } from "../pricing";
 import { getSettings, type Settings } from "../settings";
@@ -35,9 +35,27 @@ type C = Context<AppEnv>;
 export const err = (c: C, status: number, code: string, details?: Record<string, unknown>) =>
   c.json({ error: code, code, details }, status as 400);
 
+/** Parses a JSON request body; null unless it is a plain object (not an array, null or a primitive). */
+export async function readBody<T extends object>(c: Context): Promise<T | null> {
+  const b: unknown = await c.req.json().catch(() => null);
+  return b !== null && typeof b === "object" && !Array.isArray(b) ? (b as T) : null;
+}
+
+/** Non-negative page number from a query value: NaN/Infinity/huge values fall back to 0 or the 0..1000 clamp. */
+export function pageParam(v: string | undefined): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? Math.min(1000, Math.max(0, Math.trunc(n))) : 0;
+}
+
+/** Cursor query value (`before=`): a finite positive number, else "no cursor". */
+const cursorParam = (v: string | undefined): number => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 2 ** 53) : 2 ** 53;
+};
+
 /**
  * Creates the user (order updates on by default) or refreshes their Telegram profile. To keep D1 writes low with many
- * users, an existing row is only rewritten when the profile changed or last_seen_at is over an hour old.
+ * users, an existing row is only rewritten when the profile changed or last_seen_at is over a day old.
  */
 async function upsertUser(env: Env, u: TgUser): Promise<UserRow> {
   const now = Math.floor(Date.now() / 1000);
@@ -48,7 +66,7 @@ async function upsertUser(env: Env, u: TgUser): Promise<UserRow> {
        photo_url = excluded.photo_url, language_code = excluded.language_code, last_seen_at = excluded.last_seen_at
      WHERE users.first_name IS NOT excluded.first_name OR users.last_name IS NOT excluded.last_name
        OR users.username IS NOT excluded.username OR users.photo_url IS NOT excluded.photo_url
-       OR users.language_code IS NOT excluded.language_code OR users.last_seen_at < excluded.last_seen_at - 3600
+       OR users.language_code IS NOT excluded.language_code OR users.last_seen_at < excluded.last_seen_at - 86400
      RETURNING *`,
   )
     .bind(u.id, u.first_name ?? "", u.last_name ?? "", u.username ?? null, u.photo_url ?? null, u.language_code ?? null, now)
@@ -59,6 +77,9 @@ async function upsertUser(env: Env, u: TgUser): Promise<UserRow> {
 export const app = new Hono<AppEnv>();
 
 // Auth: every /api request carries Telegram's signed initData.
+const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
+let warnedDevBypass = false;
+
 app.use("*", async (c, next) => {
   const auth = c.req.header("authorization") ?? "";
   let tgUser: TgUser | null = null;
@@ -67,7 +88,13 @@ app.use("*", async (c, next) => {
     const data = await validateInitData(auth.slice(4), c.env.BOT_TOKEN);
     tgUser = data?.user ?? null;
     startParam = data?.startParam ?? null;
-  } else if (c.env.DEV_FAKE_USER_ID && ["localhost", "127.0.0.1"].includes(new URL(c.req.url).hostname)) {
+  } else if (c.env.DEV_FAKE_USER_ID && !LOCAL_HOSTS.includes(new URL(c.req.url).hostname)) {
+    // Never honour the dev bypass on a real host, even if the variable is set by mistake
+    if (!warnedDevBypass) {
+      warnedDevBypass = true;
+      console.error("DEV_FAKE_USER_ID is set but the request host is not local; ignoring it. Remove it from this environment.");
+    }
+  } else if (c.env.DEV_FAKE_USER_ID) {
     const cookieUser = /(?:^|;\s*)dev_user=(\d+)/.exec(c.req.header("cookie") ?? "")?.[1];
     const devId = Number(c.req.header("x-dev-user") || cookieUser || c.env.DEV_FAKE_USER_ID);
     tgUser = { id: devId, first_name: devId === Number(c.env.DEV_FAKE_USER_ID) ? "Dev" : `Tester${devId}`, last_name: "User", username: "dev", language_code: "en" };
@@ -87,12 +114,12 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-async function meView(c: C): Promise<Me> {
+async function meView(c: C, background?: (p: Promise<unknown>) => void): Promise<Me> {
   const u = c.get("user");
   const s = c.get("settings");
   const { results } = await c.env.DB.prepare(
     `SELECT o.id, o.service_id, o.service_name, o.platform, o.link, o.quantity FROM orders o
-     WHERE o.user_id = ?1 AND o.status != 'failed' AND o.id IN (SELECT MAX(id) FROM orders WHERE user_id = ?1 GROUP BY service_id, link)
+     WHERE o.id IN (SELECT MAX(id) FROM (SELECT id, service_id, link FROM orders WHERE user_id = ?1 AND status != 'failed' ORDER BY id DESC LIMIT 30) GROUP BY service_id, link)
      ORDER BY o.id DESC LIMIT 3`,
   )
     .bind(u.id)
@@ -115,7 +142,7 @@ async function meView(c: C): Promise<Me> {
     maxTopup: s.max_topup,
     supportUsername: s.support_username || null,
     channelUrl: s.channel_url || null,
-    channelRequired: await channelGateRequired(c.env, s, u),
+    channelRequired: await channelGateRequired(c.env, s, u, { background }),
     referralEnabled: !!s.referral_enabled,
     botUsername: s.bot_username || null,
     recent: results.map((r) => ({ id: r.id, serviceId: r.service_id, serviceName: r.service_name, platform: r.platform, link: r.link, quantity: r.quantity })),
@@ -126,7 +153,7 @@ app.get("/me", async (c) => {
   // Mini App opened from a referral link (t.me/<bot>/app?startapp=ref_<id>): link the new user to the referrer
   const ref = parseRef(c.get("startParam"));
   if (ref) await attachReferral(c.env, c.get("settings"), c.get("user").id, ref);
-  return c.json(await meView(c));
+  return c.json(await meView(c, (p) => c.executionCtx.waitUntil(p)));
 });
 
 /** The Verify button on the join-channel step */
@@ -159,7 +186,8 @@ app.get("/referrals", async (c) => c.json(await referralStats(c.env, c.get("sett
 app.get("/terms", (c) => c.json({ terms: c.get("settings").terms_text }));
 
 app.patch("/me", async (c) => {
-  const b = await c.req.json<{ lang?: string | null; notify?: boolean; canMessage?: boolean; acceptTerms?: boolean }>();
+  const b = await readBody<{ lang?: string | null; notify?: boolean; canMessage?: boolean; acceptTerms?: boolean }>(c);
+  if (!b) return err(c, 400, "INVALID_BODY");
   const u = c.get("user");
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -195,11 +223,14 @@ app.get("/catalog/categories", async (c) => {
 
 app.get("/catalog/services", async (c) => {
   cacheable(c);
-  const page = Math.max(0, Number(c.req.query("page") ?? 0) || 0);
+  const page = pageParam(c.req.query("page"));
   return c.json(await listServices(c.env, c.get("settings"), c.get("lang"), c.req.query("platform") ?? "", c.req.query("category") ?? "", page));
 });
 
-app.get("/catalog/search", async (c) => c.json(await searchServices(c.env, c.get("settings"), c.get("lang"), c.req.query("q") ?? "")));
+app.get("/catalog/search", async (c) => {
+  c.header("cache-control", "private, max-age=120");
+  return c.json(await searchServices(c.env, c.get("settings"), c.get("lang"), c.req.query("q") ?? ""));
+});
 
 app.get("/catalog/service/:id", async (c) => {
   const svc = await getService(c.env, c.get("settings"), c.get("lang"), Number(c.req.param("id")));
@@ -219,13 +250,15 @@ async function draftFor(c: C, draft: OrderDraft) {
 }
 
 function orderErr(c: C, e: unknown) {
+  if (e instanceof TooManyInvoices) return err(c, 429, "TOO_MANY_REQUESTS");
   if (e instanceof OrderError) return err(c, e.code === "INSUFFICIENT_FUNDS" ? 402 : 400, e.code, e.details);
   throw e;
 }
 
 app.post("/orders", async (c) => {
   if (await channelGateRequired(c.env, c.get("settings"), c.get("user"))) return err(c, 403, "CHANNEL_REQUIRED");
-  const draft = await c.req.json<OrderDraft & { payWith?: "balance" | "stars" }>();
+  const draft = await readBody<OrderDraft & { payWith?: "balance" | "stars" }>(c);
+  if (!draft || typeof draft.link !== "string") return err(c, 400, "INVALID_BODY");
   try {
     const { svc, check, charge } = await draftFor(c, draft);
     const link = draft.link.trim();
@@ -253,7 +286,7 @@ app.get("/orders", async (c) => {
   const u = c.get("user");
   const filter = c.req.query("filter") ?? "all";
   const q = (c.req.query("q") ?? "").trim();
-  const before = Number(c.req.query("before") ?? 0) || 2 ** 53;
+  const before = cursorParam(c.req.query("before"));
   const where = ["user_id = ?1", "id < ?2"];
   const vals: unknown[] = [u.id, before];
   if (filter === "active") where.push("status IN ('submitting','pending','processing','in_progress')");
@@ -285,7 +318,8 @@ async function ownOrder(c: C): Promise<OrderRow | null> {
 app.get("/orders/:id", async (c) => {
   let o = await ownOrder(c);
   if (!o) return err(c, 404, "ORDER_NOT_FOUND");
-  if (Date.now() / 1000 - o.checked_at > 20) o = await refreshOrder(c.env, o);
+  // Re-ask NotPanel at most every 90 s (20 s while the order is still being submitted); webhooks and cron cover the rest
+  if (Date.now() / 1000 - o.checked_at > (o.status === "submitting" ? 20 : 90)) o = await refreshOrder(c.env, o);
   const stars = await paidWithStars(c.env, [o.id]);
   return c.json(orderView(o, stars.has(o.id)));
 });
@@ -314,7 +348,7 @@ app.post("/orders/:id/refill", async (c) => {
 
 app.get("/wallet", async (c) => {
   const u = c.get("user");
-  const before = Number(c.req.query("before") ?? 0) || 2 ** 53;
+  const before = cursorParam(c.req.query("before"));
   const { results } = await c.env.DB.prepare("SELECT * FROM ledger WHERE user_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT 30")
     .bind(u.id, before)
     .all<{ id: number; delta: number; kind: LedgerItem["kind"]; ref: number | null; note: string | null; created_at: number }>();
@@ -326,12 +360,18 @@ app.get("/wallet", async (c) => {
 
 app.post("/wallet/topup", async (c) => {
   if (await channelGateRequired(c.env, c.get("settings"), c.get("user"))) return err(c, 403, "CHANNEL_REQUIRED");
-  const { amount } = await c.req.json<{ amount: number }>();
+  const b = await readBody<{ amount: number }>(c);
+  if (!b) return err(c, 400, "INVALID_BODY");
   const s = c.get("settings");
-  const micro = Math.round(Number(amount) * MICRO);
+  const micro = Math.round(Number(b.amount) * MICRO);
   if (!Number.isFinite(micro) || micro < s.min_topup || micro > s.max_topup) return err(c, 400, "INVALID_AMOUNT", { min: s.min_topup, max: s.max_topup });
-  const inv = await createInvoice(c.env, c.get("user").id, c.get("lang"), micro, null);
-  return c.json({ invoice: inv.link, stars: inv.stars, paymentId: inv.paymentId });
+  try {
+    const inv = await createInvoice(c.env, c.get("user").id, c.get("lang"), micro, null);
+    return c.json({ invoice: inv.link, stars: inv.stars, paymentId: inv.paymentId });
+  } catch (e) {
+    if (e instanceof TooManyInvoices) return err(c, 429, "TOO_MANY_REQUESTS");
+    throw e;
+  }
 });
 
 app.get("/payments/:id", async (c) => {

@@ -1,7 +1,11 @@
+# Security headers for every response (no CSP: Telegram embeds the page).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
 # Hashed build files never change: let Telegram's webview cache them for a year.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 /platforms/*
-  Cache-Control: public, max-age=604800
+  Cache-Control: public, max-age=2592000
 /brand/*
   Cache-Control: public, max-age=604800

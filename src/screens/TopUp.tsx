@@ -1,6 +1,6 @@
 import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { api } from "../api";
+import { api, pollDelay } from "../api";
 import { ArtTopUpSuccess } from "../art";
 import { money, num } from "../format";
 import { t, type Key } from "../i18n";
@@ -86,14 +86,14 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
       if (status === "paid") {
         // The bot credits the balance when Telegram confirms; poll briefly.
         let confirmed = false;
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 5; i++) {
           const p = await api<{ status: string }>(`/payments/${r.paymentId}`).catch(() => null);
           if (p?.status === "paid") {
             confirmed = true;
             break;
           }
           if (i === 1) toast(t("topup.waiting")); // only when it isn't instant
-          await new Promise((res) => setTimeout(res, 1000));
+          await new Promise((res) => setTimeout(res, pollDelay(i)));
         }
         await refreshMe().catch(() => {});
         onDone({ added: micro, oldBalance, paymentId: r.paymentId, confirmed });
@@ -196,19 +196,20 @@ function TopUpSuccess({ added, oldBalance, paymentId, confirmed, ret }: Done & {
     return () => clearTimeout(h);
   }, []);
 
-  // Telegram said "paid" but the bot hadn't credited the balance yet: keep checking quietly for about a minute.
+  // Telegram said "paid" but the bot hadn't credited the balance yet: keep checking quietly for up to 3 minutes.
   useEffect(() => {
     if (confirmed) return;
     let live = true;
     let tries = 0;
+    const started = Date.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = async () => {
       const p = await api<{ status: string }>(`/payments/${paymentId}`).catch(() => null);
       if (!live) return;
       if (p?.status === "paid") await refreshMe().catch(() => {});
-      else if (++tries < 20) timer = setTimeout(check, 3000);
+      else if (Date.now() - started < 180_000) timer = setTimeout(check, pollDelay(tries++));
     };
-    timer = setTimeout(check, 3000);
+    timer = setTimeout(check, pollDelay(tries++));
     return () => {
       live = false;
       clearTimeout(timer);

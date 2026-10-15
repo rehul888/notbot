@@ -26,6 +26,9 @@ interface PaymentRow {
   created_at: number;
 }
 
+/** Thrown by createInvoice when the user already has too many unpaid invoices (routes answer 429). */
+export class TooManyInvoices extends Error {}
+
 /** Creates a pending payment and a Stars invoice link for the Mini App to open with openInvoice. */
 export async function createInvoice(
   env: Env,
@@ -37,12 +40,17 @@ export async function createInvoice(
   const s = await getSettings(env);
   const stars = starsFor(amount, s);
   const now = Math.floor(Date.now() / 1000);
+  // The cap is part of the INSERT so concurrent requests can't slip past it
   const row = await env.DB.prepare(
-    "INSERT INTO payments (user_id, stars, amount, draft, status, created_at) VALUES (?1, ?2, ?3, ?4, 'pending', ?5) RETURNING id",
+    `INSERT INTO payments (user_id, stars, amount, draft, status, created_at)
+     SELECT ?1, ?2, ?3, ?4, 'pending', ?5
+     WHERE (SELECT COUNT(*) FROM payments WHERE user_id = ?1 AND status = 'pending' AND created_at > ?5 - 3600) < 5
+     RETURNING id`,
   )
     .bind(userId, stars, amount, draft ? JSON.stringify(draft) : null, now)
     .first<{ id: number }>();
-  const id = row!.id;
+  if (!row) throw new TooManyInvoices();
+  const id = row.id;
   const title = botPlain(lang, "invoiceTitle").slice(0, 32);
   const description = (draft ? draft.label : botPlain(lang, "invoiceTopup", { amount: usd(amount) })).slice(0, 255);
   const link = await tg<string>(env.BOT_TOKEN, "createInvoiceLink", {
@@ -55,6 +63,12 @@ export async function createInvoice(
   return { link, stars, paymentId: id };
 }
 
+/** Cron: unpaid invoices expire after an hour, so drop the ones older than a day. */
+export async function cleanupPendingPayments(env: Env): Promise<void> {
+  const cutoff = Math.floor(Date.now() / 1000) - 86400;
+  await env.DB.prepare("DELETE FROM payments WHERE status = 'pending' AND created_at < ?1").bind(cutoff).run();
+}
+
 async function paymentFromPayload(env: Env, payload: string): Promise<PaymentRow | null> {
   const m = /^p(\d+)$/.exec(payload);
   if (!m) return null;
@@ -65,12 +79,17 @@ async function paymentFromPayload(env: Env, payload: string): Promise<PaymentRow
 export async function onPreCheckout(env: Env, q: { id: string; from: { id: number }; currency: string; total_amount: number; invoice_payload: string }) {
   const p = await paymentFromPayload(env, q.invoice_payload);
   const now = Math.floor(Date.now() / 1000);
-  const ok =
+  const valid =
     !!p && p.status === "pending" && p.user_id === q.from.id && q.currency === "XTR" && q.total_amount === p.stars && now - p.created_at < 3600;
+  // Don't take Stars from a banned user, we would not let them spend the balance anyway
+  const banned = valid ? !!(await env.DB.prepare("SELECT banned FROM users WHERE id = ?1").bind(q.from.id).first<{ banned: number }>())?.banned : false;
+  const ok = valid && !banned;
   await tg(env.BOT_TOKEN, "answerPreCheckoutQuery", {
     pre_checkout_query_id: q.id,
     ok,
-    ...(ok ? {} : { error_message: "This payment link has expired. Please start the payment again in the app." }),
+    ...(ok
+      ? {}
+      : { error_message: banned ? "Your account can't make payments." : "This payment link has expired. Please start the payment again in the app." }),
   });
 }
 
@@ -78,11 +97,16 @@ export async function onPreCheckout(env: Env, q: { id: string; from: { id: numbe
 export async function onSuccessfulPayment(
   env: Env,
   from: { id: number; language_code?: string },
-  sp: { invoice_payload: string; telegram_payment_charge_id: string; total_amount: number },
+  sp: { invoice_payload: string; telegram_payment_charge_id: string; total_amount: number; currency: string },
 ): Promise<void> {
   const p = await paymentFromPayload(env, sp.invoice_payload);
   if (!p) {
     console.error("payment without record", sp.telegram_payment_charge_id);
+    return;
+  }
+  // Never credit something that doesn't match the invoice we issued
+  if (sp.currency !== "XTR" || sp.total_amount !== p.stars || from.id !== p.user_id) {
+    console.error("payment mismatch, not credited", sp.telegram_payment_charge_id, p.id, sp.currency, sp.total_amount, from.id);
     return;
   }
   const now = Math.floor(Date.now() / 1000);
@@ -100,7 +124,19 @@ export async function onSuccessfulPayment(
     ),
     env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND changes() = 1").bind(p.user_id, p.amount),
   ]);
-  if (!mark.meta.changes) return; // already processed
+  if (!mark.meta.changes) {
+    // Already processed. A different charge for the same invoice means the user paid twice: give the second one back.
+    try {
+      const cur = await env.DB.prepare("SELECT charge_id FROM payments WHERE id = ?1").bind(p.id).first<{ charge_id: string | null }>();
+      if (cur?.charge_id && cur.charge_id !== sp.telegram_payment_charge_id) {
+        await tg(env.BOT_TOKEN, "refundStarPayment", { user_id: p.user_id, telegram_payment_charge_id: sp.telegram_payment_charge_id });
+        console.error("duplicate payment refunded", p.id, sp.telegram_payment_charge_id);
+      }
+    } catch (e) {
+      console.error("duplicate payment refund failed", p.id, sp.telegram_payment_charge_id, e);
+    }
+    return;
+  }
 
   const user = await env.DB.prepare("SELECT lang, language_code FROM users WHERE id = ?1").bind(p.user_id).first<{ lang: string | null; language_code: string | null }>();
   const lang = pickLang(user?.lang ?? user?.language_code ?? from.language_code);
@@ -166,17 +202,25 @@ export async function refundPayment(env: Env, paymentId: number): Promise<{ ok: 
     await tg(env.BOT_TOKEN, "refundStarPayment", { user_id: p.user_id, telegram_payment_charge_id: p.charge_id });
     return { ok: true };
   } catch (e) {
-    // Undo the reservation
+    const msg = (e as Error).message ?? "";
+    const rejected = /^Telegram refundStarPayment: 400 (.*)$/s.exec(msg);
+    if (rejected && rejected[1].includes("CHARGE_ALREADY_REFUNDED")) return { ok: true }; // Stars are already back with the user
+    if (!rejected) {
+      // Network error, 5xx or anything unclear: Telegram may have refunded, so keep the balance reserved
+      console.error("refund uncertain, balance stays reserved", p.id, msg);
+      return { ok: false, error: "REFUND_UNCERTAIN" };
+    }
+    // Telegram definitely refused: give the balance back (once, guarded by the status change)
     await env.DB.batch([
       env.DB.prepare("UPDATE payments SET status = 'paid' WHERE id = ?1 AND status = 'refunded'").bind(p.id),
-      env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) VALUES (?1, ?2, 'admin', ?3, 'refund failed', ?4)").bind(
+      env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) SELECT ?1, ?2, 'admin', ?3, 'refund failed', ?4 WHERE changes() = 1").bind(
         p.user_id,
         p.amount,
         p.id,
         now,
       ),
-      env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1").bind(p.user_id, p.amount),
+      env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND changes() = 1").bind(p.user_id, p.amount),
     ]);
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: msg };
   }
 }

@@ -148,12 +148,20 @@ export async function syncTick(env: Env): Promise<void> {
 
   // Services we list, with their position in NotPanel's catalog (popular first)
   const items: { item: CatalogItem; sort: number; fp: string }[] = [];
+  let badRate = 0;
   for (const p of pages)
     p.items.forEach((item, idx) => {
       if (!item.available) return;
       if (s.only_timed && item.average_time_minutes == null) return;
+      // A missing, zero, negative or garbage supplier rate must never make a service free or break the batch
+      const rate = Number(item.rate);
+      if (item.rate === null || item.rate === undefined || !Number.isFinite(rate) || rate <= 0 || usdToMicro(item.rate) <= 0) {
+        badRate++;
+        return;
+      }
       items.push({ item, sort: (p.page - 1) * PAGE_SIZE + idx, fp: fingerprint(item) });
     });
+  if (badRate) console.warn(`sync: skipped ${badRate} catalog item(s) with an invalid rate`);
 
   if (items.length) {
     const ids = items.map((i) => Number(i.item.service));

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { notpanelSignature, toHex, validateInitData } from "../worker/auth";
 import { checkDraft, orderCharge, sellRate } from "../worker/pricing";
+import { platformName } from "../shared/platforms";
+import { cancelOrder, OrderError, placeOrder, refillOrder, type OrderRow } from "../worker/orders";
+import type { Env } from "../worker/env";
 
 const enc = new TextEncoder();
 async function hmac(key: Uint8Array<ArrayBuffer> | ArrayBuffer, data: string) {
@@ -36,6 +39,70 @@ describe("pricing", () => {
       quantity: 3,
       fields: { comments: "a\nb\nc" },
     } as never);
+  });
+});
+
+describe("draft input hardening", () => {
+  const base = { type_key: "default", min: 1, max: 1000, step: 1, dripfeed: true, dripMax: 600 };
+  const text = { key: "note", kind: "text" as const, required: false, label: "" };
+  const lines = { key: "comments", kind: "lines" as const, required: false, label: "", max_length: 5 };
+  const link = "https://t.me/x/1";
+
+  it("rejects a non-string link", () => {
+    expect(checkDraft(base as never, { link: 123 as never, quantity: 5 } as never)).toEqual({ error: "INVALID_LINK" });
+    expect(checkDraft(base as never, { link: ["https://t.me/x"] as never, quantity: 5 } as never)).toEqual({ error: "INVALID_LINK" });
+  });
+  it("rejects non-string field values", () => {
+    const svc = { ...base, fields: [text] };
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: { note: 5 } as never })).toMatchObject({ error: "INVALID_FIELD" });
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: { note: { a: 1 } } as never })).toMatchObject({ error: "INVALID_FIELD" });
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: { other: 5 } as never })).toMatchObject({ error: "INVALID_FIELD" });
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: ["x"] as never })).toMatchObject({ error: "INVALID_FIELD" });
+  });
+  it("ignores inherited object keys", () => {
+    const svc = { ...base, fields: [{ ...text, key: "constructor" }] };
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: {} })).toEqual({ quantity: 5, fields: {} });
+  });
+  it("caps field lengths", () => {
+    const svc = { ...base, fields: [text] };
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: { note: "a".repeat(2000) } })).toMatchObject({ quantity: 5 });
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: { note: "a".repeat(2001) } })).toMatchObject({ error: "INVALID_FIELD" });
+    const withMax = { ...base, fields: [{ ...text, max_length: 3000 }] };
+    expect(checkDraft(withMax as never, { link, quantity: 5, fields: { note: "a".repeat(3000) } })).toMatchObject({ quantity: 5 });
+  });
+  it("caps lines fields", () => {
+    const svc = { ...base, type_key: "custom_comments", min: 1, max: 20000, fields: [lines] };
+    expect(checkDraft(svc as never, { link, fields: { comments: "abcdef" } })).toMatchObject({ error: "INVALID_FIELD" });
+    expect(checkDraft(svc as never, { link, fields: { comments: Array(10_000).fill("a").join("\n") } })).toMatchObject({ quantity: 10_000 });
+    expect(checkDraft(svc as never, { link, fields: { comments: Array(10_001).fill("a").join("\n") } })).toMatchObject({ error: "INVALID_FIELD" });
+  });
+  it("validates drip-feed minutes", () => {
+    const svc = { ...base, fields: [] };
+    expect(checkDraft(svc, { link, quantity: 5, dripMinutes: 60 })).toEqual({ quantity: 5, fields: {} });
+    for (const bad of [0, -1, 1.5, 601, Number.NaN, "60" as never, Infinity])
+      expect(checkDraft(svc, { link, quantity: 5, dripMinutes: bad })).toMatchObject({ error: expect.stringMatching(/DRIP_FEED/) });
+    expect(checkDraft(svc, { link, quantity: 5, dripMinutes: 1.5 })).toEqual({ error: "DRIP_FEED_INVALID" });
+    expect(checkDraft({ ...svc, dripfeed: false }, { link, quantity: 5, dripMinutes: 5 })).toEqual({ error: "DRIP_FEED_NOT_AVAILABLE" });
+  });
+});
+
+describe("platform names", () => {
+  it("never returns prototype values", () => {
+    expect(platformName("telegram")).toBe("Telegram");
+    expect(platformName("constructor")).toBe("Constructor");
+    expect(platformName("__proto__")).toBe("__proto__");
+    expect(platformName("toString")).toBe("ToString");
+    expect(platformName("new-site")).toBe("New Site");
+  });
+});
+
+describe("dev order guard", () => {
+  const dev = { DEV_FAKE_USER_ID: "1" } as unknown as Env;
+  const svc = { id: 1, name: "n", platform: "p", category: "c", rate: 1000, quantityMode: "free", cost: 1 } as never;
+  it("refuses place, cancel and refill in dev before touching anything", async () => {
+    await expect(placeOrder(dev, 1, svc, "https://x.y", 10, {}, undefined)).rejects.toMatchObject({ code: "DEV_ORDERS_DISABLED" });
+    await expect(cancelOrder(dev, { np_order_id: 5 } as OrderRow)).rejects.toBeInstanceOf(OrderError);
+    await expect(refillOrder(dev, { np_order_id: 5 } as OrderRow)).rejects.toMatchObject({ code: "DEV_ORDERS_DISABLED" });
   });
 });
 
