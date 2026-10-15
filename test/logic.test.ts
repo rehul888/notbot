@@ -142,3 +142,31 @@ describe("custom emoji", () => {
     expect(out).not.toContain('">🔢');
   });
 });
+
+describe("whole Stars pricing", () => {
+  it("always rounds up to a whole Star (1.2 ⭐ → 2 ⭐)", async () => {
+    const { toStars, sellStars, orderCharge, starsToUsd } = await import("../worker/pricing");
+    expect(toStars(15_584, 77)).toBe(2); // $0.015584 × 77 = 1.2 ⭐ → 2 ⭐
+    expect(toStars(1_000_000, 77)).toBe(77); // exactly $1 → 77 ⭐ (no float drift upwards)
+    expect(sellStars(5_200, 30, null, 77)).toBe(1); // $0.0068/1K → 0.52 ⭐ → 1 ⭐ per 1K
+    expect(sellStars(1_200_000, 0, null, 77)).toBe(93); // $1.20 → 92.4 ⭐ → 93 ⭐
+    expect(orderCharge(93, 1000, "free")).toBe(93);
+    expect(orderCharge(93, 1500, "free")).toBe(140); // 139.5 → 140
+    expect(orderCharge(1, 10, "free")).toBe(1); // never below 1 ⭐
+    expect(orderCharge(150, 1, "fixed")).toBe(150);
+    expect(starsToUsd(77, 77)).toBe(1_000_000);
+  });
+});
+
+describe("refunds in whole Stars", () => {
+  it("refunds the full charge when canceled, and rounds partial refunds up (never above the charge)", async () => {
+    const { refundFor } = await import("../worker/orders");
+    const o = { id: 1, charge: 19, quantity: 1000 } as never;
+    expect(refundFor(o, "cancelled", null)).toBe(19); // canceled, nothing delivered → everything back
+    expect(refundFor(o, "cancelled", 1000)).toBe(19);
+    expect(refundFor(o, "partial", 10)).toBe(1); // 0.19 ⭐ → 1 ⭐ (not 0)
+    expect(refundFor(o, "partial", 500)).toBe(10); // 9.5 → 10
+    expect(refundFor(o, "partial", 1000)).toBe(19); // capped at the charge
+    expect(refundFor(o, "completed", 0)).toBe(0);
+  });
+});

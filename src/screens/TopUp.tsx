@@ -2,7 +2,7 @@ import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, pollDelay } from "../api";
 import { ArtTopUpSuccess } from "../art";
-import { money, num } from "../format";
+import { num, stars } from "../format";
 import { t, type Key } from "../i18n";
 import { Icon, StarIcon } from "../icons";
 import { refreshMe } from "../me";
@@ -12,8 +12,9 @@ import { meStore } from "../store";
 import { haptic, openInvoice } from "../tg";
 import { BackNav, BottomButtons, LargeTitle, Num, Presets, Screen, Section, errText, toast } from "../ui";
 
-const PRESETS = [1, 5, 10, 25, 50];
-const PRESET_OPTIONS = PRESETS.map((p): [number, string] => [p, `$${p}`]);
+const PRESETS = [50, 100, 250, 500, 1000, 2500];
+/** Pre-selected amount when the route has no `?amount=`. */
+const DEFAULT_STARS = 250;
 
 /** Entrance delay for `.rise` (spec §7.8 timeline). */
 const at = (ms: number) => `--d:${ms}ms`;
@@ -27,9 +28,10 @@ function tn(key: Key, vars: Record<string, ComponentChildren>): ComponentChildre
     .map((part, i) => (i % 2 ? <Fragment key={i}>{vars[part]}</Fragment> : part));
 }
 
-/** `?amount=` prefill in dollars (OrderForm "Add {amount} to balance"), else $5. */
-function prefill(v: string | null): string {
-  return v && /^\d{1,6}([.,]\d{1,2})?$/.test(v) ? v : "5";
+/** `?amount=` prefill in whole Stars (OrderForm "Add {amount}"), else a default, kept within the top-up limits. */
+function prefill(v: string | null, min: number, max: number): string {
+  const n = v && /^\d{1,7}$/.test(v) ? Number(v) : DEFAULT_STARS;
+  return String(Math.min(Math.max(n, min), max > 0 ? max : n));
 }
 
 /** `?ret=` in-app route to go back to after paying; anything that isn't an app path is ignored. */
@@ -47,25 +49,24 @@ export function TopUp() {
   return (
     <>
       <BackNav to={ret ?? "/wallet"} />
-      {done ? <TopUpSuccess {...done} ret={ret} /> : <TopUpForm initial={prefill(query.get("amount"))} onDone={setDone} backTo={ret ?? "/wallet"} />}
+      {done ? <TopUpSuccess {...done} ret={ret} /> : <TopUpForm initial={query.get("amount")} onDone={setDone} backTo={ret ?? "/wallet"} />}
     </>
   );
 }
 
-function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: Done) => void; backTo: string }) {
+function TopUpForm({ initial, onDone, backTo }: { initial: string | null; onDone: (d: Done) => void; backTo: string }) {
   const me = meStore.use()!;
-  const [text, setText] = useState(initial);
+  const [text, setText] = useState(() => prefill(initial, me.minTopup, me.maxTopup));
   const [busy, setBusy] = useState(false);
   /** The amount error shows after blur or a Pay tap, never while typing. */
   const [showErr, setShowErr] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
-  const amount = Number(text.replace(",", ".")) || 0;
-  const micro = Math.round(amount * 1e6);
-  const stars = Math.max(1, Math.ceil(amount * me.starsPerUsd - 1e-9));
-  const valid = micro >= me.minTopup && micro <= me.maxTopup;
+  const amount = Number(text) || 0;
+  const valid = Number.isInteger(amount) && amount >= me.minTopup && amount <= me.maxTopup;
   const err = showErr && !valid;
-  const limits = { min: <Num>{money(me.minTopup)}</Num>, max: <Num>{money(me.maxTopup)}</Num> };
+  const limits = { min: <Num>{stars(me.minTopup)}</Num>, max: <Num>{stars(me.maxTopup)}</Num> };
+  const presets = PRESETS.filter((p) => p >= me.minTopup && p <= me.maxTopup);
 
   const pay = async () => {
     if (busy) return;
@@ -81,7 +82,7 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
     setBusy(true);
     const oldBalance = me.balance;
     try {
-      const r = await api<{ invoice: string; paymentId: number }>("/wallet/topup", { body: { amount } });
+      const r = await api<{ invoice: string; stars: number; paymentId: number }>("/wallet/topup", { body: { stars: amount } });
       const status = await openInvoice(r.invoice);
       if (status === "paid") {
         // The bot credits the balance when Telegram confirms; poll briefly.
@@ -96,7 +97,7 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
           await new Promise((res) => setTimeout(res, pollDelay(i)));
         }
         await refreshMe().catch(() => {});
-        onDone({ added: micro, oldBalance, paymentId: r.paymentId, confirmed });
+        onDone({ added: amount, oldBalance, paymentId: r.paymentId, confirmed });
         return;
       }
     } catch (e) {
@@ -107,36 +108,33 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
 
   const onInput = (e: Event) => {
     const el = e.currentTarget as HTMLInputElement;
-    const clean = el.value.replace(/[^\d.,]/g, "");
+    const clean = el.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 7);
     if (clean !== el.value) el.value = clean; // keep rejected characters out even when the state doesn't change
     setText(clean);
     setShowErr(false);
   };
 
   return (
-    <Screen bottom="native" overlay={<BottomButtons main={{ text: t("topup.pay", { stars: num(stars) }), onClick: pay, progress: busy, shine: true }} secondary={{ text: t("common.back"), onClick: () => back(backTo) }} />}>
-      <LargeTitle size="title" title={t("topup.title")} sub={tn("topup.balance", { amount: <Num>{money(me.balance)}</Num> })} />
+    <Screen bottom="native" overlay={<BottomButtons main={{ text: t("topup.pay", { stars: num(amount > 0 ? amount : me.minTopup) }), onClick: pay, progress: busy, shine: true }} secondary={{ text: t("common.back"), onClick: () => back(backTo) }} />}>
+      <LargeTitle size="title" title={t("topup.title")} sub={tn("topup.balance", { amount: <Num>{stars(me.balance)}</Num> })} />
 
       <Section
         labelFor="amt"
         header={t("topup.amount")}
-        footer={
-          <>
-            {tn("topup.rate", { n: <Num>{num(me.starsPerUsd)}</Num> })} · {tn("topup.limits", limits)}
-          </>
-        }
+        footer={tn("topup.limits", limits)}
       >
         <div class={err ? "card amount-card invalid" : "card amount-card"}>
-          {/* Amounts read left to right in every language: "$", the number, then the Stars it costs. */}
+          {/* Amounts read left to right in every language: the star, then the number. */}
           <div class="row1" dir="ltr">
-            <span class="num-l hint" aria-hidden="true">
-              $
+            <span class="stars-eq" aria-hidden="true">
+              <StarIcon size={26} />
             </span>
             <input
               ref={input}
               id="amt"
               class="num-l"
-              inputMode="decimal"
+              inputMode="numeric"
+              pattern="[0-9]*"
               enterKeyHint="done"
               dir="ltr"
               autoComplete="off"
@@ -147,14 +145,10 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
               onBlur={() => setShowErr(!!text && !valid)}
               onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
-            <span class="stars-eq">
-              <StarIcon size={18} />
-              <b class="num-s">{num(stars)}</b>
-            </span>
           </div>
           <Presets
-            value={PRESETS.includes(amount) ? amount : null}
-            options={PRESET_OPTIONS}
+            value={presets.includes(amount) ? amount : null}
+            options={presets.map((p): [number, string] => [p, stars(p)])}
             label={t("topup.amount")}
             onChange={(v) => {
               setText(String(v));
@@ -170,10 +164,6 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
         ) : null}
       </Section>
 
-      <p class="t-headline center" aria-live="polite">
-        {valid ? tn("topup.summary", { stars: <Num>{num(stars)}</Num>, amount: <Num>{money(micro)}</Num> }) : " "}
-      </p>
-
       <div class="card info">
         <span class="tile cream">
           <StarIcon size={18} />
@@ -187,7 +177,7 @@ function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: D
 function TopUpSuccess({ added, oldBalance, paymentId, confirmed, ret }: Done & { ret: string | null }) {
   const me = meStore.use()!;
   // Count from the balance before paying to the new one (once, at mount); follows a late credit too.
-  const shown = useCountUp(me.balance, { from: oldBalance, duration: 900, delay: 300, step: 10_000 });
+  const shown = useCountUp(me.balance, { from: oldBalance, duration: 900, delay: 300 });
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -237,14 +227,14 @@ function TopUpSuccess({ added, oldBalance, paymentId, confirmed, ret }: Done & {
         <ArtTopUpSuccess />
       </div>
       <div class="rise" style={at(240)} role="status">
-        <LargeTitle align="center" size="title" title={t("topup.successTitle")} sub={tn("topup.done", { amount: <Num>{money(added)}</Num> })} />
+        <LargeTitle align="center" size="title" title={t("topup.successTitle")} sub={tn("topup.done", { amount: <Num>{stars(added, { sign: true })}</Num> })} />
       </div>
       <div class="card pad new-balance rise" style={at(340)}>
         <span>{t("topup.newBalance")}</span>
         <b class="num-xl count" dir="ltr" aria-hidden="true">
-          {money(shown)}
+          {stars(shown)}
         </b>
-        <span class="sr">{money(me.balance)}</span>
+        <span class="sr">{stars(me.balance)}</span>
       </div>
     </Screen>
   );

@@ -1,6 +1,6 @@
 // Update-channel gate and referral rewards.
 import { type Lang, pickLang, type ReferralStats } from "../shared/types";
-import { usdText } from "./botMessages";
+import { starsText } from "./botMessages";
 import { type Env, isOwner } from "./env";
 import { botText } from "./i18n";
 import type { Settings } from "./settings";
@@ -119,8 +119,9 @@ export async function attachReferral(env: Env, s: Settings, referredId: number, 
     .run();
 }
 
-export function rewardMicro(s: Settings): number {
-  return s.stars_per_usd > 0 ? Math.round((s.referral_reward_stars / s.stars_per_usd) * 1_000_000) : 0;
+/** Referral reward in whole Stars */
+export function rewardStars(s: Settings): number {
+  return Math.max(0, Math.round(s.referral_reward_stars));
 }
 
 /**
@@ -147,7 +148,7 @@ export async function onHomeReached(env: Env, s: Settings, waitUntil: (p: Promis
     if (r !== "member") return;
     await env.DB.prepare("UPDATE users SET channel_ok = 1, channel_checked_at = ?2 WHERE id = ?1").bind(userId, now).run();
   }
-  const reward = rewardMicro(s);
+  const reward = rewardStars(s);
   if (reward <= 0) return;
   // Daily cap per referrer: over the cap the referral is recorded as "capped" (counted, not paid).
   const [mark] = await env.DB.batch([
@@ -178,7 +179,7 @@ async function notifyReferrer(env: Env, s: Settings, referrerId: number, friend:
   const lang: Lang = pickLang(u.lang ?? u.language_code);
   await tg(env.BOT_TOKEN, "sendMessage", {
     chat_id: referrerId,
-    text: botText(lang, "referralReward", { name: friend || "—", amount: usdText(reward), balance: usdText(u.balance) }),
+    text: botText(lang, "referralReward", { name: friend || "—", amount: starsText(reward), balance: starsText(u.balance) }),
     parse_mode: "HTML",
     reply_markup: s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "inviteMore"), `${s.app_url}/#/invite`, INVITE_ICON_EMOJI_ID)]] } : undefined,
   });
@@ -199,8 +200,8 @@ export async function referralStats(env: Env, s: Settings, userId: number): Prom
   return {
     link: s.bot_username ? `https://t.me/${s.bot_username}?start=ref_${userId}` : null,
     enabled: !!s.referral_enabled,
-    rewardStars: s.referral_reward_stars,
-    reward: rewardMicro(s),
+    rewardStars: rewardStars(s),
+    reward: rewardStars(s),
     invited: t.invited,
     joined: t.joined ?? 0,
     earned: t.earned,

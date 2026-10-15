@@ -1,12 +1,13 @@
 import { Hono, type Context } from "hono";
-import { type LedgerItem, type Me, type OrderDraft, pickLang, type Lang, LANGS, MICRO } from "../../shared/types";
+import { type LedgerItem, type Me, type OrderDraft, pickLang, type Lang, LANGS } from "../../shared/types";
 import { validateInitData, type TgUser } from "../auth";
 import { getService, listCategories, listPlatforms, listServices, searchServices } from "../catalog";
 import { type Env, isOwner } from "../env";
+import { starsText } from "../botMessages";
 import { botPlain } from "../i18n";
 import { cancelOrder, getOrderRow, OrderError, orderView, placeOrder, refillOrder, refreshOrder, type OrderRow } from "../orders";
 import { createInvoice, TooManyInvoices } from "../payments";
-import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, rewardMicro, verifyChannel } from "../growth";
+import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, rewardStars, verifyChannel } from "../growth";
 import { checkDraft, orderCharge } from "../pricing";
 import { getSettings, type Settings } from "../settings";
 
@@ -138,13 +139,13 @@ async function meView(c: C, background?: (p: Promise<unknown>) => void): Promise
     termsAccepted: !!u.terms_accepted_at,
     isAdmin: isOwner(c.env, u.id),
     starsPerUsd: s.stars_per_usd,
-    minTopup: s.min_topup,
-    maxTopup: s.max_topup,
+    minTopup: s.min_topup_stars,
+    maxTopup: s.max_topup_stars,
     supportUsername: s.support_username || null,
     channelUrl: s.channel_url || null,
     channelRequired: await channelGateRequired(c.env, s, u, { background }),
     referralEnabled: !!s.referral_enabled,
-    referralReward: rewardMicro(s),
+    referralReward: rewardStars(s),
     botUsername: s.bot_username || null,
     recent: results.map((r) => ({ id: r.id, serviceId: r.service_id, serviceName: r.service_name, platform: r.platform, link: r.link, quantity: r.quantity })),
   };
@@ -365,13 +366,15 @@ app.get("/wallet", async (c) => {
 
 app.post("/wallet/topup", async (c) => {
   if (await channelGateRequired(c.env, c.get("settings"), c.get("user"))) return err(c, 403, "CHANNEL_REQUIRED");
-  const b = await readBody<{ amount: number }>(c);
+  const b = await readBody<{ stars: number }>(c);
   if (!b) return err(c, 400, "INVALID_BODY");
   const s = c.get("settings");
-  const micro = Math.round(Number(b.amount) * MICRO);
-  if (!Number.isFinite(micro) || micro < s.min_topup || micro > s.max_topup) return err(c, 400, "INVALID_AMOUNT", { min: s.min_topup, max: s.max_topup });
+  // Whole Stars only
+  const stars = Number(b.stars);
+  if (!Number.isInteger(stars) || stars < s.min_topup_stars || stars > s.max_topup_stars)
+    return err(c, 400, "INVALID_AMOUNT", { min: starsText(s.min_topup_stars), max: starsText(s.max_topup_stars) });
   try {
-    const inv = await createInvoice(c.env, c.get("user").id, c.get("lang"), micro, null);
+    const inv = await createInvoice(c.env, c.get("user").id, c.get("lang"), stars, null);
     return c.json({ invoice: inv.link, stars: inv.stars, paymentId: inv.paymentId });
   } catch (e) {
     if (e instanceof TooManyInvoices) return err(c, 429, "TOO_MANY_REQUESTS");

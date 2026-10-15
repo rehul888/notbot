@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { OrderView, ServiceDetail, ServiceField } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { api, ApiError, cachedApi } from "../api";
-import { duration, iso, lower, lrm, money, num, short } from "../format";
+import { duration, iso, lower, lrm, num, short, stars } from "../format";
 import { t } from "../i18n";
 import { Icon, StarIcon } from "../icons";
 import { refreshMe } from "../me";
@@ -44,9 +44,7 @@ type PayWith = "balance" | "stars";
 const units = () => ({ m: t("units.m"), h: t("units.h"), d: t("units.d") });
 const PRESETS = [100, 500, 1000, 5000, 10000, 50000];
 const SPEEDS = [60, 360, 720, 1440, 2880];
-/** One cent in micro-USD. */
-const CENT = 10_000;
-
+/** Order price in whole Stars: rate is Stars per 1,000 (the whole price for a fixed package), rounded up, at least 1. */
 function charge(svc: ServiceDetail, qty: number): number {
   if (svc.quantityMode === "fixed") return svc.rate;
   return Math.max(1, Math.ceil((svc.rate * qty) / 1000));
@@ -137,12 +135,11 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
   const qty = qtyPick ?? initialQty(svc, query);
   const quantity = svc.quantityMode === "lines" && linesKey ? countLines(fields[linesKey] ?? "") : fixed ? svc.min : qty;
   const total = charge(svc, quantity);
-  const stars = Math.max(1, Math.ceil((total / 1e6) * me.starsPerUsd - 1e-9));
   const enough = me.balance >= total;
   const payWith: PayWith = payPick ?? (enough ? "balance" : "stars");
   const shortOnBalance = payWith === "balance" && !enough;
-  // Top-up that covers the order: at least the minimum top-up, rounded up to a cent, within the maximum.
-  const needRaw = Math.ceil(Math.max(total - me.balance, me.minTopup) / CENT) * CENT;
+  // Top-up that covers the order: the shortfall, at least the minimum top-up, within the maximum.
+  const needRaw = Math.max(total - me.balance, me.minTopup);
   const need = me.maxTopup > 0 ? Math.min(needRaw, me.maxTopup) : needRaw;
 
   const missing: string[] = [];
@@ -274,14 +271,14 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
     } catch {
       /* not critical */
     }
-    navigate(`/topup?amount=${(need / 1e6).toFixed(2)}&ret=${enc(ret)}`);
+    navigate(`/topup?amount=${need}&ret=${enc(ret)}`);
   };
 
-  // Telegram draws these labels natively: lrm() keeps "$0.078" from turning into "0.078$" in Arabic.
+  // Telegram draws these labels natively: lrm() keeps "120 ⭐" in order inside Arabic.
   const main: ButtonSpec = shortOnBalance
-    ? { text: t("form.addFunds", { amount: lrm(money(need)) }), onClick: addFunds }
+    ? { text: t("form.addFunds", { amount: lrm(stars(need)) }), onClick: addFunds }
     : {
-        text: payWith === "stars" ? t("form.payStars", { stars: num(stars) }) : t("form.pay", { amount: lrm(money(total)) }),
+        text: payWith === "stars" ? t("form.payStars", { stars: num(total) }) : t("form.pay", { amount: lrm(stars(total)) }),
         onClick: submit,
         progress: busy,
         shine: true,
@@ -312,7 +309,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
             {/* One span per chip: the chip is a flex row, and loose text + <bdi> would each become a spaced item. */}
             <Chip selected>
               <span>
-                <Num>{money(svc.rate)}</Num>
+                <Num>{stars(svc.rate)}</Num>
                 {fixed ? null : ` ${t("common.per1k")}`}
               </span>
             </Chip>
@@ -454,7 +451,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
             on={payWith === "balance"}
             onClick={() => pickPay("balance")}
             title={t("form.balance")}
-            sub={enough ? <Num>{money(me.balance)}</Num> : t("form.notEnoughShort")}
+            sub={enough ? <Num>{stars(me.balance)}</Num> : t("form.notEnoughShort")}
             low={!enough}
             plate="var(--lavender)"
             icon={<Icon name="wallet" size={17} />}
@@ -463,11 +460,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
             on={payWith === "stars"}
             onClick={() => pickPay("stars")}
             title={t("form.stars")}
-            sub={
-              <>
-                <Num>{num(stars)}</Num> ⭐
-              </>
-            }
+            sub={<Num>{stars(total)}</Num>}
             plate="var(--cream)"
             icon={<StarIcon size={17} />}
           />
@@ -495,24 +488,18 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
         <div class="card total">
           <div class="lbl">
             <b>{t("form.total")}</b>
-            {fixed ? null : <span>{t("form.totalSub", { qty: iso(num(quantity)), rate: iso(money(svc.rate)) })}</span>}
+            {fixed ? null : <span>{t("form.totalSub", { qty: iso(num(quantity)), rate: iso(stars(svc.rate)) })}</span>}
           </div>
           <div class="amt" aria-live="polite">
-            {payWith === "stars" ? (
-              <>
-                <Num>{num(stars)}</Num> ⭐
-              </>
-            ) : (
-              <Num>{money(total)}</Num>
-            )}
+            <Num>{stars(total)}</Num>
           </div>
         </div>
         <p class="note center">
           {payWith === "stars"
             ? t("form.starsNote")
             : enough
-              ? t("form.balanceAfter", { amount: iso(money(me.balance - total)) })
-              : t("form.notEnough", { amount: iso(money(Math.ceil((total - me.balance) / CENT) * CENT)) })}
+              ? t("form.balanceAfter", { amount: iso(stars(me.balance - total)) })
+              : t("form.notEnough", { amount: iso(stars(need)) })}
         </p>
       </Section>
     </>

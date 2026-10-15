@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { platformName } from "../../shared/platforms";
-import { LANGS, MICRO, type Lang } from "../../shared/types";
+import { LANGS, type Lang } from "../../shared/types";
 import { sendPreviews } from "../botMessages";
 import { botPlain } from "../i18n";
 import { BOT_ABOUT } from "../bot-about";
@@ -9,7 +9,7 @@ import { isOwner } from "../env";
 import { np, usdToMicro } from "../notpanel";
 import { orderView, type OrderRow } from "../orders";
 import { refundPayment } from "../payments";
-import { sellRate } from "../pricing";
+import { sellRate, sellStars } from "../pricing";
 import { bumpCatalogStmt, DEFAULTS, getSettings, setSettings, setSettingsStmts, type Settings } from "../settings";
 import { startSync, syncProgress } from "../sync";
 import { tg } from "../telegram";
@@ -33,9 +33,12 @@ admin.get("/overview", async (c) => {
   const since = dayStart();
   const [today, users, pending, attention, joined] = await c.env.DB.batch([
     c.env.DB.prepare(
-      `SELECT COUNT(*) AS orders, COALESCE(SUM(charge - refund), 0) AS sales, COALESCE(SUM(charge - refund - COALESCE(cost, 0)), 0) AS profit
+      // charge/refund are whole Stars; USD uses the rate each order was sold at; cost is NotPanel's USD
+      `SELECT COUNT(*) AS orders, COALESCE(SUM(charge - refund), 0) AS salesStars,
+         COALESCE(SUM((charge - refund) * 1000000.0 / COALESCE(rate, ?2)), 0) AS sales,
+         COALESCE(SUM((charge - refund) * 1000000.0 / COALESCE(rate, ?2) - COALESCE(cost, 0)), 0) AS profit
        FROM orders WHERE created_at >= ?1 AND status != 'failed'`,
-    ).bind(since),
+    ).bind(since, s.stars_per_usd),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM users"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status IN ('submitting','pending','processing','in_progress')"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM services WHERE present = 1 AND enabled = 1 AND fixed_rate IS NOT NULL AND fixed_rate < rate"),
@@ -48,7 +51,8 @@ admin.get("/overview", async (c) => {
   } catch (e) {
     npError = (e as Error).message;
   }
-  const t = today.results[0] as { orders: number; sales: number; profit: number };
+  const r = today.results[0] as { orders: number; salesStars: number; sales: number; profit: number };
+  const t = { orders: r.orders, salesStars: r.salesStars, sales: Math.round(r.sales), profit: Math.round(r.profit) };
   return c.json({
     npBalance,
     npError,
@@ -68,8 +72,8 @@ admin.get("/overview", async (c) => {
 const EDITABLE: (keyof Settings)[] = [
   "default_markup_pct",
   "stars_per_usd",
-  "min_topup",
-  "max_topup",
+  "min_topup_stars",
+  "max_topup_stars",
   "sync_enabled",
   "sync_every_hours",
   "auto_enable_new",
@@ -119,16 +123,17 @@ admin.put("/settings", async (c) => {
     return v === undefined || (v >= lo && v <= hi);
   };
   if (!inRange("stars_per_usd", 1, 1000)) return bad("stars_per_usd");
-  if (!inRange("referral_reward_stars", 0, 100)) return bad("referral_reward_stars");
+  if (!inRange("referral_reward_stars", 0, 100) || (values.referral_reward_stars !== undefined && !Number.isInteger(values.referral_reward_stars)))
+    return bad("referral_reward_stars");
   if (!inRange("referral_daily_cap", 0, 10000)) return bad("referral_daily_cap");
   if (!inRange("sync_every_hours", 1, 168)) return bad("sync_every_hours");
   if (!inRange("low_balance", 0, Number.MAX_SAFE_INTEGER)) return bad("low_balance");
   // Top-up limits are compared against the merged current + new values
   const cur = c.get("settings");
-  const minTopup = values.min_topup ?? cur.min_topup;
-  const maxTopup = values.max_topup ?? cur.max_topup;
-  if (minTopup <= 0) return bad("min_topup");
-  if (maxTopup < minTopup) return bad("max_topup");
+  const minTopup = values.min_topup_stars ?? cur.min_topup_stars;
+  const maxTopup = values.max_topup_stars ?? cur.max_topup_stars;
+  if (!Number.isInteger(minTopup) || minTopup < 1) return bad("min_topup_stars");
+  if (!Number.isInteger(maxTopup) || maxTopup < minTopup || maxTopup > 1_000_000) return bad("max_topup_stars");
   if (values.support_username) values.support_username = values.support_username.replace(/^@/, "");
   if (values.channel_url && !/^https:\/\/t\.me\//.test(values.channel_url)) return err(c, 400, "INVALID_VALUE", { key: "channel_url" });
   if (values.channel_id && !/^-100\d{5,}$/.test(values.channel_id)) return err(c, 400, "INVALID_VALUE", { key: "channel_id" });
@@ -267,6 +272,8 @@ admin.get("/services", async (c) => {
       cost: r.rate,
       prevCost: r.prev_rate,
       sell: sellRate(r.rate, r.markup, r.fixed_rate),
+      sellStars: sellStars(r.rate, r.markup, r.fixed_rate, s.stars_per_usd),
+      starsPerUsd: s.stars_per_usd,
       markup: r.markup,
       markupPct: r.markup_pct,
       fixedRate: r.fixed_rate,
@@ -368,7 +375,8 @@ admin.get("/payments", async (c) => {
   )
     .bind(...vals)
     .all<{ id: number }>();
-  return c.json({ ...page(results, (r) => r.id), totals: await paymentTotals(c.env) });
+  // stars/amount are whole Stars; starsPerUsd is only the current rate, so USD figures are estimates
+  return c.json({ ...page(results, (r) => r.id), totals: await paymentTotals(c.env), starsPerUsd: c.get("settings").stars_per_usd });
 });
 
 admin.post("/payments/:id/refund", async (c) => {
@@ -503,7 +511,9 @@ admin.post("/users/:id/balance", async (c) => {
   const b = await readBody<{ amount: number; note?: string }>(c);
   if (!b) return err(c, 400, "INVALID_BODY");
   const { amount, note } = b;
-  const delta = Math.round(Number(amount) * MICRO);
+  // Whole Stars
+  const delta = Number(amount);
+  if (!Number.isInteger(delta)) return err(c, 400, "INVALID_AMOUNT");
   if (!Number.isFinite(delta) || delta === 0) return err(c, 400, "INVALID_AMOUNT");
   const id = Number(c.req.param("id"));
   const now = Math.floor(Date.now() / 1000);
@@ -554,11 +564,13 @@ admin.get("/orders", async (c) => {
      ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT ${PAGE + 1}`,
   )
     .bind(...vals)
-    .all<OrderRow & { first_name: string; username: string | null }>();
+    .all<OrderRow & { rate: number | null; first_name: string; username: string | null }>();
   const pg = page(results, (o) => o.id);
   return c.json({
     next: pg.next,
-    items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),
+    // charge/refund are whole Stars; cost is NotPanel's USD; rate is Stars per $1 the order was sold at (null on very old rows)
+    starsPerUsd: c.get("settings").stars_per_usd,
+    items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, rate: o.rate, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),
   });
 });
 

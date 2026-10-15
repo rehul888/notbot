@@ -2,7 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { LedgerItem } from "../../shared/types";
 import { api } from "../api";
 import { ArtBalanceCard } from "../art";
-import { dateTime, isoIds, money } from "../format";
+import { dateTime, isoIds, stars } from "../format";
 import { t } from "../i18n";
 import { Icon, StarIcon, type IconName } from "../icons";
 import { useCountUp } from "../motion";
@@ -48,7 +48,7 @@ function LedgerRow({ item }: { item: LedgerItem }) {
   // The sign is always shown; green only reinforces money coming in (never colour alone).
   const amount = (
     <b class={item.delta > 0 ? "num-s ok-text" : "num-s fg-text"}>
-      <Num>{money(item.delta, { sign: true })}</Num>
+      <Num>{stars(item.delta, { sign: true })}</Num>
     </b>
   );
   return (
@@ -67,7 +67,7 @@ function LedgerRow({ item }: { item: LedgerItem }) {
 function BalanceCard({ balance }: { balance: number }) {
   // Count up only when the balance went up since the last visit. `from` is read once, at mount.
   const [from] = useState(() => (lastSeenBalance !== undefined && balance > lastSeenBalance ? lastSeenBalance : undefined));
-  const shown = useCountUp(balance, { from, delay: 200, step: 10000 });
+  const shown = useCountUp(balance, { from, delay: 200, step: 1 });
   useEffect(() => {
     lastSeenBalance = balance;
   }, [balance]);
@@ -78,9 +78,9 @@ function BalanceCard({ balance }: { balance: number }) {
       <div class="lbl">
         <span>{t("wallet.balance")}</span>
         <b class="num-xl count" aria-hidden="true">
-          <Num>{money(shown)}</Num>
+          <Num>{stars(shown)}</Num>
         </b>
-        <span class="sr">{money(balance)}</span>
+        <span class="sr">{stars(balance)}</span>
       </div>
       <button type="button" class="white-pill press" onClick={() => (haptic.tap(), navigate("/topup"))}>
         <Icon name="plus" size={16} stroke={2.6} />

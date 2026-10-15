@@ -43,6 +43,7 @@ export function Welcome() {
     <Screen
       bottom="native"
       center
+      class="onboard"
       overlay={<BottomButtons main={{ text: t("welcome.continue"), onClick: accept, progress: busy }} />}
     >
       <ArtWelcome />

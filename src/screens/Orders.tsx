@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { OrderView } from "../../shared/types";
 import { api } from "../api";
-import { dayKey, dayLabel, locale, money, num } from "../format";
+import { dayKey, dayLabel, locale, stars, num } from "../format";
 import { t } from "../i18n";
 import { enc, navigate } from "../router";
 import { EmptyState, ErrorState, LargeTitle, LinkText, List, Num, PlatformLogo, Progress, Row, Screen, SearchField, Section, Seg, SkeletonList, StatusPill, errText, toast } from "../ui";
@@ -41,7 +41,7 @@ export function OrderRow({ o, first }: { o: OrderView; first?: boolean }) {
       meta={
         <>
           <Num>#{o.number}</Num> · <Num>{num(o.quantity)}</Num>
-          {done !== null ? null : <> · {ended ? t("orders.refunded") : <Num>{money(o.charge - o.refund)}</Num>}</>}
+          {done !== null ? null : <> · {ended ? t("orders.refunded") : <Num>{stars(o.charge - o.refund)}</Num>}</>}
           {done !== null ? (
             <span class="order-prog">
               <Progress value={done} max={o.quantity} label={t("orders.progress", { done: num(done), total: num(o.quantity) })} />

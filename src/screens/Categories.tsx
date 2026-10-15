@@ -3,7 +3,7 @@ import { useState } from "preact/hooks";
 import type { CategoryItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
-import { money } from "../format";
+import { stars } from "../format";
 import { t } from "../i18n";
 import { categoryLook, Icon } from "../icons";
 import { back, enc, navigate } from "../router";
@@ -11,13 +11,13 @@ import { haptic } from "../tg";
 import { BackNav, EmptyState, ErrorState, FlowSteps, LargeTitle, List, Num, PlatformLogo, Row, Screen, SkeletonList, StepsBar, useAsync } from "../ui";
 import { PlatformSheet } from "./Pickers";
 
-/** "from $0.10", with the price kept left-to-right inside the translated phrase (Arabic). */
+/** "from 10 ⭐", with the price kept left-to-right inside the translated phrase (Arabic). */
 function fromPrice(rate: number) {
   const [before, after = ""] = t("cat.from", { price: "\u0000" }).split("\u0000");
   return (
     <>
       {before}
-      <Num>{money(rate)}</Num>
+      <Num>{stars(rate)}</Num>
       {after}
     </>
   );

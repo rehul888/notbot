@@ -25,10 +25,28 @@ export function sellRate(cost: number, markupPct: number, fixedRate: number | nu
   return Math.ceil(raw / 100 - 1e-9) * 100;
 }
 
-/** Total charge in micro-USD for a quantity. Fixed-quantity types (packages) cost the rate as a whole. */
+/** micro-USD → whole Telegram Stars, always rounded UP (1.2 ⭐ → 2 ⭐). */
+export function toStars(usdMicro: number, starsPerUsd: number): number {
+  return Math.ceil((usdMicro * starsPerUsd) / 1_000_000 - 1e-9);
+}
+
+/** Sell price per 1,000 in whole Stars (users only ever see and pay whole Stars). */
+export function sellStars(cost: number, markupPct: number, fixedRate: number | null, starsPerUsd: number): number {
+  return Math.max(1, toStars(sellRate(cost, markupPct, fixedRate), starsPerUsd));
+}
+
+/** Whole Stars back to micro-USD at a given rate (admin reporting). */
+export function starsToUsd(stars: number, starsPerUsd: number): number {
+  return starsPerUsd > 0 ? Math.round((stars / starsPerUsd) * 1_000_000) : 0;
+}
+
+/**
+ * Total charge in whole Stars for a quantity, rounded up, at least 1 ⭐. `rate` is the sell price per 1,000 in
+ * Stars; fixed-quantity types (packages) cost the rate as a whole.
+ */
 export function orderCharge(rate: number, quantity: number, mode: QuantityMode): number {
-  if (mode === "fixed") return rate;
-  return Math.max(1, Math.ceil((rate * quantity) / 1000));
+  if (mode === "fixed") return Math.max(1, rate);
+  return Math.max(1, Math.ceil((rate * quantity) / 1000 - 1e-9));
 }
 
 export function countLines(text: string | undefined): number {

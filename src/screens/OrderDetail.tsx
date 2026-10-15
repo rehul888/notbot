@@ -2,7 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { FINAL_STATUSES, type OrderView } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { api } from "../api";
-import { dateTime, isoIds, lrm, money, num } from "../format";
+import { dateTime, isoIds, lrm, stars, num } from "../format";
 import { t, type Key } from "../i18n";
 import { Icon } from "../icons";
 import { refreshMe } from "../me";
@@ -226,7 +226,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <div class="kv">
               <dt>{t("detail.charged")}</dt>
               <dd>
-                <Num>{money(o.charge)}</Num>
+                <Num>{stars(o.charge)}</Num>
                 {o.paidWithStars ? ` · ${t("detail.paidStars")}` : ""}
               </dd>
             </div>
@@ -235,7 +235,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                 <dt>{t("detail.refund")}</dt>
                 <dd>
                   <b class="ok-text">
-                    <Num>{money(o.refund, { sign: true })}</Num>
+                    <Num>{stars(o.refund, { sign: true })}</Num>
                   </b>
                 </dd>
               </div>

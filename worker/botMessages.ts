@@ -8,7 +8,8 @@ import { TERMS_ICON_EMOJI_ID, tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from 
 export const TERMS_URL = "https://notpanel.com/tos";
 const BANNER_PATH = "/brand/welcome-banner.jpg";
 
-export const usdText = (m: number) => "$" + (m / 1e6).toFixed(m > 0 && m < 100_000 ? 3 : 2);
+/** Whole Stars for bot messages: "1,250 ⭐" */
+export const starsText = (stars: number) => `${Math.round(stars).toLocaleString("en-US")} ⭐`;
 export const supportHandle = (s: Settings) => (s.support_username ? "@" + s.support_username : s.bot_username ? "@" + s.bot_username : "NotPanel");
 /** Telegram links in captions: show without the scheme and keep them short */
 export const linkText = (link: string) => {
@@ -61,7 +62,7 @@ export function languageKeyboard(langs: readonly Lang[]) {
 /** Owner preview: sends one of every message type with sample data, in the given language. */
 export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: string, langs: readonly Lang[]): Promise<number> {
   const s = await getSettings(env);
-  const sample = { id: "1234", service: "Telegram Post Views — Real", quantity: "1,000", link: "t.me/notpanel_com/42", refund: "$0.35", amount: "$5.00", balance: "$12.40", reason: "LINK_BUSY" };
+  const sample = { id: "16502", service: "Telegram Post Views — Real", quantity: "1,000", link: "t.me/notpanel_com/42", refund: "27 ⭐", amount: "500 ⭐", balance: "1,240 ⭐", reason: "LINK_BUSY" };
   const view = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/orders`, VIEW_ORDER_ICON_EMOJI_ID)]] } : undefined;
   const open = openButton(lang, s);
   const send = (text: string, reply_markup?: unknown) =>

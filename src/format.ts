@@ -1,22 +1,19 @@
 import { getLang } from "./i18n";
 
-/** micro-USD → "$1.23" (3 decimals under $0.10) */
-export function money(micro: number, opts: { sign?: boolean } = {}): string {
-  const v = Math.abs(micro) / 1e6;
-  const digits = v === 0 || v >= 0.1 ? 2 : v >= 0.01 ? 3 : 4;
-  let s = v.toFixed(digits);
-  if (digits > 2) s = s.replace(/(\.\d\d\d*?)0+$/, "$1");
-  const sign = micro < 0 ? "−" : opts.sign && micro > 0 ? "+" : "";
-  return `${sign}$${s}`;
+/** Whole Telegram Stars → "1,250 ⭐" (digits per locale, see num()); `sign` adds "+" / "−" for ledger deltas. */
+export function stars(n: number, opts: { sign?: boolean } = {}): string {
+  const v = Math.round(Math.abs(n));
+  const sign = n < 0 ? "−" : opts.sign && n > 0 ? "+" : "";
+  return `${sign}${num(v)} ⭐`;
 }
 
 /**
- * BCP 47 tag for Intl formatting. Arabic uses Latin digits ("ar-u-nu-latn") so num() and dateTime() match money();
+ * BCP 47 tag for Intl formatting. Arabic uses Latin digits ("ar-u-nu-latn") so num() and dateTime() match stars();
  * Hindi keeps Indian digit grouping.
  */
 export function locale(): string {
   const l = getLang();
-  // Latin digits wherever the locale would switch to its own numerals, so num() matches money()
+  // Latin digits wherever the locale would switch to its own numerals, so num() matches stars()
   if (l === "zh") return "zh-CN";
   if (l === "ar" || l === "fa" || l === "ur" || l === "bn") return `${l}-u-nu-latn`;
   return l;
@@ -67,8 +64,8 @@ export function duration(minutes: number, units: { m: string; h: string; d: stri
 }
 
 /**
- * Left-to-right isolate (U+2066…U+2069) for money or an order number placed into a translated sentence by t(), which
- * returns plain text. In Arabic, "$1.22" or "#123" right after Arabic letters would otherwise show as "1.22$" or
+ * Left-to-right isolate (U+2066…U+2069) for an amount of Stars or an order number placed into a translated sentence by t(), which
+ * returns plain text. In Arabic, "12 ⭐" or "#123" right after Arabic letters would otherwise show as "⭐ 12" or
  * "123#". Elements use <Num> instead.
  */
 export const iso = (s: string) => `⁦${s}⁩`;
@@ -78,7 +75,7 @@ export const isoIds = (s: string) => s.replace(/#\d+/g, (m) => iso(m));
 
 /**
  * For text Telegram draws natively (MainButton, popups), where some clients may not support isolates: a left-to-right
- * mark in front keeps "$1.22" or "#123" in order inside Arabic. It is invisible everywhere else.
+ * mark in front keeps "12 ⭐" or "#123" in order inside Arabic. It is invisible everywhere else.
  */
 export const lrm = (s: string) => `‎${s}`;
 

@@ -3,7 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { OrderView } from "../../shared/types";
 import { ApiError, api, pollDelay } from "../api";
 import { ArtOrderSuccess } from "../art";
-import { money, num } from "../format";
+import { stars, num } from "../format";
 import { t, type Key } from "../i18n";
 import { refreshMe, updateMe } from "../me";
 import { Confetti, once } from "../motion";
@@ -241,7 +241,7 @@ export function OrderPlaced({ orderId }: { orderId: number }) {
           <div class="kv">
             <dt>{t("placed.charged")}</dt>
             <dd>
-              <b>{tn(order.paidWithStars ? "placed.withStars" : "placed.fromBalance", { amount: <Num>{money(order.charge)}</Num> })}</b>
+              <b>{tn(order.paidWithStars ? "placed.withStars" : "placed.fromBalance", { amount: <Num>{stars(order.charge)}</Num> })}</b>
             </dd>
           </div>
         </dl>

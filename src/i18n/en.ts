@@ -52,7 +52,6 @@ export const en = {
   // Invite friends (referrals)
   "invite.title": "Invite friends",
   "invite.sub": "Earn {amount} for every friend who joins",
-  "invite.reward": "{stars} Stars per friend",
   "invite.yourLink": "Your invite link",
   "invite.copy": "Copy link",
   "invite.share": "Share",
@@ -251,10 +250,7 @@ export const en = {
   // Top up
   "topup.title": "Add funds",
   "topup.balance": "Balance {amount}",
-  "topup.amount": "Amount in USD",
-  "topup.youPay": "You pay {stars} ⭐",
-  "topup.rate": "1 USD = {n} Stars",
-  "topup.summary": "You pay {stars} Stars and get {amount} on your balance.",
+  "topup.amount": "Amount in Stars",
   "topup.note": "Telegram opens its own payment sheet. Your balance updates as soon as you pay.",
   "topup.limits": "From {min} to {max}",
   "topup.pay": "Pay {stars} ⭐",

@@ -3,7 +3,7 @@ import { LANGS, LANG_NAMES, langLabel, type Lang } from "../../shared/types";
 import { clearApiCache } from "../api";
 import { getLang, setLang, t } from "../i18n";
 import { Icon } from "../icons";
-import { money } from "../format";
+import { iso, stars } from "../format";
 import { updateMe } from "../me";
 import { meStore } from "../store";
 import { haptic, homeScreen, isDark, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
@@ -120,7 +120,7 @@ export function Profile() {
 
       {me.referralEnabled ? (
         <List>
-          <Row icon="users" plate="var(--lime)" title={t("invite.title")} meta={t("invite.sub", { amount: money(me.referralReward) })} href="/invite" />
+          <Row icon="users" plate="var(--lime)" title={t("invite.title")} meta={t("invite.sub", { amount: iso(stars(me.referralReward)) })} href="/invite" />
         </List>
       ) : null}
 

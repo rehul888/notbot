@@ -60,7 +60,7 @@ export function ChannelGate() {
   const secondary = showVerify && me.channelUrl && !busy ? { text: t("gate.open"), onClick: open } : null;
 
   return (
-    <Screen bottom="native" center overlay={<BottomButtons main={main} secondary={secondary} />}>
+    <Screen bottom="native" center class="onboard" overlay={<BottomButtons main={main} secondary={secondary} />}>
       <ArtWelcome />
       <h1 class="gate-title rise" style="--d:140ms">
         {t("gate.title")}

@@ -1,9 +1,9 @@
 import { FINAL_STATUSES, type Lang, type OrderStatus, type OrderView, pickLang } from "../shared/types";
 import type { Env } from "./env";
 import { botText } from "./i18n";
-import { linkText, usdText } from "./botMessages";
+import { linkText, starsText } from "./botMessages";
 import { NotPanelError, np, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
-import { orderCharge } from "./pricing";
+import { orderCharge, starsToUsd } from "./pricing";
 import { getSettings } from "./settings";
 import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
 import type { ServiceDetail } from "../shared/types";
@@ -137,14 +137,16 @@ export async function placeOrder(
   dripMinutes: number | undefined,
 ): Promise<OrderRow> {
   assertOrdersAllowed(env);
+  // svc.rate is the sell price per 1,000 in whole Stars; the charge is whole Stars
   const charge = orderCharge(svc.rate, quantity, svc.quantityMode);
+  const starsPerUsd = (await getSettings(env)).stars_per_usd;
   const now = Math.floor(Date.now() / 1000);
   const [debit, insert] = await env.DB.batch([
     env.DB.prepare("UPDATE users SET balance = balance - ?1 WHERE id = ?2 AND balance >= ?1 AND banned = 0").bind(charge, userId),
     env.DB.prepare(
       `INSERT INTO orders (user_id, service_id, service_name, platform, category, link, quantity, fields, drip_minutes, charge,
-         status, created_at, updated_at, checked_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'submitting', ?11, ?11, ?11 WHERE changes() = 1 RETURNING id`,
+         rate, status, created_at, updated_at, checked_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?12, 'submitting', ?11, ?11, ?11 WHERE changes() = 1 RETURNING id`,
     ).bind(
       userId,
       svc.id,
@@ -157,6 +159,7 @@ export async function placeOrder(
       dripMinutes ?? null,
       charge,
       now,
+      starsPerUsd,
     ),
     env.DB.prepare(
       "INSERT INTO ledger (user_id, delta, kind, ref, created_at) SELECT ?1, ?2, 'order', last_insert_rowid(), ?3 WHERE changes() = 1",
@@ -179,7 +182,7 @@ export async function placeOrder(
     const r = await np<NpAddResult>(env.NOTPANEL_API_KEY, "add", params);
     const addStatus = normStatus(r.status_key) ?? "pending";
     const addCost = usdToMicro(r.charge);
-    if (addCost > charge) console.warn("order sold below cost", { order: id, charge, cost: addCost });
+    if (addCost > starsToUsd(charge, starsPerUsd)) console.warn("order sold below cost", { order: id, chargeStars: charge, cost: addCost });
     await env.DB.prepare(
       `UPDATE orders SET np_order_id = ?1, status = ?2, cost = ?3, can_cancel = ?4, cancel_before = ?5, updated_at = ?6 WHERE id = ?7`,
     )
@@ -240,14 +243,14 @@ function creditRefundStmts(env: Env, id: number, now: number): D1PreparedStateme
   ];
 }
 
-function refundFor(o: OrderRow, status: OrderStatus, remains: number | null, st?: NpStatus): number {
+export function refundFor(o: OrderRow, status: OrderStatus, remains: number | null, st?: NpStatus): number {
   if (status === "partial" && remains === null) {
     // No remains from NotPanel: split our charge in the same ratio as NotPanel's own refund vs. charge
     if (st && st.refund !== undefined && st.refund !== "" && st.charge !== undefined && st.charge !== "") {
       const npRefund = usdToMicro(st.refund);
       const npCharge = usdToMicro(st.charge);
       if (npRefund >= 0 && npCharge >= 0 && npCharge + npRefund > 0) {
-        return Math.max(0, Math.min(o.charge, Math.round((o.charge * npRefund) / (npCharge + npRefund))));
+        return Math.max(0, Math.min(o.charge, Math.ceil((o.charge * npRefund) / (npCharge + npRefund) - 1e-9)));
       }
     }
     console.error("partial order without remains or refund info; refunding 0", o.id);
@@ -256,7 +259,8 @@ function refundFor(o: OrderRow, status: OrderStatus, remains: number | null, st?
   if (status === "partial" || status === "cancelled") {
     if (status === "partial" || (remains !== null && remains > 0 && remains < o.quantity)) {
       const left = Math.max(0, Math.min(remains ?? 0, o.quantity));
-      return Math.floor((o.charge * left) / o.quantity);
+      // Whole Stars, rounded up in the user's favour, never more than they paid
+      return Math.min(o.charge, Math.ceil((o.charge * left) / o.quantity - 1e-9));
     }
     return o.charge;
   }
@@ -324,7 +328,7 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
     id: String(o.np_order_id ?? o.id),
     service: o.service_name,
     quantity: o.quantity.toLocaleString("en-US"),
-    refund: usdText(o.refund),
+    refund: starsText(o.refund),
     link: linkText(o.link),
   });
   try {

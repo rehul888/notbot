@@ -12,8 +12,6 @@
   .inv-hero .s3 { animation-delay: -2.4s; }
 }
 @keyframes inv-float { 50% { translate: 0 -4px; } }
-.inv-chip { display: flex; justify-content: center; margin-block: 12px 16px; }
-.inv-chip span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--r-pill); background: var(--sel); color: var(--sel-fg); font: 600 13px/18px var(--font); }
 .inv-link { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
 .inv-link .mono { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: isolate; direction: ltr; text-align: start; }
 .inv-copy { flex: none; display: inline-flex; align-items: center; gap: 6px; block-size: 36px; padding-inline: 12px; border: 0; border-radius: var(--r-pill); background: var(--chip); color: var(--fg); font: 600 14px/1 var(--font); }

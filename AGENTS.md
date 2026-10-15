@@ -4,7 +4,9 @@
   the app, API, bot webhook and NotPanel webhook on one origin (required by Telegram's Mini App origin hardening).
 - Must stay within the Cloudflare **free plan**: 10 ms CPU per request/cron, 50 subrequests, low D1 writes. Never parse
   NotPanel's full `services` list in one run; the sync walks the paged `catalog` (`worker/sync.ts`).
-- Money is integer micro-USD everywhere. Balance changes go through D1 batches guarded with `changes() = 1` so they
+- Users see and pay whole Telegram Stars (balances, ledger, order charge/refund, payments, referral rewards; prices
+  rounded up, minimum 1 ⭐). NotPanel-side money (service rates, `orders.cost`, `low_balance`) stays integer micro-USD;
+  `orders.rate` keeps the Stars-per-USD an order was sold at. Balance changes go through D1 batches guarded with `changes() = 1` so they
   apply once.
 - NotPanel is the source of truth for platforms, categories and services; don't invent categories. Only services with
   `average_time_minutes` are listed by default (`only_timed` setting).

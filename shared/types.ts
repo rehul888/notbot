@@ -72,12 +72,15 @@ export interface Me {
   photoUrl: string | null;
   lang: Lang;
   langChosen: boolean;
+  /** Whole Telegram Stars */
   balance: number;
   notify: boolean;
   canMessage: boolean;
   termsAccepted: boolean;
   isAdmin: boolean;
+  /** Server-side pricing input only; the user app never shows USD */
   starsPerUsd: number;
+  /** Smallest / largest top-up, whole Stars */
   minTopup: number;
   maxTopup: number;
   supportUsername: string | null;
@@ -86,7 +89,7 @@ export interface Me {
   /** Show the "join the update channel" step before the app */
   channelRequired: boolean;
   referralEnabled: boolean;
-  /** Micro-USD a referrer earns per friend who joins */
+  /** Whole Stars a referrer earns per friend who joins */
   referralReward: number;
   botUsername: string | null;
   recent: RecentOrder[];
@@ -110,6 +113,7 @@ export interface PlatformItem {
 export interface CategoryItem {
   name: string;
   count: number;
+  /** Cheapest sell price per 1,000, whole Stars */
   fromRate: number;
 }
 
@@ -118,7 +122,7 @@ export interface ServiceItem {
   name: string;
   platform: string;
   category: string;
-  rate: number; // sell price per 1,000 (micro-USD)
+  rate: number; // sell price per 1,000, whole Stars (fixed-quantity packages: the whole price)
   min: number;
   max: number;
   refill: boolean;
@@ -170,6 +174,7 @@ export interface OrderView {
   category: string;
   link: string;
   quantity: number;
+  /** Whole Stars charged / refunded */
   charge: number;
   refund: number;
   status: OrderStatus;
@@ -186,6 +191,7 @@ export interface OrderView {
 
 export interface LedgerItem {
   id: number;
+  /** Whole Stars, signed */
   delta: number;
   kind: "topup" | "order" | "refund" | "admin" | "stars_refund" | "referral";
   ref: number | null;
@@ -218,14 +224,15 @@ export interface ReferralStats {
   /** Personal invite link (t.me/<bot>?start=ref_<id>), null until the bot is connected */
   link: string | null;
   enabled: boolean;
+  /** Same as `reward` (kept for older clients) */
   rewardStars: number;
-  /** Reward per friend in micro-USD */
+  /** Reward per friend, whole Stars */
   reward: number;
   /** Friends who started through the link */
   invited: number;
   /** Friends who joined the channel and reached home (paid or over the daily cap) */
   joined: number;
-  /** Total paid to this user, micro-USD */
+  /** Total paid to this user, whole Stars */
   earned: number;
   recent: { name: string; status: "pending" | "rewarded" | "capped"; at: number }[];
 }

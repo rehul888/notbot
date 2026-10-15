@@ -41,7 +41,7 @@ export function LanguagePick() {
   };
 
   return (
-    <Screen bottom="native" center overlay={<BottomButtons main={{ text: t("lang.continue"), onClick: save, progress: busy }} />}>
+    <Screen bottom="native" center class="onboard" overlay={<BottomButtons main={{ text: t("lang.continue"), onClick: save, progress: busy }} />}>
       <ArtLanguage />
       <LargeTitle align="center" size="title" title={t("lang.title")} sub={t("lang.sub")} />
       <List role="radiogroup" label={t("lang.title")} stagger>

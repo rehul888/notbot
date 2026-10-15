@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { platformName } from "../../shared/platforms";
 import type { OrderView } from "../../shared/types";
 import { api, clearApiCache } from "../api";
-import { dateTime, money, num } from "../format";
-import { Icon, StarIcon, type IconName } from "../icons";
+import { dateTime, num } from "../format";
+import { Icon, type IconName } from "../icons";
 import { back as goBack, enc, navigate } from "../router";
 import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
 import {
@@ -66,6 +66,18 @@ const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Same rounding as the worker's sellRate(): cost plus markup, rounded up to the next 100 micro-USD per 1K. */
 const sellFor = (cost: number, markupPct: number) => Math.ceil((cost * (1 + Math.max(0, markupPct) / 100)) / 100 - 1e-9) * 100;
+/** micro-USD → "$1.23" (3-4 decimals under $0.10). Admin keeps its own copy: the user screens no longer show USD. */
+function money(micro: number): string {
+  const v = Math.abs(micro) / 1e6;
+  const digits = v === 0 || v >= 0.1 ? 2 : v >= 0.01 ? 3 : 4;
+  let t = v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  if (digits > 2) t = t.replace(/(\.\d\d\d*?)0+$/, "$1");
+  return `${micro < 0 ? "−" : ""}$${t}`;
+}
+/** Whole Telegram Stars, e.g. "1,250 ⭐". Balances, charges, refunds, payments and rewards are all stored in Stars. */
+const starsText = (n: number) => `${num(Math.round(n))} ⭐`;
+/** Whole Stars at a Stars-per-$1 rate → micro-USD (for "≈ $X" estimates). */
+const starsUsd = (stars: number, starsPerUsd: number) => (starsPerUsd > 0 ? Math.round((stars * 1e6) / starsPerUsd) : 0);
 const invalidate = () => clearApiCache();
 const fail = (e: unknown) => toast(errText(e), "error");
 
@@ -199,11 +211,12 @@ function Kv({ label, id, children }: { label: string; id?: string; children: Com
   );
 }
 
-function Stat({ label, ok, children }: { label: string; ok?: boolean; children: ComponentChildren }) {
+function Stat({ label, ok, sub, wide, children }: { label: string; ok?: boolean; sub?: ComponentChildren; wide?: boolean; children: ComponentChildren }) {
   return (
-    <div class="stat">
+    <div class="stat" style={wide ? { gridColumn: "1 / -1" } : undefined}>
       <span>{label}</span>
       <b class={ok ? "ok-text" : undefined}>{children}</b>
+      {sub ? <span>{sub}</span> : null}
     </div>
   );
 }
@@ -273,7 +286,7 @@ interface Overview {
   npBalance: number | null;
   npError: string | null;
   lowBalance: number;
-  today: { orders: number; sales: number; profit: number };
+  today: { orders: number; salesStars: number; sales: number; profit: number };
   users: number;
   referralsJoined?: number;
   openOrders: number;
@@ -342,14 +355,21 @@ function AdminHome() {
               </div>
 
               <Section header="Today">
-                <div class="grid3 stagger">
+                <div class="grid2 stagger">
                   <Stat label="Orders">
                     <Num>{num(o.today.orders)}</Num>
                   </Stat>
-                  <Stat label="Sales">
-                    <Num>{money(o.today.sales)}</Num>
+                  <Stat
+                    label="Sales"
+                    sub={
+                      <>
+                        ≈ <Num>{money(o.today.sales)}</Num>
+                      </>
+                    }
+                  >
+                    <Num>{starsText(o.today.salesStars)}</Num>
                   </Stat>
-                  <Stat label="Profit" ok>
+                  <Stat label="Profit (USD)" ok wide>
                     <Num>{money(o.today.profit)}</Num>
                   </Stat>
                 </div>
@@ -402,6 +422,8 @@ interface AdminServiceRow {
   cost: number;
   prevCost: number | null;
   sell: number;
+  sellStars: number;
+  starsPerUsd: number;
   markup: number;
   markupPct: number | null;
   fixedRate: number | null;
@@ -743,8 +765,9 @@ function AdminServiceList({ items, onEdit, onChanged, empty }: { items: AdminSer
                 ) : null}{" "}
                 · Sells{" "}
                 <b class="acc">
-                  <Num>{money(s.sell)}</Num>
-                </b>
+                  <Num>{starsText(s.sellStars)}</Num>
+                </b>{" "}
+                (≈ <Num>{money(s.sell)}</Num>) / 1K
                 {s.fixedRate !== null ? (
                   " (fixed)"
                 ) : s.markupPct !== null ? (
@@ -775,19 +798,24 @@ function AdminServiceList({ items, onEdit, onChanged, empty }: { items: AdminSer
 function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose: () => void; onSaved: () => void }) {
   const [mode, setMode] = useState<"inherit" | "markup" | "fixed">(s.fixedRate !== null ? "fixed" : s.markupPct !== null ? "markup" : "inherit");
   const [markup, setMarkup] = useState(s.markupPct ?? s.markup);
-  const [fixed, setFixed] = useState(((s.fixedRate ?? s.sell) / 1e6).toString());
+  const rate = s.starsPerUsd;
+  // The fixed price is typed in whole Stars per 1K; it is stored as micro-USD at today's Stars-per-$1 rate
+  const [fixed, setFixed] = useState(String(s.fixedRate !== null ? Math.max(1, Math.ceil((s.fixedRate * rate) / 1e6 - 1e-9)) : s.sellStars));
   const [fixedErr, setFixedErr] = useState<string | null>(null);
   const [name, setName] = useState(s.customName ?? "");
   const [busy, setBusy] = useState(false);
-  const fixedMicro = Math.round(Number(fixed) * 1e6);
+  const fixedStars = Math.floor(Number(fixed) || 0);
+  // Rounded down so converting back (rounding up to whole Stars) lands on exactly the Stars typed
+  const fixedMicro = rate > 0 ? Math.floor((fixedStars * 1e6) / rate) : 0;
   const preview = mode === "fixed" ? (fixedMicro > 0 ? fixedMicro : null) : mode === "markup" ? sellFor(s.cost, markup) : null;
+  const previewStars = preview === null ? 0 : mode === "fixed" ? fixedStars : Math.max(1, Math.ceil((preview * rate) / 1e6 - 1e-9));
   const diff = priceDiff(s);
 
   const save = async () => {
     if (busy) return;
     if (mode === "fixed" && !(fixedMicro > 0)) {
       haptic.error();
-      setFixedErr("Enter a price above $0");
+      setFixedErr("Enter a whole number of Stars above 0");
       return;
     }
     setBusy(true);
@@ -827,8 +855,9 @@ function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose
         </Kv>
         <Kv label="Sells now">
           <b>
-            <Num>{money(s.sell)}</Num> per 1K
-          </b>
+            <Num>{starsText(s.sellStars)}</Num> per 1K
+          </b>{" "}
+          (≈ <Num>{money(s.sell)}</Num>)
         </Kv>
       </dl>
       <Field id="svc-name" label="Name shown to customers" value={name} onInput={setName} placeholder={s.name} help="Leave empty to use NotPanel's name." />
@@ -847,15 +876,15 @@ function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose
         {mode === "fixed" ? (
           <Field
             id="svc-fixed"
-            lead="$"
-            trailing={<span class="field-trail">per 1K</span>}
-            inputMode="decimal"
+            lead="⭐"
+            trailing={<span class="field-trail">Stars per 1K</span>}
+            inputMode="numeric"
             enterKeyHint="done"
             dir="ltr"
             value={fixed}
             error={fixedErr}
             onInput={(v) => {
-              setFixed(v.replace(/[^\d.]/g, ""));
+              setFixed(v.replace(/\D/g, ""));
               setFixedErr(null);
             }}
           />
@@ -866,11 +895,11 @@ function ServiceEditSheet({ s, onClose, onSaved }: { s: AdminServiceRow; onClose
           ) : null
         ) : preview < s.cost ? (
           <Notice tone="error">
-            <Num>{money(preview)}</Num> per 1K is below NotPanel's cost of <Num>{money(s.cost)}</Num>. The service will be hidden from customers.
+            <Num>{starsText(previewStars)}</Num> (≈ <Num>{money(preview)}</Num>) per 1K is below NotPanel's cost of <Num>{money(s.cost)}</Num>. The service will be hidden from customers.
           </Notice>
         ) : (
           <p class="note">
-            New price <Num>{money(preview)}</Num> per 1K · profit <Num>{money(preview - s.cost)}</Num> per 1K
+            New price <Num>{starsText(previewStars)}</Num> / 1K · profit <Num>{money(starsUsd(previewStars, rate) - s.cost)}</Num> per 1K
           </p>
         )}
       </Section>
@@ -966,13 +995,14 @@ const PAY_FILTERS: [string, string][] = [
 function AdminPayments() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
-  const pg = usePaged<PaymentRow, { totals: { stars: number; amount: number } }>(`/admin/payments?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
+  const pg = usePaged<PaymentRow, { totals: { stars: number; amount: number }; starsPerUsd: number }>(`/admin/payments?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
   const list = pg.items;
   const totals = pg.extra?.totals;
+  const payRate = pg.extra?.starsPerUsd ?? 0;
   const [refunding, setRefunding] = useState<number | null>(null);
   const refund = async (p: PaymentRow) => {
     haptic.warn();
-    const ok = await confirmDialog(`Refund ${num(p.stars)} Stars to ${p.first_name ?? p.user_id}? ${money(p.amount)} is taken from their balance.`, "Refund", "Cancel", true);
+    const ok = await confirmDialog(`Refund ${starsText(p.stars)} to ${p.first_name ?? p.user_id}? ${starsText(p.amount)} is taken from their balance.`, "Refund", "Cancel", true);
     if (!ok) return;
     setRefunding(p.id);
     try {
@@ -989,10 +1019,10 @@ function AdminPayments() {
       {totals ? (
         <div class="grid2 stagger">
           <Stat label="Stars received">
-            <StarIcon size={18} /> <Num>{num(totals.stars)}</Num>
+            <Num>{starsText(totals.stars)}</Num>
           </Stat>
-          <Stat label="Balance sold">
-            <Num>{money(totals.amount)}</Num>
+          <Stat label="Worth about (USD)">
+            <Num>≈ {money(starsUsd(totals.stars, payRate))}</Num>
           </Stat>
         </div>
       ) : !pg.err ? (
@@ -1031,7 +1061,7 @@ function AdminPayments() {
                     title={`${p.first_name ?? p.user_id}${p.username ? ` @${p.username}` : ""}`}
                     meta={
                       <>
-                        <Num>{num(p.stars)}</Num> Stars · <Num>{money(p.amount)}</Num>
+                        <Num>{starsText(p.stars)}</Num> · ≈ <Num>{money(starsUsd(p.stars, payRate))}</Num>
                         {p.order_id ? (
                           <>
                             {" "}
@@ -1173,8 +1203,16 @@ function AdminReferrals() {
             <Stat label="Joined">
               <Num>{num(data.totals.joined)}</Num>
             </Stat>
-            <Stat label="Paid out" ok>
-              <Num>{money(data.totals.paid)}</Num>
+            <Stat
+              label="Paid out"
+              ok
+              sub={
+                <>
+                  ≈ <Num>{money(starsUsd(data.totals.paid, data.settings.starsPerUsd))}</Num>
+                </>
+              }
+            >
+              <Num>{starsText(data.totals.paid)}</Num>
             </Stat>
             <Stat label="Waiting">
               <Num>{num(data.totals.pending)}</Num>
@@ -1182,7 +1220,7 @@ function AdminReferrals() {
             <Stat label="Over daily limit">
               <Num>{num(data.totals.capped)}</Num>
             </Stat>
-            <Stat label={`Today · ${money(data.totals.todayPaid)} paid`}>
+            <Stat label={`Today · ${starsText(data.totals.todayPaid)} paid`}>
               <Num>{num(data.totals.todayInvited)}</Num>
             </Stat>
           </div>
@@ -1197,7 +1235,7 @@ function AdminReferrals() {
                     key={t.id}
                     title={refName(t.id, { first: t.first_name, last: t.last_name, user: t.username })}
                     meta={`${t.username ? `@${t.username} · ` : ""}${num(t.invited)} invited · ${num(t.joined)} joined`}
-                    value={<Num>{money(t.earned)}</Num>}
+                    value={<Num>{starsText(t.earned)}</Num>}
                     onClick={() => setQ(String(t.id))}
                   />
                 ))}
@@ -1210,7 +1248,7 @@ function AdminReferrals() {
           <Section
             header="Recent referrals"
             footer={`A referral counts when a new user opens the bot from a link, picks a language, joins the update channel (confirmed by Telegram) and reaches the home screen. ${
-              data.settings.enabled ? `Reward: ${num(data.settings.rewardStars)} Stars' worth of balance, at most ${num(data.settings.dailyCap)} paid per referrer per day.` : "The referral program is currently off."
+              data.settings.enabled ? `Reward ${starsText(data.settings.rewardStars)} (≈ ${money(starsUsd(data.settings.rewardStars, data.settings.starsPerUsd))}), at most ${num(data.settings.dailyCap)} paid per referrer per day.` : "The referral program is currently off."
             }`}
           >
             {recent.length ? (
@@ -1228,7 +1266,7 @@ function AdminReferrals() {
                             {r.status === "rewarded" ? (
                               <>
                                 {" "}
-                                <Num>{money(r.reward)}</Num>
+                                <Num>{starsText(r.reward)}</Num>
                               </>
                             ) : null}{" "}
                             · {dateTime(r.rewarded_at ?? r.created_at)}
@@ -1290,8 +1328,8 @@ function AdminUsers() {
               <Row
                 key={u.id}
                 title={fullName(u)}
-                meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${money(u.paid)}${u.banned ? " · blocked" : ""}`}
-                value={<Num>{money(u.balance)}</Num>}
+                meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${starsText(u.paid)}${u.banned ? " · blocked" : ""}`}
+                value={<Num>{starsText(u.balance)}</Num>}
                 onClick={() => setSel(u)}
               />
             ))}
@@ -1313,16 +1351,16 @@ function UserSheet({ u, onClose, onSaved, onChanged }: { u: UserRow; onClose: ()
   const [blocked, setBlocked] = useState(!!u.banned);
   const adjust = async (sign: 1 | -1) => {
     const v = Number(amount);
-    if (!(v > 0)) {
+    if (!Number.isInteger(v) || !(v > 0)) {
       haptic.error();
-      setAmountErr("Enter an amount above $0");
+      setAmountErr("Enter a whole number of Stars above 0");
       return;
     }
     setBusy(true);
     try {
       await api(`/admin/users/${u.id}/balance`, { body: { amount: sign * v, note: "admin" } });
-      const usd = money(Math.round(v * 1e6));
-      toast(sign > 0 ? `Added ${usd} to ${name}` : `Removed ${usd} from ${name}`, "ok");
+      const stars = starsText(v);
+      toast(sign > 0 ? `Added ${stars} to ${name}` : `Removed ${stars} from ${name}`, "ok");
       onSaved();
     } catch (e) {
       fail(e);
@@ -1348,27 +1386,27 @@ function UserSheet({ u, onClose, onSaved, onChanged }: { u: UserRow; onClose: ()
       <dl class="card">
         <Kv label="Balance">
           <b>
-            <Num>{money(u.balance)}</Num>
+            <Num>{starsText(u.balance)}</Num>
           </b>
         </Kv>
         <Kv label="Orders">{num(u.orders)}</Kv>
         <Kv label="Paid with Stars">
-          <Num>{money(u.paid)}</Num>
+          <Num>{starsText(u.paid)}</Num>
         </Kv>
         <Kv label="Last seen">{dateTime(u.last_seen_at)}</Kv>
       </dl>
       <Field
         id="user-adjust"
-        label="Adjust balance (USD)"
-        lead="$"
-        inputMode="decimal"
+        label="Adjust balance (Stars)"
+        lead="⭐"
+        inputMode="numeric"
         enterKeyHint="done"
         dir="ltr"
-        placeholder="0.00"
+        placeholder="0"
         value={amount}
         error={amountErr}
         onInput={(v) => {
-          setAmount(v.replace(/[^\d.]/g, ""));
+          setAmount(v.replace(/\D/g, ""));
           setAmountErr(null);
         }}
       />
@@ -1389,7 +1427,7 @@ function UserSheet({ u, onClose, onSaved, onChanged }: { u: UserRow; onClose: ()
 
 // ---------------- Orders ----------------
 
-type AdminOrder = OrderView & { npOrderId: number | null; cost: number | null; userId: number; userName: string; username: string | null; error: string | null };
+type AdminOrder = OrderView & { npOrderId: number | null; cost: number | null; rate: number | null; userId: number; userName: string; username: string | null; error: string | null };
 
 const ORDER_FILTERS: [string, string][] = [
   ["", "All"],
@@ -1403,7 +1441,7 @@ const ORDER_FILTERS: [string, string][] = [
 function AdminOrders() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
-  const pg = usePaged<AdminOrder>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
+  const pg = usePaged<AdminOrder, { starsPerUsd: number }>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
   const list = pg.items;
   return (
     <Page back="/admin" title="All orders">
@@ -1450,11 +1488,11 @@ function AdminOrders() {
                       · {o.userName}
                       {o.username ? ` @${o.username}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
                       <br />
-                      Paid <Num>{money(paid)}</Num> · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
+                      Paid <Num>{starsText(paid)}</Num> · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
                       {o.cost !== null ? (
                         <>
                           {" "}
-                          · profit <Num>{money(paid - o.cost)}</Num>
+                          · profit <Num>{money(starsUsd(paid, o.rate ?? pg.extra?.starsPerUsd ?? 0) - o.cost)}</Num>
                         </>
                       ) : null}
                       {o.error ? ` · ${o.error}` : ""}
@@ -1479,8 +1517,8 @@ function AdminOrders() {
 interface AdminSettingsData {
   default_markup_pct: number;
   stars_per_usd: number;
-  min_topup: number;
-  max_topup: number;
+  min_topup_stars: number;
+  max_topup_stars: number;
   sync_enabled: number;
   sync_every_hours: number;
   auto_enable_new: number;
@@ -1503,8 +1541,8 @@ interface AdminSettingsData {
   key_hint: string | null;
 }
 
-type NumKey = "stars_per_usd" | "min_topup" | "max_topup" | "low_balance" | "referral_reward_stars" | "referral_daily_cap";
-const USD_KEYS: NumKey[] = ["min_topup", "max_topup", "low_balance"];
+type NumKey = "stars_per_usd" | "min_topup_stars" | "max_topup_stars" | "low_balance" | "referral_reward_stars" | "referral_daily_cap";
+const USD_KEYS: NumKey[] = ["low_balance"];
 
 function AdminSettings() {
   const res = useAsync(() => api<AdminSettingsData>("/admin/settings"), []);
@@ -1621,21 +1659,19 @@ function AdminSettings() {
         )
       ) : (
         <>
-          <Section header="Telegram Stars" footer="Telegram pays out roughly $0.013 per Star, so 77 Stars per $1 is about break-even. Your markup is the profit.">
+          <Section header="Telegram Stars" footer="Telegram pays out roughly $0.013 per Star, so 77 Stars per $1 is about break-even. Your markup is the profit. Changing the rate only affects future prices: balances, past orders and payments stay in Stars.">
             <dl class="card">
-              <Kv label="Stars per $1 of balance" id="set-stars">
+              <Kv label="Stars per $1 (sets prices)" id="set-stars">
                 {numInput("stars_per_usd", "set-stars")}
               </Kv>
               <Kv label="Smallest top-up" id="set-min">
                 <Num>
-                  {"$"}
-                  {numInput("min_topup", "set-min")}
+                  {numInput("min_topup_stars", "set-min")} ⭐
                 </Num>
               </Kv>
               <Kv label="Largest top-up" id="set-max">
                 <Num>
-                  {"$"}
-                  {numInput("max_topup", "set-max")}
+                  {numInput("max_topup_stars", "set-max")} ⭐
                 </Num>
               </Kv>
             </dl>
@@ -1686,7 +1722,7 @@ function AdminSettings() {
 
           <Section header="Alerts & support" footer="Admin warns you when your NotPanel balance drops below the alert. The customers' Support button opens the support chat (empty: the bot).">
             <dl class="card">
-              <Kv label="Low balance alert" id="set-low">
+              <Kv label="Warn when NotPanel balance is below" id="set-low">
                 <Num>
                   {"$"}
                   {numInput("low_balance", "set-low")}

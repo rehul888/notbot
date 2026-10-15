@@ -1,8 +1,8 @@
 import type { ReferralStats } from "../../shared/types";
 import { api } from "../api";
-import { dateTime, money, num, prettyLink } from "../format";
+import { dateTime, iso, num, prettyLink, stars } from "../format";
 import { t } from "../i18n";
-import { Icon, StarIcon } from "../icons";
+import { Icon } from "../icons";
 import { useCountUp } from "../motion";
 import { back } from "../router";
 import { haptic, openTelegramLink } from "../tg";
@@ -29,7 +29,7 @@ function Hero() {
   );
 }
 
-/** Counts animate up; money never animates (design rule) */
+/** Counts animate up; Stars earned never animate (design rule) */
 function Stat({ label, value, text, count = true }: { label: string; value: number; text: (n: number) => string; count?: boolean }) {
   const counted = useCountUp(value, { from: 0, delay: 150, step: 1 });
   const shown = count ? counted : value;
@@ -60,13 +60,7 @@ function Body({ r }: { r: ReferralStats }) {
   return (
     <>
       <Hero />
-      <LargeTitle align="center" size="title" title={t("invite.title")} sub={t("invite.sub", { amount: money(r.reward) })} />
-      <div class="inv-chip">
-        <span>
-          <StarIcon size={16} />
-          {t("invite.reward", { stars: num(r.rewardStars) })}
-        </span>
-      </div>
+      <LargeTitle align="center" size="title" title={t("invite.title")} sub={t("invite.sub", { amount: iso(stars(r.reward)) })} />
 
       {live ? (
         <Section header={t("invite.yourLink")}>
@@ -88,13 +82,13 @@ function Body({ r }: { r: ReferralStats }) {
         <div class="inv-stats">
           <Stat label={t("invite.invited")} value={r.invited} text={(n) => num(n)} />
           <Stat label={t("invite.joined")} value={r.joined} text={(n) => num(n)} />
-          <Stat label={t("invite.earned")} value={r.earned} text={(n) => money(n)} count={false} />
+          <Stat label={t("invite.earned")} value={r.earned} text={(n) => stars(n)} count={false} />
         </div>
       </Section>
 
       <Section header={t("invite.how")}>
         <ol class="card inv-steps">
-          {[t("invite.how1"), t("invite.how2"), t("invite.how3", { amount: money(r.reward) })].map((s, i) => (
+          {[t("invite.how1"), t("invite.how2"), t("invite.how3", { amount: iso(stars(r.reward)) })].map((s, i) => (
             <li key={i}>
               <span class="n">
                 <Num>{num(i + 1)}</Num>

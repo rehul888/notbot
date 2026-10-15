@@ -90,12 +90,13 @@ export function App() {
   } else if (!me.langChosen) {
     key = "lang";
     screen = <LanguagePick />;
+  } else if (!me.termsAccepted) {
+    // First run: language → welcome → join the update channel → home
+    key = "welcome";
+    screen = <Welcome />;
   } else if (me.channelRequired) {
     key = "gate";
     screen = <ChannelGate />;
-  } else if (!me.termsAccepted) {
-    key = "welcome";
-    screen = <Welcome />;
   } else {
     const [a, b, c] = route.parts;
     key = route.path + "?" + route.query;
