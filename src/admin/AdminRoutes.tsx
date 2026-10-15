@@ -7,7 +7,7 @@ import type { OrderView } from "../../shared/types";
 import { api, clearApiCache } from "../api";
 import { dateTime, money, num } from "../format";
 import { Icon, StarIcon, type IconName } from "../icons";
-import { enc, navigate } from "../router";
+import { back as goBack, enc, navigate } from "../router";
 import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
 import {
   BackNav,
@@ -75,6 +75,7 @@ function Page({
   size = "title",
   lead,
   overlay,
+  main = null,
   children,
 }: {
   back: string;
@@ -83,12 +84,22 @@ function Page({
   size?: "large" | "title" | "title2";
   lead?: ComponentChildren;
   overlay?: ComponentChildren;
+  /** Primary bottom action (Save…); a Back button is always shown next to it */
+  main?: ButtonSpec | null;
   children: ComponentChildren;
 }) {
   return (
     <>
       <BackNav to={back} />
-      <Screen bottom="native" overlay={overlay}>
+      <Screen
+        bottom="native"
+        overlay={
+          <>
+            {overlay}
+            <BottomButtons main={main} secondary={{ text: "Back", onClick: () => goBack(back) }} />
+          </>
+        }
+      >
         <LargeTitle size={size} title={title} sub={sub} lead={lead} />
         {children}
       </Screen>
@@ -429,12 +440,8 @@ function AdminPrices({ q: initialQ }: { q: string }) {
       back="/admin"
       title={attention ? "Hidden services" : "Services & prices"}
       sub={attention ? "Their fixed price is below NotPanel's cost. Tap one to change its price." : "Sell price = NotPanel cost + markup"}
-      overlay={
-        <>
-          {edit ? <ServiceEditSheet s={edit} onClose={() => setEdit(null)} onSaved={() => (setEdit(null), search())} /> : null}
-          <BottomButtons main={dirty ? { text: `Save markup ${pct(markup!)}`, onClick: save, progress: saving } : null} />
-        </>
-      }
+      main={dirty ? { text: `Save markup ${pct(markup!)}`, onClick: save, progress: saving } : null}
+      overlay={edit ? <ServiceEditSheet s={edit} onClose={() => setEdit(null)} onSaved={() => (setEdit(null), search())} /> : null}
     >
       {!attention ? (
         <Section
@@ -555,7 +562,7 @@ function AdminPlatform({ platform }: { platform: string }) {
       title={platformName(platform)}
       sub="Rules here apply to all its categories"
       lead={<PlatformLogo slug={platform} size={48} radius={14} />}
-      overlay={<BottomButtons main={rule.main} />}
+      main={rule.main}
     >
       {ruleErr ? (
         <ErrorState compact error={ruleErr} onRetry={() => (platforms.reload(), settings.reload())} />
@@ -605,12 +612,8 @@ function AdminCategory({ platform, category }: { platform: string; category: str
       sub={platformName(platform)}
       size="title2"
       lead={<PlatformLogo slug={platform} size={48} radius={14} />}
-      overlay={
-        <>
-          {edit ? <ServiceEditSheet s={edit} onClose={() => setEdit(null)} onSaved={() => (setEdit(null), services.reload())} /> : null}
-          <BottomButtons main={rule.main} />
-        </>
-      }
+      main={rule.main}
+      overlay={edit ? <ServiceEditSheet s={edit} onClose={() => setEdit(null)} onSaved={() => (setEdit(null), services.reload())} /> : null}
     >
       {ruleErr ? (
         <ErrorState compact error={ruleErr} onRetry={() => (cats.reload(), settings.reload())} />
@@ -1325,7 +1328,7 @@ function AdminSettings() {
     : "Never synced";
 
   return (
-    <Page back="/admin" title="Settings & connection" overlay={<BottomButtons main={dirty ? { text: "Save", onClick: save, progress: busy } : null} />}>
+    <Page back="/admin" title="Settings & connection" main={dirty ? { text: "Save", onClick: save, progress: busy } : null}>
       {!s ? (
         res.error ? (
           <ErrorState error={res.error} onRetry={res.reload} />

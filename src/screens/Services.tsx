@@ -6,7 +6,7 @@ import { cachedApi } from "../api";
 import { duration, money, short } from "../format";
 import { t, type Key } from "../i18n";
 import { categoryLook, Icon } from "../icons";
-import { enc, navigate } from "../router";
+import { back, enc, navigate } from "../router";
 import { haptic } from "../tg";
 import { BackNav, EmptyState, errText, ErrorState, FlowSteps, LargeTitle, List, Notice, Num, PlatformLogo, Row, Screen, Section, SkeletonList, StepsBar, toast, useAsync } from "../ui";
 import { CategorySheet, PlatformSheet } from "./Pickers";
@@ -130,6 +130,9 @@ export function Services({ platform, category }: { platform: string; category: s
   const overlay = (
     <>
       <StepsBar>
+        <button type="button" class="round press" aria-label={t("common.back")} onClick={() => (haptic.tap(), back(`/p/${enc(platform)}`))}>
+          <Icon name="back" size={22} stroke={2.4} class="rtl-flip" />
+        </button>
         <button type="button" class="pick plain press" aria-haspopup="dialog" aria-label={`${t("sheet.platform")}: ${pName}`} onClick={() => open("platform")}>
           <span class="circle" aria-hidden="true">
             <PlatformLogo slug={platform} size={36} radius={18} />

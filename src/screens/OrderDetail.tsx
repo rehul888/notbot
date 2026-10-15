@@ -7,7 +7,7 @@ import { t, type Key } from "../i18n";
 import { Icon } from "../icons";
 import { refreshMe } from "../me";
 import { useCountUp } from "../motion";
-import { enc, navigate } from "../router";
+import { back, enc, navigate } from "../router";
 import { meStore } from "../store";
 import { confirmDialog, haptic, openLink, openTelegramLink } from "../tg";
 import {
@@ -270,7 +270,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
       <BackNav to="/orders" />
       <Screen
         bottom={!o && res.error ? "none" : "native"}
-        overlay={o ? <BottomButtons main={{ text: t("detail.again"), onClick: () => navigate(`/s/${o.serviceId}?link=${enc(o.link)}&qty=${o.quantity}`) }} /> : null}
+        overlay={o ? <BottomButtons main={{ text: t("detail.again"), onClick: () => navigate(`/s/${o.serviceId}?link=${enc(o.link)}&qty=${o.quantity}`) }} secondary={{ text: t("common.back"), onClick: () => back("/orders") }} /> : null}
       >
         {body}
       </Screen>

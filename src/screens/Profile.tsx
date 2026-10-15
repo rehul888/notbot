@@ -5,7 +5,7 @@ import { getLang, setLang, t } from "../i18n";
 import { Icon } from "../icons";
 import { updateMe } from "../me";
 import { meStore } from "../store";
-import { homeScreen, isDark, openTelegramLink, requestWriteAccess, webApp } from "../tg";
+import { homeScreen, isDark, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
 import { ErrorState, LargeTitle, List, Row, Screen, Section, Sheet, Skeleton, errText, toast } from "../ui";
 
 /** First letter of each name, uppercased for the UI language (whole characters, so emoji and surrogates survive). */
@@ -170,6 +170,13 @@ export function Profile() {
         ) : null}
         <Row icon="chat" plate="var(--sky)" title={t("profile.support")} onClick={support} external />
         <Row icon="doc" plate="var(--lavender)" title={t("profile.terms")} onClick={openTerms} />
+        <Row
+          lead={<img class="tile" src="/brand/mark.svg" alt="" width={32} height={32} />}
+          title={t("profile.website")}
+          meta="notpanel.com"
+          onClick={() => openLink("https://notpanel.com")}
+          external
+        />
       </List>
 
       {me.isAdmin ? (

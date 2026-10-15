@@ -6,7 +6,7 @@ import { cachedApi } from "../api";
 import { money } from "../format";
 import { t } from "../i18n";
 import { categoryLook, Icon } from "../icons";
-import { enc, navigate } from "../router";
+import { back, enc, navigate } from "../router";
 import { haptic } from "../tg";
 import { BackNav, EmptyState, ErrorState, FlowSteps, LargeTitle, List, Num, PlatformLogo, Row, Screen, SkeletonList, StepsBar, useAsync } from "../ui";
 import { PlatformSheet } from "./Pickers";
@@ -63,6 +63,9 @@ export function Categories({ platform }: { platform: string }) {
   const overlay = (
     <>
       <StepsBar>
+        <button type="button" class="round press" aria-label={t("common.back")} onClick={() => (haptic.tap(), back("/"))}>
+          <Icon name="back" size={22} stroke={2.4} class="rtl-flip" />
+        </button>
         <button
           type="button"
           class="pick press"

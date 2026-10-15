@@ -47,12 +47,12 @@ export function TopUp() {
   return (
     <>
       <BackNav to={ret ?? "/wallet"} />
-      {done ? <TopUpSuccess {...done} ret={ret} /> : <TopUpForm initial={prefill(query.get("amount"))} onDone={setDone} />}
+      {done ? <TopUpSuccess {...done} ret={ret} /> : <TopUpForm initial={prefill(query.get("amount"))} onDone={setDone} backTo={ret ?? "/wallet"} />}
     </>
   );
 }
 
-function TopUpForm({ initial, onDone }: { initial: string; onDone: (d: Done) => void }) {
+function TopUpForm({ initial, onDone, backTo }: { initial: string; onDone: (d: Done) => void; backTo: string }) {
   const me = meStore.use()!;
   const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -114,7 +114,7 @@ function TopUpForm({ initial, onDone }: { initial: string; onDone: (d: Done) => 
   };
 
   return (
-    <Screen bottom="native" overlay={<BottomButtons main={{ text: t("topup.pay", { stars: num(stars) }), onClick: pay, progress: busy, shine: true }} />}>
+    <Screen bottom="native" overlay={<BottomButtons main={{ text: t("topup.pay", { stars: num(stars) }), onClick: pay, progress: busy, shine: true }} secondary={{ text: t("common.back"), onClick: () => back(backTo) }} />}>
       <LargeTitle size="title" title={t("topup.title")} sub={tn("topup.balance", { amount: <Num>{money(me.balance)}</Num> })} />
 
       <Section
