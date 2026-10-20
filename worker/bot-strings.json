@@ -21,7 +21,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "Abrir {brand}",
     "cmdLanguage": "Cambiar idioma",
-    "cmdHelp": "Ayuda y soporte"
+    "cmdHelp": "Ayuda y soporte",
+    "cmdOrders": "Mis pedidos",
+    "cmdWallet": "Saldo y recarga",
+    "ordersReply": "📦 <b>TUS PEDIDOS</b>\n\n<i>Sigue cada pedido en vivo en la app.</i>",
+    "walletReply": "👛 <b>SALDO: {balance}</b>\n\n<i>Recarga con Telegram Stars en la app.</i>"
   },
   "pt": {
     "welcome": "┏━━ 👋 <b>Bem-vindo, {name}!</b>\n\nA <b>{brand}</b> ajuda você a crescer qualquer conta social em poucos toques.\n\n🚀 <b>O QUE VOCÊ PODE OBTER</b>\n  ┣ 👥 <i>Seguidores, inscritos e membros</i>\n  ┣ 👁 <i>Visualizações e views de stories</i>\n  ┣ ❤️ <i>Curtidas e reações</i>\n  ┣ 💬 <i>Comentários e compartilhamentos</i>\n  ┗ 📊 <i>Acompanhamento ao vivo de cada pedido</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>Toque em Abrir app para começar</b>",
@@ -45,7 +49,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "Abrir {brand}",
     "cmdLanguage": "Mudar idioma",
-    "cmdHelp": "Ajuda e suporte"
+    "cmdHelp": "Ajuda e suporte",
+    "cmdOrders": "Meus pedidos",
+    "cmdWallet": "Saldo e recarga",
+    "ordersReply": "📦 <b>SEUS PEDIDOS</b>\n\n<i>Acompanhe cada pedido ao vivo no app.</i>",
+    "walletReply": "👛 <b>SALDO: {balance}</b>\n\n<i>Recarregue com Telegram Stars no app.</i>"
   },
   "ru": {
     "welcome": "┏━━ 👋 <b>Добро пожаловать, {name}!</b>\n\n<b>{brand}</b> помогает развивать любой аккаунт в соцсетях в пару касаний.\n\n🚀 <b>ЧТО ВЫ МОЖЕТЕ ПОЛУЧИТЬ</b>\n  ┣ 👥 <i>Подписчики и участники</i>\n  ┣ 👁 <i>Просмотры и просмотры историй</i>\n  ┣ ❤️ <i>Лайки и реакции</i>\n  ┣ 💬 <i>Комментарии и репосты</i>\n  ┗ 📊 <i>Отслеживание каждого заказа в реальном времени</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>Нажмите «Открыть приложение», чтобы начать</b>",
@@ -69,7 +77,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "Открыть {brand}",
     "cmdLanguage": "Сменить язык",
-    "cmdHelp": "Помощь и поддержка"
+    "cmdHelp": "Помощь и поддержка",
+    "cmdOrders": "Мои заказы",
+    "cmdWallet": "Баланс и пополнение",
+    "ordersReply": "📦 <b>ВАШИ ЗАКАЗЫ</b>\n\n<i>Следите за каждым заказом в приложении.</i>",
+    "walletReply": "👛 <b>БАЛАНС: {balance}</b>\n\n<i>Пополняйте через Telegram Stars в приложении.</i>"
   },
   "tr": {
     "welcome": "┏━━ 👋 <b>Hoş geldin, {name}!</b>\n\n<b>{brand}</b> her sosyal hesabı birkaç dokunuşla büyütmene yardım eder.\n\n🚀 <b>NELER ALABİLİRSİN</b>\n  ┣ 👥 <i>Takipçi, abone ve üyeler</i>\n  ┣ 👁 <i>Görüntülenme ve hikaye görüntülenmeleri</i>\n  ┣ ❤️ <i>Beğeni ve tepkiler</i>\n  ┣ 💬 <i>Yorum ve paylaşımlar</i>\n  ┗ 📊 <i>Her sipariş için canlı takip</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>Başlamak için Uygulamayı aç'a dokun</b>",
@@ -93,7 +105,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "{brand}'i aç",
     "cmdLanguage": "Dili değiştir",
-    "cmdHelp": "Yardım ve destek"
+    "cmdHelp": "Yardım ve destek",
+    "cmdOrders": "Siparişlerim",
+    "cmdWallet": "Bakiye ve yükleme",
+    "ordersReply": "📦 <b>SİPARİŞLERİN</b>\n\n<i>Her siparişi uygulamada canlı takip et.</i>",
+    "walletReply": "👛 <b>BAKİYE: {balance}</b>\n\n<i>Uygulamada Telegram Stars ile yükle.</i>"
   },
   "ar": {
     "welcome": "┏━━ 👋 <b>أهلاً بك، {name}!</b>\n\nيساعدك <b>{brand}</b> على تنمية أي حساب اجتماعي ببضع نقرات.\n\n🚀 <b>ما الذي يمكنك الحصول عليه</b>\n  ┣ 👥 <i>متابعون ومشتركون وأعضاء</i>\n  ┣ 👁 <i>مشاهدات ومشاهدات القصص</i>\n  ┣ ❤️ <i>إعجابات وتفاعلات</i>\n  ┣ 💬 <i>تعليقات ومشاركات</i>\n  ┗ 📊 <i>تتبع مباشر لكل طلب</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>اضغط على فتح التطبيق للبدء</b>",
@@ -117,7 +133,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "فتح {brand}",
     "cmdLanguage": "تغيير اللغة",
-    "cmdHelp": "المساعدة والدعم"
+    "cmdHelp": "المساعدة والدعم",
+    "cmdOrders": "طلباتي",
+    "cmdWallet": "الرصيد والشحن",
+    "ordersReply": "📦 <b>طلباتك</b>\n\n<i>تابع كل طلب مباشرة في التطبيق.</i>",
+    "walletReply": "👛 <b>الرصيد: {balance}</b>\n\n<i>اشحن بنجوم تيليجرام في التطبيق.</i>"
   },
   "hi": {
     "welcome": "┏━━ 👋 <b>स्वागत है, {name}!</b>\n\n<b>{brand}</b> कुछ ही टैप में किसी भी सोशल अकाउंट को बढ़ाने में मदद करता है।\n\n🚀 <b>आप क्या पा सकते हैं</b>\n  ┣ 👥 <i>फॉलोअर्स, सब्सक्राइबर और मेंबर</i>\n  ┣ 👁 <i>व्यूज़ और स्टोरी व्यूज़</i>\n  ┣ ❤️ <i>लाइक्स और रिएक्शन</i>\n  ┣ 💬 <i>कमेंट और शेयर</i>\n  ┗ 📊 <i>हर ऑर्डर की लाइव ट्रैकिंग</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>शुरू करने के लिए ऐप खोलें पर टैप करें</b>",
@@ -141,7 +161,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "{brand} खोलें",
     "cmdLanguage": "भाषा बदलें",
-    "cmdHelp": "मदद और सपोर्ट"
+    "cmdHelp": "मदद और सपोर्ट",
+    "cmdOrders": "मेरे ऑर्डर",
+    "cmdWallet": "बैलेंस और टॉप-अप",
+    "ordersReply": "📦 <b>आपके ऑर्डर</b>\n\n<i>ऐप में हर ऑर्डर को लाइव ट्रैक करें।</i>",
+    "walletReply": "👛 <b>बैलेंस: {balance}</b>\n\n<i>ऐप में Telegram Stars से टॉप-अप करें।</i>"
   },
   "id": {
     "welcome": "┏━━ 👋 <b>Selamat datang, {name}!</b>\n\n<b>{brand}</b> membantu mengembangkan akun sosial apa pun hanya dengan beberapa ketukan.\n\n🚀 <b>YANG BISA KAMU DAPATKAN</b>\n  ┣ 👥 <i>Pengikut, pelanggan & anggota</i>\n  ┣ 👁 <i>Tayangan & tayangan story</i>\n  ┣ ❤️ <i>Suka & reaksi</i>\n  ┣ 💬 <i>Komentar & bagikan</i>\n  ┗ 📊 <i>Pelacakan langsung untuk setiap pesanan</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>Ketuk Buka aplikasi untuk mulai</b>",
@@ -165,7 +189,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "Buka {brand}",
     "cmdLanguage": "Ganti bahasa",
-    "cmdHelp": "Bantuan dan dukungan"
+    "cmdHelp": "Bantuan dan dukungan",
+    "cmdOrders": "Pesanan saya",
+    "cmdWallet": "Saldo dan isi ulang",
+    "ordersReply": "📦 <b>PESANANMU</b>\n\n<i>Lacak setiap pesanan secara langsung di aplikasi.</i>",
+    "walletReply": "👛 <b>SALDO: {balance}</b>\n\n<i>Isi ulang dengan Telegram Stars di aplikasi.</i>"
   },
   "fr": {
     "welcome": "┏━━ 👋 <b>Bienvenue, {name} !</b>\n\n<b>{brand}</b> vous aide à développer n'importe quel compte social en quelques touches.\n\n🚀 <b>CE QUE VOUS POUVEZ OBTENIR</b>\n  ┣ 👥 <i>Abonnés et membres</i>\n  ┣ 👁 <i>Vues et vues de stories</i>\n  ┣ ❤️ <i>J'aime et réactions</i>\n  ┣ 💬 <i>Commentaires et partages</i>\n  ┗ 📊 <i>Suivi en direct de chaque commande</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>Touchez Ouvrir l'app pour commencer</b>",
@@ -189,7 +217,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "Ouvrir {brand}",
     "cmdLanguage": "Changer de langue",
-    "cmdHelp": "Aide et support"
+    "cmdHelp": "Aide et support",
+    "cmdOrders": "Mes commandes",
+    "cmdWallet": "Solde et recharge",
+    "ordersReply": "📦 <b>TES COMMANDES</b>\n\n<i>Suis chaque commande en direct dans l'app.</i>",
+    "walletReply": "👛 <b>SOLDE: {balance}</b>\n\n<i>Recharge avec Telegram Stars dans l'app.</i>"
   },
   "zh": {
     "welcome": "┏━━ 👋 <b>欢迎，{name}！</b>\n\n<b>{brand}</b> 让你轻点几下就能增长任何社交账号。\n\n🚀 <b>你可以获得</b>\n  ┣ 👥 <i>粉丝、订阅者和成员</i>\n  ┣ 👁 <i>浏览量和快拍浏览量</i>\n  ┣ ❤️ <i>点赞和互动</i>\n  ┣ 💬 <i>评论和分享</i>\n  ┗ 📊 <i>每个订单实时追踪</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>点击打开应用开始使用</b>",
@@ -213,7 +245,11 @@
     "invoiceOrder": "{service} · {quantity}",
     "cmdStart": "打开 {brand}",
     "cmdLanguage": "更改语言",
-    "cmdHelp": "帮助与支持"
+    "cmdHelp": "帮助与支持",
+    "cmdOrders": "我的订单",
+    "cmdWallet": "余额与充值",
+    "ordersReply": "📦 <b>你的订单</b>\n\n<i>在应用中实时跟踪每个订单。</i>",
+    "walletReply": "👛 <b>余额: {balance}</b>\n\n<i>在应用中用 Telegram Stars 充值。</i>"
   },
   "de": {
     "welcome": "┏━━ 👋 <b>Willkommen, {name}!</b>\n\n<b>{brand}</b> hilft dir, jedes Social-Media-Konto mit wenigen Taps auszubauen.\n\n🚀 <b>WAS DU BEKOMMEN KANNST</b>\n  ┣ 👥 <i>Follower, Abonnenten & Mitglieder</i>\n  ┣ 👁 <i>Aufrufe & Story-Aufrufe</i>\n  ┣ ❤️ <i>Likes & Reaktionen</i>\n  ┣ 💬 <i>Kommentare & Shares</i>\n  ┗ 📊 <i>Live-Tracking für jede Bestellung</i>\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n👇 <b>Tippe auf App öffnen, um zu starten</b>",
@@ -235,6 +271,10 @@
     "cmdStart": "{brand} öffnen",
     "cmdLanguage": "Sprache ändern",
     "cmdHelp": "Hilfe und Support",
+    "cmdOrders": "Meine Bestellungen",
+    "cmdWallet": "Guthaben und Aufladen",
+    "ordersReply": "📦 <b>DEINE BESTELLUNGEN</b>\n\n<i>Verfolge jede Bestellung live in der App.</i>",
+    "walletReply": "👛 <b>GUTHABEN: {balance}</b>\n\n<i>Lade in der App mit Telegram Stars auf.</i>",
     "invoiceTitle": "{brand}-Guthaben",
     "invoiceTopup": "{amount} zu deinem {brand}-Guthaben hinzufügen",
     "invoiceOrder": "{service} · {quantity}"
@@ -259,6 +299,10 @@
     "cmdStart": "Apri {brand}",
     "cmdLanguage": "Cambia lingua",
     "cmdHelp": "Aiuto e supporto",
+    "cmdOrders": "I miei ordini",
+    "cmdWallet": "Saldo e ricarica",
+    "ordersReply": "📦 <b>I TUOI ORDINI</b>\n\n<i>Segui ogni ordine in tempo reale nell'app.</i>",
+    "walletReply": "👛 <b>SALDO: {balance}</b>\n\n<i>Ricarica con Telegram Stars nell'app.</i>",
     "invoiceTitle": "Saldo {brand}",
     "invoiceTopup": "Aggiungi {amount} al tuo saldo {brand}",
     "invoiceOrder": "{service} · {quantity}"
@@ -283,6 +327,10 @@
     "cmdStart": "Otwórz {brand}",
     "cmdLanguage": "Zmień język",
     "cmdHelp": "Pomoc i wsparcie",
+    "cmdOrders": "Moje zamówienia",
+    "cmdWallet": "Saldo i doładowanie",
+    "ordersReply": "📦 <b>TWOJE ZAMÓWIENIA</b>\n\n<i>Śledź każde zamówienie na żywo w aplikacji.</i>",
+    "walletReply": "👛 <b>SALDO: {balance}</b>\n\n<i>Doładuj przez Telegram Stars w aplikacji.</i>",
     "invoiceTitle": "Saldo {brand}",
     "invoiceTopup": "Dodaj {amount} do salda {brand}",
     "invoiceOrder": "{service} · {quantity}"
@@ -307,6 +355,10 @@
     "cmdStart": "Відкрити {brand}",
     "cmdLanguage": "Змінити мову",
     "cmdHelp": "Довідка та підтримка",
+    "cmdOrders": "Мої замовлення",
+    "cmdWallet": "Баланс і поповнення",
+    "ordersReply": "📦 <b>ВАШІ ЗАМОВЛЕННЯ</b>\n\n<i>Стежте за кожним замовленням у застосунку.</i>",
+    "walletReply": "👛 <b>БАЛАНС: {balance}</b>\n\n<i>Поповнюйте через Telegram Stars у застосунку.</i>",
     "invoiceTitle": "Баланс {brand}",
     "invoiceTopup": "Додати {amount} на баланс {brand}",
     "invoiceOrder": "{service} · {quantity}"
@@ -331,6 +383,10 @@
     "cmdStart": "{brand}を開く",
     "cmdLanguage": "言語を変更",
     "cmdHelp": "ヘルプとサポート",
+    "cmdOrders": "注文履歴",
+    "cmdWallet": "残高とチャージ",
+    "ordersReply": "📦 <b>あなたの注文</b>\n\n<i>アプリですべての注文をリアルタイムで確認できます。</i>",
+    "walletReply": "👛 <b>残高: {balance}</b>\n\n<i>アプリで Telegram Stars を使ってチャージ。</i>",
     "invoiceTitle": "{brand}残高",
     "invoiceTopup": "{brand}残高に{amount}を追加",
     "invoiceOrder": "{service} · {quantity}"
@@ -355,6 +411,10 @@
     "cmdStart": "{brand} 열기",
     "cmdLanguage": "언어 변경",
     "cmdHelp": "도움말 및 고객 지원",
+    "cmdOrders": "내 주문",
+    "cmdWallet": "잔액 및 충전",
+    "ordersReply": "📦 <b>내 주문</b>\n\n<i>앱에서 모든 주문을 실시간으로 확인하세요.</i>",
+    "walletReply": "👛 <b>잔액: {balance}</b>\n\n<i>앱에서 Telegram Stars로 충전하세요.</i>",
     "invoiceTitle": "{brand} 잔액",
     "invoiceTopup": "{brand} 잔액에 {amount} 추가",
     "invoiceOrder": "{service} · {quantity}"
@@ -379,6 +439,10 @@
     "cmdStart": "Mở {brand}",
     "cmdLanguage": "Đổi ngôn ngữ",
     "cmdHelp": "Trợ giúp và hỗ trợ",
+    "cmdOrders": "Đơn hàng của tôi",
+    "cmdWallet": "Số dư và nạp tiền",
+    "ordersReply": "📦 <b>ĐƠN HÀNG CỦA BẠN</b>\n\n<i>Theo dõi trực tiếp mọi đơn hàng trong ứng dụng.</i>",
+    "walletReply": "👛 <b>SỐ DƯ: {balance}</b>\n\n<i>Nạp bằng Telegram Stars trong ứng dụng.</i>",
     "invoiceTitle": "Số dư {brand}",
     "invoiceTopup": "Nạp {amount} vào số dư {brand} của bạn",
     "invoiceOrder": "{service} · {quantity}"
@@ -403,6 +467,10 @@
     "cmdStart": "باز کردن {brand}",
     "cmdLanguage": "تغییر زبان",
     "cmdHelp": "راهنما و پشتیبانی",
+    "cmdOrders": "سفارش‌های من",
+    "cmdWallet": "موجودی و شارژ",
+    "ordersReply": "📦 <b>سفارش‌های شما</b>\n\n<i>هر سفارش را به‌صورت زنده در برنامه دنبال کنید.</i>",
+    "walletReply": "👛 <b>موجودی: {balance}</b>\n\n<i>در برنامه با ستاره‌های تلگرام شارژ کنید.</i>",
     "invoiceTitle": "موجودی {brand}",
     "invoiceTopup": "افزودن {amount} به موجودی {brand}",
     "invoiceOrder": "{service} · {quantity}"
@@ -427,6 +495,10 @@
     "cmdStart": "{brand} کھولیں",
     "cmdLanguage": "زبان بدلیں",
     "cmdHelp": "مدد اور سپورٹ",
+    "cmdOrders": "میرے آرڈر",
+    "cmdWallet": "بیلنس اور ٹاپ اپ",
+    "ordersReply": "📦 <b>آپ کے آرڈر</b>\n\n<i>ایپ میں ہر آرڈر کو لائیو ٹریک کریں۔</i>",
+    "walletReply": "👛 <b>بیلنس: {balance}</b>\n\n<i>ایپ میں Telegram Stars سے ٹاپ اپ کریں۔</i>",
     "invoiceTitle": "{brand} بیلنس",
     "invoiceTopup": "اپنے {brand} بیلنس میں {amount} شامل کریں",
     "invoiceOrder": "{service} · {quantity}"
@@ -451,6 +523,10 @@
     "cmdStart": "{brand} খুলুন",
     "cmdLanguage": "ভাষা বদলান",
     "cmdHelp": "সহায়তা ও সাপোর্ট",
+    "cmdOrders": "আমার অর্ডার",
+    "cmdWallet": "ব্যালান্স ও টপ-আপ",
+    "ordersReply": "📦 <b>আপনার অর্ডার</b>\n\n<i>অ্যাপে প্রতিটি অর্ডার লাইভ ট্র্যাক করুন।</i>",
+    "walletReply": "👛 <b>ব্যালান্স: {balance}</b>\n\n<i>অ্যাপে Telegram Stars দিয়ে টপ-আপ করুন।</i>",
     "invoiceTitle": "{brand} ব্যালেন্স",
     "invoiceTopup": "আপনার {brand} ব্যালেন্সে {amount} যোগ করুন",
     "invoiceOrder": "{service} · {quantity}"

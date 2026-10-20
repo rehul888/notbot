@@ -3,6 +3,7 @@
 import { LANGS } from "../shared/types";
 import { webhookSecret } from "./auth";
 import { botAboutFor } from "./bot-about";
+import { userCommands } from "./commands";
 import { brandName } from "./brand";
 import type { Env } from "./env";
 import { botPlain } from "./i18n";
@@ -57,14 +58,7 @@ export async function syncBotTexts(env: Env, batch: number, parts: TextParts = "
   const langs = LANGS.slice(batch * 10, batch * 10 + 10);
   for (const l of langs) {
     const lc = l === "en" ? {} : { language_code: l };
-    if (parts !== "texts") {
-      const commands = [
-        { command: "start", description: botPlain(l, "cmdStart") },
-        { command: "language", description: botPlain(l, "cmdLanguage") },
-        { command: "help", description: botPlain(l, "cmdHelp") },
-      ];
-      await tg(env.BOT_TOKEN, "setMyCommands", { commands, ...lc });
-    }
+    if (parts !== "texts") await tg(env.BOT_TOKEN, "setMyCommands", { commands: userCommands(l), ...lc });
     if (parts !== "commands") {
       await tg(env.BOT_TOKEN, "setMyName", { name: about[l].name, ...lc });
       await tg(env.BOT_TOKEN, "setMyShortDescription", { short_description: about[l].short, ...lc });

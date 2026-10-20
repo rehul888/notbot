@@ -8,6 +8,7 @@ import { sha256Hex, signSetupToken, timingSafeEqual, verifySetupToken } from "..
 import { bytesToBase64, detectImageMime } from "../assets";
 import { brandInfo } from "../brand";
 import { claimLink, createClaimCode } from "../claim";
+import { setAllCommands } from "../commands";
 import { registerNotPanelWebhook, setMenuButton, setTelegramWebhook, syncBotTexts } from "../connect";
 import { type Env, ownerIds } from "../env";
 import { npKey, verifyNotPanelKey, type KeyCheck } from "../notpanel";
@@ -184,7 +185,7 @@ async function runStep(env: Env, s: Settings, step: SetupStep, origin: string): 
       await syncBotTexts(env, 1, "texts");
       return;
     case "commands":
-      for (let batch: number | null = 0; batch !== null; ) batch = await syncBotTexts(env, batch, "commands");
+      await setAllCommands(env);
       return;
   }
 }

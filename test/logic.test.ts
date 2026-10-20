@@ -421,3 +421,36 @@ describe("branding settings validation", () => {
     expect(customWelcome("<b>Hi</b> {name} @ {brand}", "A<script>", "R&D")).toBe("&lt;b&gt;Hi&lt;/b&gt; A&lt;script&gt; @ R&amp;D");
   });
 });
+
+describe("bot command menus", () => {
+  it("are valid Telegram commands in every language, with the admin commands on top for admins only", async () => {
+    const { userCommands, ADMIN_COMMANDS } = await import("../worker/commands");
+    const { LANGS } = await import("../shared/types");
+    for (const l of LANGS) {
+      const cmds = userCommands(l);
+      expect(cmds.map((c) => c.command)).toEqual(["start", "orders", "wallet", "language", "help"]);
+      for (const c of [...cmds, ...ADMIN_COMMANDS]) {
+        expect(c.command).toMatch(/^[a-z0-9_]{1,32}$/);
+        expect(c.description.length).toBeGreaterThan(0);
+        expect(c.description.length).toBeLessThanOrEqual(256);
+        expect(c.description).not.toMatch(/[<>{}]/); // plain text, every placeholder filled
+      }
+    }
+    expect(ADMIN_COMMANDS.map((c) => c.command)).toEqual(["admin", "stats", "preview"]);
+  });
+
+  it("refresh when the code version, the brand name or the admins change", async () => {
+    const { commandsKey } = await import("../worker/commands");
+    const env = { OWNER_IDS: "1" } as never;
+    const s = (over: Record<string, unknown>) => ({ brand_name: "Rocket", owner_ids: "", ...over }) as never;
+    const base = commandsKey(env, s({}));
+    expect(commandsKey(env, s({}))).toBe(base);
+    expect(commandsKey(env, s({ brand_name: "Other" }))).not.toBe(base);
+    expect(commandsKey(env, s({ owner_ids: "42" }))).not.toBe(base);
+  });
+
+  it("counts /stats days in UTC", async () => {
+    const { dayStartUtc } = await import("../worker/stats");
+    expect(dayStartUtc(Date.UTC(2026, 9, 20, 23, 59))).toBe(Date.UTC(2026, 9, 20) / 1000);
+  });
+});

@@ -7,7 +7,9 @@ import { isOwner } from "../env";
 import { attachReferral, parseRef } from "../growth";
 import { getSettings } from "../settings";
 import { botText } from "../i18n";
-import { languageKeyboard, sendHelp, sendPreviews, sendWelcome } from "../botMessages";
+import { balanceText, languageKeyboard, openButton, sendHelp, sendPreviews, sendWelcome } from "../botMessages";
+import { ADMIN_COMMANDS, userCommands } from "../commands";
+import { sendAdminLink, sendStats } from "../stats";
 import { onPreCheckout, onSuccessfulPayment } from "../payments";
 import { tg } from "../telegram";
 
@@ -128,7 +130,24 @@ async function handle(env: Env, u: any): Promise<void> {
     const ref = parseRef(text.split(/\s+/)[1]);
     if (ref) await attachReferral(env, await getSettings(env), from.id, ref);
   }
-  if (cmd === "start") return void (await (user?.lang ? sendWelcome(env, from.id, lang, from.first_name) : pickLanguage()));
+  if (cmd === "start") {
+    // An admin's own menu (with /admin and /stats) can only be set once they have a chat with the bot
+    const s = await getSettings(env);
+    if (isOwner(env, s, from.id))
+      await tg(env.BOT_TOKEN, "setMyCommands", { scope: { type: "chat", chat_id: from.id }, commands: [...userCommands(lang), ...ADMIN_COMMANDS] }).catch(() => undefined);
+    return void (await (user?.lang ? sendWelcome(env, from.id, lang, from.first_name) : pickLanguage()));
+  }
+  if (cmd === "orders" || cmd === "wallet") {
+    const s = await getSettings(env);
+    const open = openButton(lang, s, cmd === "orders" ? "/#/orders" : "/#/wallet");
+    const bal = cmd === "wallet" ? await env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(from.id).first<{ balance: number }>() : null;
+    const text = cmd === "orders" ? botText(lang, "ordersReply") : botText(lang, "walletReply", { balance: balanceText(bal?.balance ?? 0, s) });
+    return void (await send(text, open ? { inline_keyboard: [[open]] } : undefined));
+  }
+  // Admin only (English, like the admin panel)
+  if ((cmd === "admin" || cmd === "stats") && isOwner(env, await getSettings(env), from.id)) {
+    return void (await (cmd === "admin" ? sendAdminLink(env, from.id) : sendStats(env, from.id)));
+  }
   // Owner only: one of every message, e.g. "/preview" or "/preview ru"
   if (cmd === "preview" && isOwner(env, await getSettings(env), from.id)) {
     const arg = text.split(/\s+/)[1] as Lang | undefined;

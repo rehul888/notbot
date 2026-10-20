@@ -16,6 +16,7 @@ import { admin } from "./routes/admin";
 import { app as api } from "./routes/app";
 import { bot } from "./routes/bot";
 import { cleanupWebhookEvents, hooks } from "./routes/hooks";
+import { commandsTick } from "./commands";
 import { cleanupRateLimits } from "./rateLimit";
 import { syncTick } from "./sync";
 
@@ -93,7 +94,7 @@ app.onError((e, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(controller, env, ctx) {
-    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env)];
+    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env)];
     // Hourly housekeeping (minute :07) so the every-minute run stays light
     if (new Date(controller.scheduledTime).getUTCMinutes() === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env));
     ctx.waitUntil(

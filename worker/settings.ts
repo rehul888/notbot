@@ -54,6 +54,9 @@ export const DEFAULTS = {
   logo_ver: 0, // > 0: a logo exists (value busts caches); negative: removed
   banner_ver: 0,
   setup_done: 0,
+  commands_key: "", // what the command menus were last set for (see worker/commands.ts)
+  commands_step: 0,
+  commands_admins: "", // admin chats that got the admin menu
   setup_steps: "", // comma list of setup steps that finished
 };
 
