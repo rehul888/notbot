@@ -5,7 +5,8 @@ import { ArtWelcome } from "../art";
 import { t } from "../i18n";
 import { Icon, type IconName } from "../icons";
 import { meStore } from "../store";
-import { haptic, openLink } from "../tg";
+import { haptic } from "../tg";
+import { TermsSheet, openExternalTerms } from "./Terms";
 import { BottomButtons, Screen, errText, toast } from "../ui";
 
 // Icon plate colours are fixed in both themes (spec §5.3): sky/link, lime/star, pink/bell.
@@ -15,12 +16,10 @@ const FEATURES: [IconName, string, "welcome.f1" | "welcome.f2" | "welcome.f3"][]
   ["bell", "var(--pink)", "welcome.f3"],
 ];
 
-/** NotPanel's terms of service page */
-export const TERMS_URL = "https://notpanel.com/tos";
-
 /** Shown until the terms are accepted: what the app does, in three lines, and one Continue. */
 export function Welcome() {
   const [busy, setBusy] = useState(false);
+  const [terms, setTerms] = useState(false);
   const accept = async () => {
     setBusy(true);
     try {
@@ -34,7 +33,7 @@ export function Welcome() {
   };
   const openTerms = () => {
     haptic.tap();
-    openLink(TERMS_URL);
+    if (!openExternalTerms()) setTerms(true);
   };
   // "By continuing you agree to the {terms}." with {terms} as an inline button, in any word order.
   const legal = t("welcome.legal", { terms: "\u0000" }).split("\u0000");
@@ -44,7 +43,12 @@ export function Welcome() {
       bottom="native"
       center
       class="onboard"
-      overlay={<BottomButtons main={{ text: t("welcome.continue"), onClick: accept, progress: busy }} />}
+      overlay={
+        <>
+          <BottomButtons main={{ text: t("welcome.continue"), onClick: accept, progress: busy }} />
+          {terms ? <TermsSheet onClose={() => setTerms(false)} /> : null}
+        </>
+      }
     >
       <ArtWelcome />
       <header class="lt lt-center rise" style="--d:140ms">

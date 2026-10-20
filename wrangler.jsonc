@@ -6,7 +6,7 @@
   "observability": { "enabled": true },
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/bot", "/hooks/*", "/setup/*"]
+    "run_worker_first": ["/api/*", "/bot", "/hooks/*", "/setup/*", "/media/*"]
   },
   "d1_databases": [
     {
@@ -20,8 +20,8 @@
   // At minute :07 of each hour it also runs cleanup (old webhook events, stale pending payments).
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
-    // Comma-separated Telegram user IDs that can open the Admin panel
-    "OWNER_IDS": "123456789",
+    // Optional: comma-separated Telegram user IDs that are always admins. More admins can be claimed or added in the app.
+    "OWNER_IDS": "",
     // Local development only (set in .dev.vars). Must stay empty in production.
     "DEV_FAKE_USER_ID": ""
   }

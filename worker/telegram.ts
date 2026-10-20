@@ -1,48 +1,39 @@
 // Minimal Telegram Bot API client.
 
-/** Custom emoji icons on buttons (need the bot owner's Telegram Premium). */
-export const OPEN_ICON_EMOJI_ID = "5332336747072208845";
-export const VIEW_ORDER_ICON_EMOJI_ID = "5235588635885054955";
+import type { ButtonIcons } from "../shared/brand";
 
-export const TERMS_ICON_EMOJI_ID = "5956561916573782596";
-export const INVITE_ICON_EMOJI_ID = "6032937473162614352";
+/** Plain emoji keys only (non-ASCII, so a key can never match markup or letters) */
+const EMOJI_KEY = /^[^\u0000-\u007f]{1,8}$/u;
+
+interface EmojiSet {
+  map: Record<string, string>;
+  re: RegExp | null;
+}
+
+function compileEmoji(input: Record<string, string>): EmojiSet {
+  const map: Record<string, string> = {};
+  for (const [k, id] of Object.entries(input)) if (EMOJI_KEY.test(k) && /^\d{10,25}$/.test(id)) map[k] = id;
+  const keys = Object.keys(map).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return { map, re: keys.length ? new RegExp(`(${keys.join("|")})\uFE0F?`, "gu") : null };
+}
 
 /**
- * Owner's Premium custom emojis for bot messages: each plain emoji in an HTML message becomes
- * <tg-emoji emoji-id="…">emoji</tg-emoji> (the plain emoji stays as the fallback). Works for every language
- * because the templates use the same emojis.
+ * Optional Telegram Premium extras, set by the owner in the admin panel (settings custom_emoji / button_icons) and
+ * applied by worker/settings.ts whenever settings load. Default: none, so every plain emoji stays a plain emoji.
  */
-const CUSTOM_EMOJI: Record<string, string> = {
-  "👋": "5267029566018299013", // welcome
-  "🚀": "6298548743352355181", // what you can get / order placed
-  "👥": "5942877472163892475", // followers & members
-  "👁": "5960714428394507968", // views
-  "❤": "5874948844935974490", // likes & reactions (owner's star emoji)
-  "💬": "5884510167986343350", // comments / support
-  "📊": "5231200819986047254", // live tracking
-  "👇": "5301038027601098171", // tap Open App
-  "🌐": "5879585266426973039", // choose language
-  "🧾": "5444856076954520455", // order number
-  "📦": "5924720918826848520", // service
-  "🔗": "5877465816030515018", // link
-  "⏱": "5123230779593196220", // we'll message you
-  "✅": "5985596818912712352", // completed
-  "🎉": "5994502837327892086", // thanks
-  "🟡": "5332345843812943191", // partly delivered
-  "⚠": "5881702736843511327", // couldn't start
-  "💸": "5897958754267174109", // refunded
-  "⭐": "5258039825805624495", // Stars / payment
-  "💰": "5987880246865565644", // amount added
-  "👛": "5769403330761593044", // balance
-  "ℹ": "5922612721244704425", // help
-  "📄": TERMS_ICON_EMOJI_ID, // terms
-  "🎁": INVITE_ICON_EMOJI_ID, // referral bonus
-  "👤": "5879770735999717115", // friend who joined
-};
-const EMOJI_RE = new RegExp(`(${Object.keys(CUSTOM_EMOJI).join("|")})\uFE0F?`, "gu");
+let current: EmojiSet = { map: {}, re: null };
+let buttonIcons: Partial<ButtonIcons> = {};
 
-export function withCustomEmoji(html: string): string {
-  return html.replace(EMOJI_RE, (m, base: string) => `<tg-emoji emoji-id="${CUSTOM_EMOJI[base]}">${m}</tg-emoji>`);
+export function setCustomization(emoji: Record<string, string>, icons: Partial<ButtonIcons>): void {
+  current = compileEmoji(emoji);
+  buttonIcons = icons;
+}
+
+/** Wraps each configured plain emoji as <tg-emoji emoji-id="…">emoji</tg-emoji> (the plain emoji stays as fallback). */
+export function withCustomEmoji(html: string, emoji?: Record<string, string>): string {
+  const { map, re } = emoji ? compileEmoji(emoji) : current;
+  if (!re) return html;
+  return html.replace(re, (m, base: string) => `<tg-emoji emoji-id="${map[base]}">${m}</tg-emoji>`);
 }
 
 /** Per-isolate count of messages Telegram only accepted without custom emojis (shown by the owner preview). */
@@ -93,7 +84,14 @@ export async function tg<T = any>(token: string, method: string, params: Record<
   return data.result;
 }
 
-/** Blue button that opens the Mini App, with a custom emoji icon and an upper-case label ("OPEN APP"). */
-export function webAppButton(text: string, url: string, icon: string = OPEN_ICON_EMOJI_ID) {
-  return { text: text.toLocaleUpperCase(), web_app: { url }, style: "primary", icon_custom_emoji_id: icon };
+/** Blue button that opens the Mini App, with an upper-case label ("OPEN APP") and the owner's button icon if one is set. */
+export function webAppButton(text: string, url: string, icon: keyof ButtonIcons = "open") {
+  const id = buttonIcons[icon];
+  return { text: text.toLocaleUpperCase(), web_app: { url }, style: "primary", ...(id ? { icon_custom_emoji_id: id } : {}) };
+}
+
+/** Same look for a button that opens an external link */
+export function linkButton(text: string, url: string, icon: keyof ButtonIcons = "terms") {
+  const id = buttonIcons[icon];
+  return { text, url, style: "primary", ...(id ? { icon_custom_emoji_id: id } : {}) };
 }

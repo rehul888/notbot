@@ -7,7 +7,7 @@ import { balanceText, linkText, starsText } from "./botMessages";
 import { OrderError, placeOrder } from "./orders";
 import { checkDraft } from "./pricing";
 import { getSettings } from "./settings";
-import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
+import { tg, webAppButton } from "./telegram";
 
 
 interface PaymentRow {
@@ -147,7 +147,7 @@ export async function onSuccessfulPayment(
   // The user paid p.stars; show exactly that (the credit is its dollar value)
   const paid = starsText(p.stars);
   const button = (id?: number) =>
-    s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, id ? "viewOrder" : "open"), `${s.app_url}/#/${id ? `order/${id}` : "wallet"}`, id ? VIEW_ORDER_ICON_EMOJI_ID : undefined)]] } : undefined;
+    s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, id ? "viewOrder" : "open"), `${s.app_url}/#/${id ? `order/${id}` : "wallet"}`, id ? "viewOrder" : "open")]] } : undefined;
 
   if (!p.draft) {
     const bal = await env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(p.user_id).first<{ balance: number }>();

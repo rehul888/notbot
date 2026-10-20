@@ -1,7 +1,12 @@
-# Copy to .dev.vars for local development (never commit .dev.vars)
+# Copy to .dev.vars for local development (never commit .dev.vars).
+# These are the two secrets the Deploy to Cloudflare button asks for.
+
+# Telegram bot token from @BotFather (https://t.me/BotFather)
+BOT_TOKEN=123456:ABC-DEF
+# NotPanel API key (https://notpanel.com/developers). Optional here: it can also be pasted in the setup page.
 NOTPANEL_API_KEY=np_live_xxx
-BOT_TOKEN=123456:ABC
-TG_WEBHOOK_SECRET=any-long-random-string
-# Local only: lets the app run in a normal browser without Telegram, as this user id
-DEV_FAKE_USER_ID=1
-OWNER_IDS=1
+
+# Local development only, not asked for on deploy: opens the app in a normal browser as this Telegram user id
+# DEV_FAKE_USER_ID=1
+# Optional fixed admin ids (otherwise claim admin on the setup page)
+# OWNER_IDS=1

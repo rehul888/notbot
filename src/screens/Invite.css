@@ -1,7 +1,7 @@
 .inv-hero { position: relative; display: grid; place-items: center; block-size: 120px; margin-block-end: 4px; }
 .inv-hero .disc { position: absolute; inline-size: 112px; block-size: 112px; border-radius: 50%; background: var(--art-disc, var(--sel)); }
 .inv-hero .main, .inv-hero .sat { position: absolute; display: grid; place-items: center; border: 1.5px solid var(--ink); box-shadow: 3px 5px 0 var(--art-shadow); }
-.inv-hero .main { inline-size: 76px; block-size: 76px; border-radius: 24px; background: var(--brand); color: #fff; transform: rotate(-4deg); }
+.inv-hero .main { inline-size: 76px; block-size: 76px; border-radius: 24px; background: var(--brand); color: var(--on-brand); transform: rotate(-4deg); }
 .inv-hero .sat { inline-size: 34px; block-size: 34px; border-radius: 11px; color: var(--ink); }
 .inv-hero .s1 { inset-inline-end: calc(50% - 76px); inset-block-start: 14px; background: var(--lime); transform: rotate(12deg); }
 .inv-hero .s2 { inset-inline-start: calc(50% - 78px); inset-block-end: 14px; background: var(--pink); transform: rotate(-10deg); }
@@ -22,6 +22,6 @@
 .inv-steps { list-style: none; margin: 0; padding: 4px 16px; counter-reset: s; }
 .inv-steps li { display: flex; align-items: flex-start; gap: 12px; padding-block: 10px; font: 400 15px/20px var(--font); }
 .inv-steps li + li { border-block-start: var(--hairline) solid var(--sep); }
-.inv-steps .n { flex: none; inline-size: 26px; block-size: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: #fff; font: 700 13px/1 var(--num-font); }
+.inv-steps .n { flex: none; inline-size: 26px; block-size: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: var(--on-brand); font: 700 13px/1 var(--num-font); }
 .inv-pill { font: 600 12px/16px var(--font); padding: 3px 8px; border-radius: var(--r-pill); background: var(--chip); color: var(--hint); white-space: nowrap; }
 .inv-pill.rewarded { background: var(--ok-bg); color: var(--ok); }

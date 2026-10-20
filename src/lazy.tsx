@@ -48,3 +48,44 @@ export function LazyAdminRoutes(props: AdminProps) {
     </Screen>
   );
 }
+
+let publicModule: Promise<typeof import("./setup/PublicPages")> | null = null;
+
+/** Setup wizard / "open in Telegram" page for plain browsers, downloaded only there. */
+export function LazyPublicPages() {
+  const [mod, setMod] = useState<typeof import("./setup/PublicPages") | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [round, setRound] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    setError(null);
+    if (!publicModule) {
+      publicModule = import("./setup/PublicPages");
+      publicModule.catch(() => {
+        publicModule = null;
+      });
+    }
+    publicModule.then(
+      (m) => live && setMod(m),
+      (e) => live && setError(e),
+    );
+    return () => {
+      live = false;
+    };
+  }, [round]);
+
+  if (mod) return <mod.PublicPages />;
+  if (error)
+    return (
+      <Screen bottom="none" center>
+        <ErrorState error={error} onRetry={() => setRound((n) => n + 1)} />
+      </Screen>
+    );
+  return (
+    <Screen bottom="none">
+      <Skeleton h={44} />
+      <SkeletonList rows={3} />
+    </Screen>
+  );
+}

@@ -10,6 +10,7 @@ import { cancelOrder, getOrderRow, OrderError, orderView, placeOrder, refillOrde
 import { createInvoice, TooManyInvoices } from "../payments";
 import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralStats, RetryLater, rewardStars, verifyChannel } from "../growth";
 import { checkDraft, orderCharge } from "../pricing";
+import { brandInfo } from "../brand";
 import { getSettings, type Settings } from "../settings";
 
 export interface UserRow {
@@ -138,7 +139,7 @@ async function meView(c: C, background?: (p: Promise<unknown>) => void): Promise
     notify: !!u.notify,
     canMessage: !!u.can_message,
     termsAccepted: !!u.terms_accepted_at,
-    isAdmin: isOwner(c.env, u.id),
+    isAdmin: isOwner(c.env, s, u.id),
     starsPerUsd: s.stars_per_usd,
     minTopup: s.min_topup_stars,
     maxTopup: Math.min(s.max_topup_stars, MAX_STARS_PER_PAYMENT),
@@ -148,6 +149,7 @@ async function meView(c: C, background?: (p: Promise<unknown>) => void): Promise
     referralEnabled: !!s.referral_enabled,
     referralReward: rewardStars(s),
     botUsername: s.bot_username || null,
+    brand: brandInfo(s),
     recent: results.map((r) => ({ id: r.id, serviceId: r.service_id, serviceName: r.service_name, platform: r.platform, link: r.link, quantity: r.quantity })),
   };
 }

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { LANGS, langLabel, pickLang, type Lang } from "../../shared/types";
-import { timingSafeEqual } from "../auth";
+import { timingSafeEqual, webhookSecret } from "../auth";
+import { tryClaim } from "../claim";
 import type { Env } from "../env";
 import { isOwner } from "../env";
 import { attachReferral, parseRef } from "../growth";
@@ -22,8 +23,8 @@ interface TgFrom {
 
 bot.post("/", async (c) => {
   const secret = c.req.header("x-telegram-bot-api-secret-token") ?? "";
-  // An unset secret must never match an empty header
-  if (!c.env.TG_WEBHOOK_SECRET || !timingSafeEqual(secret, c.env.TG_WEBHOOK_SECRET)) return c.text("forbidden", 403);
+  // An empty header never matches: the effective secret is TG_WEBHOOK_SECRET, or derived from the bot token
+  if (!secret || !timingSafeEqual(secret, await webhookSecret(c.env))) return c.text("forbidden", 403);
   const update = await c.req.json<any>().catch(() => null);
   if (!update || typeof update !== "object") return c.text("ok");
   // pre_checkout must be answered within 10 s — do it inline; everything else can run after we reply.
@@ -111,6 +112,15 @@ async function handle(env: Env, u: any): Promise<void> {
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: from.id, text: t, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: markup });
   const pickLanguage = () => send(botText(lang, "chooseLanguage"), languageKeyboard(LANGS));
 
+  // First-admin claim: "/start claim_<code>" (the setup link) or "/claim <code>". Wrong codes look like any other message.
+  const arg = text.split(/\s+/)[1] ?? "";
+  if (cmd === "claim" || (cmd === "start" && arg.startsWith("claim_"))) {
+    const code = cmd === "claim" ? arg : arg.slice("claim_".length);
+    if (code && (await tryClaim(env, from.id, code))) {
+      await tg(env.BOT_TOKEN, "deleteMessage", { chat_id: from.id, message_id: m.message_id }).catch(() => undefined);
+      return void (await send("You are now the admin of this bot. Open the app and tap <b>Admin</b> in your profile to finish setting up."));
+    }
+  }
   // /paysupport stays answered (Telegram requires it for Stars) but isn't in the command menu.
   if (cmd === "paysupport" || cmd === "support") return void (await sendHelp(env, from.id, lang, "paysupport"));
   if (cmd === "language") return void (await pickLanguage());
@@ -120,7 +130,7 @@ async function handle(env: Env, u: any): Promise<void> {
   }
   if (cmd === "start") return void (await (user?.lang ? sendWelcome(env, from.id, lang, from.first_name) : pickLanguage()));
   // Owner only: one of every message, e.g. "/preview" or "/preview ru"
-  if (cmd === "preview" && isOwner(env, from.id)) {
+  if (cmd === "preview" && isOwner(env, await getSettings(env), from.id)) {
     const arg = text.split(/\s+/)[1] as Lang | undefined;
     const l = arg && (LANGS as readonly string[]).includes(arg) ? arg : lang;
     await sendPreviews(env, from.id, l, from.first_name, LANGS);

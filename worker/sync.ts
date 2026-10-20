@@ -5,7 +5,8 @@
 // measured average time (admin setting), and fetch full details (form fields, drip-feed, step) for changed
 // ones with `services?service=<ids>`. Only changed rows are written.
 import type { Env } from "./env";
-import { np, NotPanelError, usdToMicro, type NpService } from "./notpanel";
+import { looksLikeNotPanelKey } from "../shared/brand";
+import { npCall, npKey, NotPanelError, usdToMicro, type NpService } from "./notpanel";
 import { rebuildSummaryStmts } from "./catalog";
 import { bumpCatalogStmt, getSettings, setSettings, type Settings } from "./settings";
 
@@ -113,6 +114,8 @@ const UPSERT = `INSERT INTO services (id, platform, category, category_slug, nam
 /** One cron tick: start a run when due, then process the next few catalog pages. */
 export async function syncTick(env: Env): Promise<void> {
   const s = await getSettings(env, { fresh: true });
+  // A fresh install has no NotPanel key until setup saves one: nothing to sync yet
+  if (!looksLikeNotPanelKey(npKey(env, s))) return;
   const now = Math.floor(Date.now() / 1000);
   let state = s.sync_state ? (JSON.parse(s.sync_state) as SyncState) : null;
   if (!state) {
@@ -130,7 +133,7 @@ export async function syncTick(env: Env): Promise<void> {
   const nums = Array.from({ length: last - state.page + 1 }, (_, i) => state.page + i);
   let pages: CatalogPage[];
   try {
-    pages = await Promise.all(nums.map((page) => np<CatalogPage>(env.NOTPANEL_API_KEY, "catalog", { page, limit: PAGE_SIZE })));
+    pages = await Promise.all(nums.map((page) => npCall<CatalogPage>(env, "catalog", { page, limit: PAGE_SIZE })));
   } catch (e) {
     console.warn("sync: catalog fetch failed, will retry", (e as Error).message);
     if (e instanceof NotPanelError && !e.retryable && e.code !== "API_RATE_LIMITED") await finish(env, s, { ...state.stats, error: e.message }, null);
@@ -178,7 +181,7 @@ export async function syncTick(env: Env): Promise<void> {
     const details = new Map<number, NpService>();
     try {
       for (let i = 0; i < changed.length; i += 100) {
-        const list = await np<NpService[]>(env.NOTPANEL_API_KEY, "services", {
+        const list = await npCall<NpService[]>(env, "services", {
           service: changed.slice(i, i + 100).map((c) => c.item.service).join(","),
         });
         for (const d of list) details.set(Number(d.service), d);

@@ -1,3 +1,4 @@
+import type { BrandInfo } from "./brand";
 // Types shared by the Worker API and the Mini App.
 
 export const LANGS = [
@@ -93,6 +94,8 @@ export interface Me {
   referralReward: number;
   botUsername: string | null;
   recent: RecentOrder[];
+  /** Owner's branding (name, logo, colors, links) */
+  brand: BrandInfo;
 }
 
 export interface RecentOrder {

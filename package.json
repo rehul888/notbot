@@ -1,5 +1,5 @@
 {
-  "name": "notpanel-miniapp",
+  "name": "notbot",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,12 +9,25 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite build && vite preview",
-    "deploy": "vite build && wrangler deploy",
+    "deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply notpanel --local",
     "db:migrate:remote": "wrangler d1 migrations apply notpanel --remote",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings worker/env.d.ts"
+  },
+  "cloudflare": {
+    "bindings": {
+      "BOT_TOKEN": {
+        "description": "Your Telegram bot token. Create a bot with [@BotFather](https://t.me/BotFather) (send /newbot) and paste the token it gives you, like 123456:ABC-DEF..."
+      },
+      "NOTPANEL_API_KEY": {
+        "description": "Your NotPanel API key (starts with np_live_). Create it on the [NotPanel API page](https://notpanel.com/developers). This app only works with NotPanel."
+      },
+      "OWNER_IDS": {
+        "description": "Optional. Comma-separated Telegram user IDs that are always admins (get yours from [@userinfobot](https://t.me/userinfobot)). Leave empty to claim admin from the setup page instead."
+      }
+    }
   },
   "dependencies": {
     "hono": "^4.13.13",

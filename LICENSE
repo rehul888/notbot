@@ -1,0 +1,49 @@
+NotBot License (NotPanel-only)
+Version 1.0
+
+Copyright (c) 2026 rehul888 (https://github.com/rehul888)
+
+This is a source-available license. It is not an OSI-approved open source license.
+
+1. Grant
+
+Subject to the conditions below, you are granted a free, worldwide, non-exclusive, royalty-free license to use,
+copy, modify, run and deploy the software in this repository (the "Software"), to distribute copies of the
+Software (modified or not), and to use the Software commercially, including to sell services to your own
+customers.
+
+2. NotPanel-only condition
+
+The Software, and any work based on it, may be used only with the NotPanel API (https://notpanel.com) as the
+provider of its service catalog, prices and orders. You may not:
+
+  a. use the Software, or any work based on it, with any other SMM panel, API, supplier or provider;
+  b. modify the Software, or distribute a modified version, so that it works with any other SMM panel, API,
+     supplier or provider, in addition to or instead of NotPanel; or
+  c. remove, disable or circumvent the checks in the Software that limit it to NotPanel API keys and the NotPanel
+     API.
+
+3. Notices
+
+Every copy or substantial portion of the Software, modified or not, must include this license and the copyright
+notice above.
+
+4. Trademarks
+
+This license grants no rights to use the names, logos or trademarks of NotPanel or of the copyright holder,
+except as needed to describe that the Software works with NotPanel.
+
+5. Termination
+
+If you break any condition of this license, your rights under it end automatically. They are restored if you
+fix the breach within 30 days of becoming aware of it, unless the copyright holder has notified you in writing
+that they are not restored.
+
+6. No warranty and no liability
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE. YOU ARE RESPONSIBLE FOR YOUR OWN DEPLOYMENT, YOUR CUSTOMERS, AND YOUR COMPLIANCE WITH TELEGRAM'S
+AND NOTPANEL'S TERMS AND WITH THE LAWS THAT APPLY TO YOU.

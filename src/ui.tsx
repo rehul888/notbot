@@ -10,7 +10,24 @@ import { Icon, ICON_PATHS, type IconName } from "./icons";
 import { back, navigate, useRoute } from "./router";
 import { reducedMotion } from "./motion";
 import { createStore, keyboardStore } from "./store";
+import { brandStore } from "./theme";
+import { monogram } from "../shared/theme";
 import { haptic, hasSecondaryButton, inTelegram, useBackButton, useBottomButtons, type ButtonSpec } from "./tg";
+
+// ---------- brand ----------
+
+/** The owner's logo, or a monogram (first letter of the brand name on the accent) when there is none. */
+export function BrandMark({ size = 32 }: { size?: number }) {
+  const b = brandStore.use();
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [b.logoUrl]);
+  const img = b.logoUrl && !broken;
+  return (
+    <span class={img ? "brand-mark has-img" : "brand-mark"} style={`--s:${size}px`} aria-hidden="true">
+      {img ? <img src={b.logoUrl!} alt="" width={size} height={size} decoding="async" onError={() => setBroken(true)} /> : monogram(b.name)}
+    </span>
+  );
+}
 
 // ---------- small helpers ----------
 

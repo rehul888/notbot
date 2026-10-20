@@ -1,4 +1,8 @@
+import { DEFAULT_PRESET } from "../shared/brand";
+import { brandName, parseButtonIcons, parseEmojiMap } from "./brand";
 import type { Env } from "./env";
+import { setBotBrand } from "./i18n";
+import { setCustomization } from "./telegram";
 
 export const DEFAULTS = {
   default_markup_pct: 30,
@@ -12,10 +16,10 @@ export const DEFAULTS = {
   only_timed: 1, // list only services that have a measured average delivery time
   low_balance: 5_000_000,
   support_username: "",
-  // Update channel: users must join it before using the app (bot must be an admin there)
-  channel_url: "https://t.me/your_channel",
-  channel_id: "-1001234567890",
-  channel_gate: 1,
+  // Update channel: users must join it before using the app (bot must be an admin there). Off until a channel is set.
+  channel_url: "",
+  channel_id: "",
+  channel_gate: 1, // inactive while channel_id is empty
   // Referrals: reward the referrer this many Stars' worth of balance when a new user joins the channel and reaches home
   referral_enabled: 1,
   referral_reward_stars: 3,
@@ -23,7 +27,7 @@ export const DEFAULTS = {
   terms_text:
     "By using this app you agree that services are delivered by third parties and delivery times are estimates. " +
     "Balance top-ups are paid in Telegram Stars and are credited to your in-app balance. Orders that cannot be " +
-    "delivered are refunded to your balance automatically. For payment questions use /paysupport in the bot.",
+    "delivered are refunded to your balance automatically.",
   last_sync_at: 0,
   last_sync_summary: "",
   sync_state: "",
@@ -34,6 +38,23 @@ export const DEFAULTS = {
   bot_username: "",
   np_webhook_id: "",
   np_webhook_secret: "",
+  // ---- White-label / open-source settings ----
+  brand_name: "", // "" = the bot's first name, saved by setup
+  brand_preset: DEFAULT_PRESET,
+  brand_accent: "#2457ff", // used when brand_preset is "custom"
+  website_url: "",
+  terms_url: "", // "" = the in-app terms text
+  welcome_text: "", // "" = the built-in translated welcome; {name} and {brand} are replaced
+  custom_emoji: "{}", // JSON map: plain emoji -> Telegram custom emoji id (needs the bot owner's Premium)
+  button_icons: '{"open":"","viewOrder":"","terms":"","invite":""}', // JSON ButtonIcons
+  owner_ids: "", // admins claimed or added in the app (env OWNER_IDS also counts)
+  claim_code_hash: "", // SHA-256 of the one-time admin claim code
+  claim_expires: 0,
+  np_api_key: "", // NotPanel key saved via setup/admin (env NOTPANEL_API_KEY is the fallback)
+  logo_ver: 0, // > 0: a logo exists (value busts caches); negative: removed
+  banner_ver: 0,
+  setup_done: 0,
+  setup_steps: "", // comma list of setup steps that finished
 };
 
 export type Settings = typeof DEFAULTS;
@@ -47,7 +68,18 @@ export async function getSettings(env: Env, opts: { fresh?: boolean } = {}): Pro
   if (!opts.fresh && memo && Date.now() - memo.at < MEMO_MS) return memo.value;
   const value = await loadSettings(env);
   memo = { at: Date.now(), value };
+  applyBranding(value);
   return value;
+}
+
+let applied = "";
+/** Pushes the brand name and the owner's Premium emoji/icons to the modules that format bot messages (only when changed). */
+function applyBranding(s: Settings): void {
+  const sig = `${s.brand_name}\u0000${s.custom_emoji}\u0000${s.button_icons}`;
+  if (sig === applied) return;
+  applied = sig;
+  setBotBrand(brandName(s));
+  setCustomization(parseEmojiMap(s.custom_emoji), parseButtonIcons(s.button_icons));
 }
 
 async function loadSettings(env: Env): Promise<Settings> {
@@ -58,6 +90,11 @@ async function loadSettings(env: Env): Promise<Settings> {
     s[r.key] = typeof (DEFAULTS as any)[r.key] === "number" ? Number(r.value) : r.value;
   }
   return s as Settings;
+}
+
+/** Call after writing settings rows directly (not through setSettings*), so the next read is fresh. */
+export function bustSettings(): void {
+  memo = null;
 }
 
 export function setSettingsStmts(env: Env, values: Partial<Settings>): D1PreparedStatement[] {

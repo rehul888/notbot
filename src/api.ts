@@ -17,8 +17,10 @@ declare global {
   }
 }
 
-export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
   const method = opts.method ?? (opts.body ? "POST" : "GET");
+  // A File/Blob is sent as is (image uploads), with its own content type; anything else as JSON.
+  const raw = opts.body instanceof Blob ? opts.body : null;
   // The first GET /me reuses the request index.html already started (once).
   let early: Promise<Response> | undefined;
   if (path === "/me" && method === "GET" && !opts.body) {
@@ -29,9 +31,10 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     method,
     headers: {
       ...(initData ? { authorization: `tma ${initData}` } : {}),
-      ...(opts.body ? { "content-type": "application/json" } : {}),
+      ...opts.headers,
+      ...(opts.body ? { "content-type": raw ? raw.type : "application/json" } : {}),
     },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    body: raw ?? (opts.body ? JSON.stringify(opts.body) : undefined),
   });
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok) {

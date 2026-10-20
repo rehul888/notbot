@@ -6,8 +6,18 @@ import { Icon } from "../icons";
 import { iso, stars } from "../format";
 import { updateMe } from "../me";
 import { meStore } from "../store";
-import { haptic, homeScreen, isDark, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
-import { LargeTitle, List, Row, Screen, Section, Sheet, errText, toast } from "../ui";
+import { haptic, homeScreen, openLink, openTelegramLink, requestWriteAccess, webApp } from "../tg";
+import { TermsSheet, openExternalTerms } from "./Terms";
+import { brandStore } from "../theme";
+import { BrandMark, LargeTitle, List, Row, Screen, Section, Sheet, errText, toast } from "../ui";
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
 /** First letter of each name, uppercased for the UI language (whole characters, so emoji and surrogates survive). */
 function initials(first: string, last: string): string {
@@ -27,7 +37,8 @@ function Avatar({ url, first, last }: { url: string | null; first: string; last:
 
 export function Profile() {
   const me = meStore.use()!;
-  const [sheet, setSheet] = useState<"lang" | null>(null);
+  const [sheet, setSheet] = useState<"lang" | "terms" | null>(null);
+  const brand = brandStore.use();
   const [home, setHome] = useState("unsupported");
   // While the notify request is in flight the switch shows the new state; the server's answer then wins.
   const [notifyPending, setNotifyPending] = useState<boolean | null>(null);
@@ -98,6 +109,8 @@ export function Profile() {
           ))}
         </List>
       </Sheet>
+    ) : sheet === "terms" ? (
+      <TermsSheet onClose={() => setSheet(null)} />
     ) : null;
 
   return (
@@ -124,7 +137,8 @@ export function Profile() {
         </List>
       ) : null}
 
-      <div class={"link-tiles" + (me.channelUrl ? "" : " one")}>
+      {me.channelUrl || brand.websiteUrl ? (
+      <div class={"link-tiles" + (me.channelUrl && brand.websiteUrl ? "" : " one")}>
         {me.channelUrl ? (
           <button
             type="button"
@@ -145,25 +159,30 @@ export function Profile() {
             </span>
           </button>
         ) : null}
-        <button
-          type="button"
-          class="link-tile press"
-          aria-label={`${t("profile.website")}, notpanel.com`}
-          onClick={() => {
-            haptic.tap();
-            openLink("https://notpanel.com");
-          }}
-        >
-          <img class="tile md" src="/brand/mark.svg" alt="" width={40} height={40} />
-          <Icon class="lt-out" name="out" size={16} stroke={2} />
-          <span class="lt-text">
-            <span class="lt-title">{t("profile.website")}</span>
-            <span class="lt-hint" dir="ltr">
-              notpanel.com
+        {brand.websiteUrl ? (
+          <button
+            type="button"
+            class="link-tile press"
+            aria-label={`${t("profile.website")}, ${hostOf(brand.websiteUrl)}`}
+            onClick={() => {
+              haptic.tap();
+              openLink(brand.websiteUrl!);
+            }}
+          >
+            <span class="tile md brand">
+              <Icon name="globe" size={22} stroke={1.8} />
             </span>
-          </span>
-        </button>
+            <Icon class="lt-out" name="out" size={16} stroke={2} />
+            <span class="lt-text">
+              <span class="lt-title">{t("profile.website")}</span>
+              <span class="lt-hint" dir="ltr">
+                {hostOf(brand.websiteUrl)}
+              </span>
+            </span>
+          </button>
+        ) : null}
       </div>
+      ) : null}
 
       <List>
         <Row
@@ -193,7 +212,7 @@ export function Profile() {
           />
         ) : null}
         <Row icon="chat" plate="var(--sky)" title={t("profile.support")} onClick={support} external />
-        <Row icon="doc" plate="var(--lavender)" title={t("profile.terms")} onClick={() => openLink("https://notpanel.com/tos")} external />
+        <Row icon="doc" plate="var(--lavender)" title={t("profile.terms")} onClick={() => (openExternalTerms() ? undefined : setSheet("terms"))} external={!!brand.termsUrl} />
       </List>
 
       {me.isAdmin ? (
@@ -212,7 +231,10 @@ export function Profile() {
         </Section>
       ) : null}
 
-      <img class="wordmark" src={isDark() ? "/brand/wordmark-dark.svg" : "/brand/wordmark-light.svg"} alt="NotPanel" height={22} />
+      <div class="brand-foot">
+        <BrandMark size={22} />
+        <span class="ellipsis">{brand.name}</span>
+      </div>
     </Screen>
   );
 }

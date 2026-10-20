@@ -12,7 +12,8 @@ import { once } from "../motion";
 import { enc, navigate } from "../router";
 import { meStore } from "../store";
 import { haptic } from "../tg";
-import { Chip, EmptyState, ErrorState, List, Num, PlatformLogo, Row, Screen, SearchField, Section, SkeletonGrid, SkeletonList, useAsync } from "../ui";
+import { brandStore } from "../theme";
+import { BrandMark, Chip, EmptyState, ErrorState, List, Num, PlatformLogo, Row, Screen, SearchField, Section, SkeletonGrid, SkeletonList, useAsync } from "../ui";
 import { ServiceRows } from "./Services";
 
 /**
@@ -54,6 +55,7 @@ let homeReported = false;
 
 export function Home() {
   const me = meStore.use()!;
+  const brand = brandStore.use();
   useEffect(() => {
     if (homeReported || !me.termsAccepted || !me.langChosen) return;
     homeReported = true;
@@ -109,8 +111,8 @@ export function Home() {
       <section class="hero-card" aria-label={t("home.title")}>
         <ArtHomeHero enter={once("hero")} />
         <span class="brand">
-          <img src="/brand/mark.svg" alt="" width={26} height={26} />
-          notpanel
+          <BrandMark size={26} />
+          <span class="ellipsis">{brand.name}</span>
         </span>
         <span class="hi">{t("home.hi", { name: me.firstName })}</span>
         <h1>{t("home.headline")}</h1>

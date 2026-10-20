@@ -5,7 +5,7 @@ import { balanceText, starsText } from "./botMessages";
 import { type Env, isOwner } from "./env";
 import { botText } from "./i18n";
 import type { Settings } from "./settings";
-import { INVITE_ICON_EMOJI_ID, tg, webAppButton } from "./telegram";
+import { tg, webAppButton } from "./telegram";
 
 const DAY = 86400;
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -53,7 +53,7 @@ export async function channelGateRequired(
   u: GateUser,
   opts: { background?: (p: Promise<unknown>) => void } = {},
 ): Promise<boolean> {
-  if (!s.channel_gate || !s.channel_id || isOwner(env, u.id)) return false;
+  if (!s.channel_gate || !s.channel_id || isOwner(env, s, u.id)) return false;
   const now = Math.floor(Date.now() / 1000);
   if (u.channel_ok === NOT_CONFIRMED) return true;
   // Member, or let through while Telegram was unavailable: re-check once a day
@@ -187,7 +187,7 @@ async function notifyReferrer(env: Env, s: Settings, referrerId: number, friend:
     chat_id: referrerId,
     text: botText(lang, "referralReward", { name: friend || "—", amount: starsText(rewardStars(s)), balance: balanceText(u.balance, s) }),
     parse_mode: "HTML",
-    reply_markup: s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "inviteMore"), `${s.app_url}/#/invite`, INVITE_ICON_EMOJI_ID)]] } : undefined,
+    reply_markup: s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "inviteMore"), `${s.app_url}/#/invite`, "invite")]] } : undefined,
   });
 }
 

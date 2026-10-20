@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { notpanelSignature, toHex, validateInitData } from "../worker/auth";
 import { checkDraft, orderCharge, sellRate } from "../worker/pricing";
 import { platformName } from "../shared/platforms";
@@ -133,9 +133,9 @@ describe("notpanel webhook signature", () => {
 });
 
 describe("custom emoji", () => {
-  it("wraps known emojis (with or without the variation selector) and leaves others", async () => {
+  it("wraps configured emojis (with or without the variation selector) and leaves others", async () => {
     const { withCustomEmoji } = await import("../worker/telegram");
-    const out = withCustomEmoji("✅ <b>Done</b> ⭐️ ⭐ 🔢");
+    const out = withCustomEmoji("✅ <b>Done</b> ⭐️ ⭐ 🔢", { "✅": "5985596818912712352", "⭐": "5258039825805624495" });
     expect(out).toContain('<tg-emoji emoji-id="5985596818912712352">✅</tg-emoji>');
     expect(out.match(/emoji-id="5258039825805624495"/g)?.length).toBe(2);
     expect(out).toContain("🔢"); // no custom emoji for quantity
@@ -199,5 +199,225 @@ describe("refunds", () => {
     expect(refundFor(o, "partial", 500)).toBe(10); // 9.5 → 10
     expect(refundFor(o, "partial", 1000)).toBe(19); // capped at the charge
     expect(refundFor(o, "completed", 0)).toBe(0);
+  });
+});
+
+// ---- Open-source / white-label additions ----
+
+const GOOD_KEY = "np_live_" + "a1b2c3d4".repeat(5); // np_live_ + 40 hex-like chars
+const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+describe("NotPanel key gate", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("accepts only np_live_ keys of a sane length", async () => {
+    const { looksLikeNotPanelKey } = await import("../shared/brand");
+    expect(looksLikeNotPanelKey(GOOD_KEY)).toBe(true);
+    expect(looksLikeNotPanelKey(`  ${GOOD_KEY}  `)).toBe(true);
+    for (const bad of ["", "np_live_", "np_live_short", "sk_live_" + "a".repeat(40), "np_test_" + "a".repeat(40), GOOD_KEY + "!", "x" + GOOD_KEY, 123, null])
+      expect(looksLikeNotPanelKey(bad)).toBe(false);
+  });
+
+  it("np() refuses a foreign key before any network call", async () => {
+    const { np, NotPanelError } = await import("../worker/notpanel");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const e = await np("sk_live_" + "a".repeat(40), "balance").catch((x) => x);
+    expect(e).toBeInstanceOf(NotPanelError);
+    expect(e).toMatchObject({ code: "INVALID_KEY", retryable: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("npKey prefers the saved key over the secret", async () => {
+    const { npKey } = await import("../worker/notpanel");
+    expect(npKey({ NOTPANEL_API_KEY: "env" }, { np_api_key: "" })).toBe("env");
+    expect(npKey({ NOTPANEL_API_KEY: "env" }, { np_api_key: " saved " })).toBe("saved");
+    expect(npKey({}, { np_api_key: "" })).toBe("");
+  });
+
+  it("verifyNotPanelKey needs NotPanel-shaped balance and catalog answers", async () => {
+    const { verifyNotPanelKey } = await import("../worker/notpanel");
+    const catalog = { catalog_updated_at: "2026-10-20T00:00:00Z", total_pages: 12, items: [{ service: "1", platform: { slug: "telegram", name: "Telegram" } }] };
+    const answer = (balance: unknown, cat: unknown) =>
+      vi.fn(async (_url: unknown, init: { body: URLSearchParams }) => jsonResponse(init.body.get("action") === "balance" ? balance : cat));
+
+    vi.stubGlobal("fetch", answer({ balance: "12.50", currency: "USD" }, catalog));
+    expect(await verifyNotPanelKey(GOOD_KEY)).toEqual({ ok: true });
+
+    // Not even key-shaped: no request at all
+    const none = vi.fn();
+    vi.stubGlobal("fetch", none);
+    expect(await verifyNotPanelKey("nope")).toMatchObject({ ok: false, code: "NOT_NOTPANEL_KEY" });
+    expect(none).not.toHaveBeenCalled();
+
+    // Some other service answering: wrong shapes
+    vi.stubGlobal("fetch", answer({ ok: true }, catalog));
+    expect(await verifyNotPanelKey(GOOD_KEY)).toMatchObject({ ok: false, code: "NOT_NOTPANEL_KEY" });
+    vi.stubGlobal("fetch", answer({ balance: "1", currency: "USD" }, { items: [] }));
+    expect(await verifyNotPanelKey(GOOD_KEY)).toMatchObject({ ok: false, code: "NOT_NOTPANEL_KEY" });
+    vi.stubGlobal("fetch", answer({ balance: "1", currency: "USD" }, { ...catalog, items: [{ service: "1", platform: { slug: 5 } }] }));
+    expect(await verifyNotPanelKey(GOOD_KEY)).toMatchObject({ ok: false, code: "NOT_NOTPANEL_KEY" });
+
+    // NotPanel itself says no
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ error: "Invalid API key", error_code: "INVALID_KEY", retryable: false }, 401)));
+    expect(await verifyNotPanelKey(GOOD_KEY)).toEqual({ ok: false, code: "NOTPANEL_REJECTED", message: "Invalid API key" });
+  });
+});
+
+describe("setup token", () => {
+  const bot = "123456:TEST-TOKEN";
+  it("verifies a fresh token and rejects expiry, tampering and other bot tokens", async () => {
+    const { signSetupToken, verifySetupToken } = await import("../worker/auth");
+    const now = 1_800_000_000;
+    const t = await signSetupToken(bot, now, 1800);
+    expect(await verifySetupToken(bot, t, now + 10)).toBe(true);
+    expect(await verifySetupToken(bot, t, now + 1799)).toBe(true);
+    expect(await verifySetupToken(bot, t, now + 1800)).toBe(false);
+    expect(await verifySetupToken("999:OTHER", t, now + 10)).toBe(false);
+    const [payload, sig] = t.split(".");
+    const longer = Buffer.from(JSON.stringify({ exp: now + 99999 })).toString("base64url");
+    expect(await verifySetupToken(bot, `${longer}.${sig}`, now + 10)).toBe(false);
+    expect(await verifySetupToken(bot, `${payload}.${sig.replace(/.$/, sig.endsWith("0") ? "1" : "0")}`, now + 10)).toBe(false);
+    for (const junk of ["", ".", "a.b.c", payload, `${payload}.`, "not a token"]) expect(await verifySetupToken(bot, junk, now)).toBe(false);
+  });
+
+  it("derives the webhook secret from the bot token unless one is configured", async () => {
+    const { webhookSecret } = await import("../worker/auth");
+    const derived = await webhookSecret({ BOT_TOKEN: bot });
+    expect(derived).toMatch(/^[0-9a-f]{64}$/);
+    expect(derived).toBe(toHex(await hmac(enc.encode(bot), "notbot-webhook")));
+    expect(await webhookSecret({ BOT_TOKEN: bot, TG_WEBHOOK_SECRET: "custom" })).toBe("custom");
+    expect(await webhookSecret({ BOT_TOKEN: "999:OTHER" })).not.toBe(derived);
+  });
+});
+
+describe("admin claim code", () => {
+  it("hashes codes, never storing the plain one, and checks shape", async () => {
+    const { hashClaimCode, claimCodeShape } = await import("../worker/claim");
+    const { randomCode } = await import("../worker/auth");
+    const code = randomCode(20);
+    expect(claimCodeShape(code)).toBe(true);
+    expect(code).not.toBe(randomCode(20));
+    const h = await hashClaimCode(code);
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+    expect(h).not.toContain(code);
+    expect(await hashClaimCode(code)).toBe(h);
+    expect(await hashClaimCode(code + "x")).not.toBe(h);
+    for (const bad of ["", "short", "UPPERCASE" + "a".repeat(20), "a".repeat(41), "has space " + "a".repeat(20)]) expect(claimCodeShape(bad)).toBe(false);
+  });
+
+  it("is open only while a code is stored, unexpired and nobody is an admin", async () => {
+    const { claimOpen } = await import("../worker/claim");
+    const now = 1_800_000_000;
+    const s = { claim_code_hash: "abc", claim_expires: now + 3600 };
+    expect(claimOpen(s, false, now)).toBe(true);
+    expect(claimOpen(s, true, now)).toBe(false);
+    expect(claimOpen({ ...s, claim_expires: now }, false, now)).toBe(false);
+    expect(claimOpen({ ...s, claim_code_hash: "" }, false, now)).toBe(false);
+  });
+});
+
+describe("owners", () => {
+  it("combines the env variable and the in-app list", async () => {
+    const { isOwner, ownerIds, parseIds } = await import("../worker/env");
+    expect(parseIds(" 5, x,7,5,-3,0,1.5 ")).toEqual([5, 7]);
+    const env = { OWNER_IDS: "5,6" } as unknown as Env;
+    expect(ownerIds(env, { owner_ids: "6,9" })).toEqual([5, 6, 9]);
+    expect(isOwner(env, { owner_ids: "9" }, 9)).toBe(true);
+    expect(isOwner(env, { owner_ids: "9" }, 10)).toBe(false);
+    expect(isOwner({} as Env, { owner_ids: "" }, 1)).toBe(false);
+  });
+});
+
+describe("uploaded images", () => {
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const jpg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
+  const webp = Uint8Array.from([...enc.encode("RIFF"), 1, 2, 3, 4, ...enc.encode("WEBPVP8 ")]);
+  it("detects png, jpeg and webp by their first bytes only", async () => {
+    const { detectImageMime } = await import("../worker/assets");
+    expect(detectImageMime(png)).toBe("image/png");
+    expect(detectImageMime(jpg)).toBe("image/jpeg");
+    expect(detectImageMime(webp)).toBe("image/webp");
+    expect(detectImageMime(enc.encode("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
+    expect(detectImageMime(enc.encode("GIF89a......"))).toBeNull();
+    expect(detectImageMime(enc.encode("RIFF....WAVEfmt "))).toBeNull();
+    expect(detectImageMime(new Uint8Array())).toBeNull();
+  });
+  it("needs the declared type to match the real one, and a sane size", async () => {
+    const { checkImageUpload, base64ToBytes, bytesToBase64 } = await import("../worker/assets");
+    const { LIMITS } = await import("../shared/brand");
+    expect(checkImageUpload("image/png", png)).toBeNull();
+    expect(checkImageUpload("image/png; charset=binary", png)).toBeNull();
+    expect(checkImageUpload("image/jpeg", png)).toBe("INVALID_IMAGE"); // lying header
+    expect(checkImageUpload("image/svg+xml", enc.encode("<svg/>"))).toBe("INVALID_IMAGE");
+    expect(checkImageUpload("text/html", png)).toBe("INVALID_IMAGE");
+    expect(checkImageUpload(undefined, png)).toBe("INVALID_IMAGE");
+    expect(checkImageUpload("image/png", new Uint8Array())).toBe("EMPTY");
+    const big = new Uint8Array(LIMITS.imageBytes + 1);
+    big.set(png);
+    expect(checkImageUpload("image/png", big)).toBe("TOO_LARGE");
+    expect([...base64ToBytes(bytesToBase64(webp))]).toEqual([...webp]);
+  });
+});
+
+describe("branding settings validation", () => {
+  it("accepts good values and normalises the JSON ones", async () => {
+    const { normalizeBrandSettings } = await import("../worker/brandSettings");
+    const v: Record<string, string> = {
+      brand_name: "  Rocket SMM ",
+      brand_preset: "emerald",
+      brand_accent: "#0f8a5f",
+      website_url: "https://example.com",
+      terms_url: "",
+      welcome_text: "Hi {name}!\nWelcome to {brand}.",
+      custom_emoji: ' { "⭐" : "5258039825805624495" } ',
+      button_icons: '{"open":"5332336747072208845"}',
+    };
+    expect(normalizeBrandSettings(v as never)).toBeNull();
+    expect(v.brand_name).toBe("Rocket SMM");
+    expect(v.custom_emoji).toBe('{"⭐":"5258039825805624495"}');
+    expect(JSON.parse(v.button_icons)).toEqual({ open: "5332336747072208845", viewOrder: "", terms: "", invite: "" });
+    const empty: Record<string, string> = { custom_emoji: "", button_icons: "", brand_name: "" };
+    expect(normalizeBrandSettings(empty as never)).toBeNull();
+    expect(empty.custom_emoji).toBe("{}");
+  });
+
+  it("names the first bad key", async () => {
+    const { normalizeBrandSettings } = await import("../worker/brandSettings");
+    const bad = (k: string, val: string) => normalizeBrandSettings({ [k]: val } as never);
+    expect(bad("brand_name", "x".repeat(41))).toBe("brand_name");
+    expect(bad("brand_name", "line\nbreak")).toBe("brand_name");
+    expect(bad("brand_preset", "neon")).toBe("brand_preset");
+    expect(bad("brand_accent", "red")).toBe("brand_accent");
+    expect(bad("brand_accent", "#12345")).toBe("brand_accent");
+    expect(bad("website_url", "http://example.com")).toBe("website_url");
+    expect(bad("website_url", "javascript:alert(1)")).toBe("website_url");
+    expect(bad("terms_url", "https://user:pw@example.com")).toBe("terms_url");
+    expect(bad("welcome_text", "x".repeat(1001))).toBe("welcome_text");
+    expect(bad("custom_emoji", "not json")).toBe("custom_emoji");
+    expect(bad("custom_emoji", '{"a":"5258039825805624495"}')).toBe("custom_emoji"); // key is not an emoji
+    expect(bad("custom_emoji", '{"⭐":"abc"}')).toBe("custom_emoji");
+    expect(bad("button_icons", '{"open":"abc"}')).toBe("button_icons");
+    expect(bad("button_icons", '{"other":"5258039825805624495"}')).toBe("button_icons");
+  });
+
+  it("builds BrandInfo with safe fallbacks", async () => {
+    const { brandInfo, brandName } = await import("../worker/brand");
+    const { DEFAULTS } = await import("../worker/settings");
+    expect(brandName(DEFAULTS)).toBe("NotBot");
+    expect(brandInfo({ ...DEFAULTS, brand_name: "Rocket", logo_ver: 3, website_url: "http://bad", brand_preset: "neon" })).toEqual({
+      name: "Rocket",
+      logoUrl: "/media/logo?v=3",
+      preset: "cobalt",
+      accent: "#2457ff",
+      websiteUrl: null,
+      termsUrl: null,
+    });
+    expect(brandInfo({ ...DEFAULTS, logo_ver: -2 }).logoUrl).toBeNull();
+  });
+
+  it("escapes owner text in the custom welcome", async () => {
+    const { customWelcome } = await import("../worker/botMessages");
+    expect(customWelcome("<b>Hi</b> {name} @ {brand}", "A<script>", "R&D")).toBe("&lt;b&gt;Hi&lt;/b&gt; A&lt;script&gt; @ R&amp;D");
   });
 });

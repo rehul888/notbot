@@ -1,6 +1,7 @@
 // Thin wrapper over window.Telegram.WebApp. Everything degrades gracefully in a normal browser (local dev).
 import { useEffect, useRef } from "preact/hooks";
 import { createStore } from "./store";
+import { themeStore } from "./theme";
 
 interface BottomButton {
   setParams(p: Record<string, unknown>): BottomButton;
@@ -60,8 +61,6 @@ export const startParam = webApp?.initDataUnsafe.start_param ?? new URLSearchPar
 
 const atLeast = (v: string) => !!webApp && webApp.isVersionAtLeast(v);
 export const hasSecondaryButton = atLeast("7.10") && !!webApp?.SecondaryButton;
-
-export const BRAND = "#2457ff";
 
 export function isDark(): boolean {
   if (webApp) return webApp.colorScheme === "dark";
@@ -217,15 +216,6 @@ export interface ButtonSpec {
   shine?: boolean;
 }
 
-// Spec §3.20 colours: [background, text]
-const BTN = {
-  main: [BRAND, "#ffffff"],
-  mainOffLight: ["#e4e8f5", "#5d6684"],
-  mainOffDark: ["#2c2c2e", "#98989f"],
-  secLight: ["#e6ecff", "#1b45d6"],
-  secDark: ["#1e2847", "#a8bbff"],
-} as const;
-
 /** Which mounted hook last showed each native button, so an unmounting screen doesn't hide the next screen's button. */
 const shownBy = new WeakMap<BottomButton, object>();
 
@@ -234,6 +224,7 @@ function useNativeButton(btn: BottomButton | undefined, spec: ButtonSpec | null,
   ref.current = spec;
   const self = useRef({}).current;
   const dark = darkStore.use();
+  const theme = themeStore.use();
   const rtl = typeof document !== "undefined" && document.documentElement.dir === "rtl";
   useEffect(() => {
     if (!btn) return;
@@ -261,7 +252,9 @@ function useNativeButton(btn: BottomButton | undefined, spec: ButtonSpec | null,
       return;
     }
     shownBy.set(btn, self);
-    const [color, text_color] = primary ? (spec.disabled ? (dark ? BTN.mainOffDark : BTN.mainOffLight) : BTN.main) : dark ? BTN.secDark : BTN.secLight;
+    // Spec §3.20 colours [background, text], from the brand theme (native buttons can't read CSS variables)
+    const c = dark ? theme.nativeDark : theme.nativeLight;
+    const [color, text_color] = primary ? (spec.disabled ? c.mainOff : c.main) : c.secondary;
     btn.setParams({
       text: spec.text,
       color,
@@ -273,7 +266,7 @@ function useNativeButton(btn: BottomButton | undefined, spec: ButtonSpec | null,
     });
     if (spec.progress) btn.showProgress(false);
     else btn.hideProgress();
-  }, [btn, spec?.text, spec?.disabled, spec?.progress, spec?.shine, dark, rtl]);
+  }, [btn, spec?.text, spec?.disabled, spec?.progress, spec?.shine, dark, rtl, theme]);
 }
 
 /** Telegram MainButton (+ SecondaryButton). Returns true when native buttons are used. */

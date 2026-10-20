@@ -1,4 +1,5 @@
-/* NotPanel Mini App. "Quiet iOS, cobalt accents" (design spec v3).
+/* White-label Mini App. "Quiet iOS" with a brand accent (design spec v3). Cobalt is the default accent; the brand colors below
+   are overridden at runtime by <style id="brand-theme"> (shared/theme.ts) from the owner's preset or custom color.
    Surfaces follow Telegram's light/dark colorScheme using the design palettes (not the user's custom theme).
    Only transform and opacity animate. Logical properties only (RTL). */
 
@@ -43,6 +44,16 @@
   --ink: #152044;
   --lavender: #e6ecff;
   --lavender-strong: #b8c9ff;
+  --hero-1: #2457ff;
+  --hero-2: #2152f2;
+  --hero-3: #1b45d6;
+  --pill-fg: #1b45d6; /* text on the white pills that sit on the brand hero */
+  --acc-on-dark: #a8bbff; /* accent on always-dark surfaces (toast) */
+  --ob-10: rgba(255, 255, 255, 0.1); /* on-brand colour at fixed opacities, for ornaments on brand surfaces */
+  --ob-16: rgba(255, 255, 255, 0.16);
+  --ob-24: rgba(255, 255, 255, 0.24);
+  --ob-28: rgba(255, 255, 255, 0.28);
+  --ob-35: rgba(255, 255, 255, 0.35);
   --lime: #e2fb98;
   --pink: #ffd6e8;
   --sky: #dcefff;
@@ -347,7 +358,7 @@ button.row:disabled, .row.disabled { opacity: 0.45; }
 .tile.sm { width: 30px; height: 30px; border-radius: 8px; }
 .tile.md { width: 40px; height: 40px; border-radius: 12px; }
 .tile.xl { width: 64px; height: 64px; border-radius: 20px; }
-.tile.brand { background: var(--brand); color: #fff; }
+.tile.brand { background: var(--brand); color: var(--on-brand); }
 .tile.cream { background: var(--cream); }
 .logo { flex: none; border-radius: var(--r-md); background: #fff; border: 1px solid var(--plate-bd); display: flex; align-items: center; justify-content: center; overflow: hidden; color: #636366; }
 .logo img { object-fit: contain; }
@@ -400,13 +411,13 @@ button.notice { cursor: pointer; }
 .chip.sel { background: var(--sel); color: var(--sel-fg); }
 button.chip { position: relative; height: 36px; padding: 0 14px; font: 600 15px/1 var(--font); }
 button.chip::after { content: ""; position: absolute; inset: -4px 0; }
-button.chip.sel { background: var(--brand); color: #fff; }
+button.chip.sel { background: var(--brand); color: var(--on-brand); }
 button.chip.tint { background: var(--sel); color: var(--sel-fg); }
 button.chip:disabled { opacity: 0.45; }
 
 .presets { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .preset { height: 44px; min-width: 0; border: 0; border-radius: var(--r-pill); background: var(--fill); color: var(--fg); font: 600 15px/20px var(--num-font); padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.preset[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.preset[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); }
 
 .qchip { position: relative; height: 40px; flex: none; max-width: 72%; border-radius: var(--r-pill); border: var(--hairline) solid var(--sep); background: var(--card); display: flex; align-items: center; gap: 6px; padding-inline: 6px 12px; font: 600 15px/1 var(--font); color: var(--fg); }
 .qchip.nolead { padding-inline-start: 14px; }
@@ -549,14 +560,14 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .toast > svg { flex: none; }
 .toast.ok > svg { color: #8bd4ad; }
 .toast.error > svg { color: #ffa5b5; }
-.toast.info > svg { color: #a8bbff; }
+.toast.info > svg { color: var(--acc-on-dark); }
 .toast.leaving { animation: toast-out 200ms var(--ease-in) forwards; }
 
 /* =========================================================================
    14. Buttons, pills, bottom bar, dev bar
    ========================================================================= */
 
-.btn { height: 50px; flex: 1; min-width: 0; border: 0; border-radius: var(--r-lg); background: var(--brand); color: #fff; font: 600 17px/22px var(--font); letter-spacing: calc(-0.2px * var(--trk)); display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; }
+.btn { height: 50px; flex: 1; min-width: 0; border: 0; border-radius: var(--r-lg); background: var(--brand); color: var(--on-brand); font: 600 17px/22px var(--font); letter-spacing: calc(-0.2px * var(--trk)); display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; }
 .btn:active:not(:disabled) { background: var(--brand-pressed); }
 .btn.soft { background: var(--sel); color: var(--sel-fg); }
 .btn.soft:active:not(:disabled) { background: var(--sel); opacity: 0.8; }
@@ -565,7 +576,7 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .btn.danger { background: var(--destructive-bg); color: var(--st-cancel); }
 .btn.danger:active:not(:disabled) { background: var(--destructive-bg); opacity: 0.8; }
 .btn:disabled { background: var(--btn-off-bg); color: var(--btn-off-fg); opacity: 1; }
-.btn[aria-busy="true"]:disabled { background: var(--brand); color: #fff; opacity: 0.85; }
+.btn[aria-busy="true"]:disabled { background: var(--brand); color: var(--on-brand); opacity: 0.85; }
 .btn.sm { height: 44px; border-radius: var(--r-pill); font: 600 15px/20px var(--font); }
 .btn.inline { flex: none; align-self: center; padding: 0 20px; }
 .spin { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: spin 900ms linear infinite; }
@@ -574,8 +585,8 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 
 .pill { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: var(--r-pill); background: var(--card); color: var(--fg); font: 600 15px/20px var(--font); border: 0; white-space: nowrap; }
 .pill::after { content: ""; position: absolute; inset: -2px 0; }
-.white-pill, .hero-card .add { position: relative; height: 44px; border: 0; border-radius: var(--r-pill); background: #fff; color: #1b45d6; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; font: 700 15px/1 var(--font); white-space: nowrap; flex: none; }
-.glass-pill, .hero-card .bal { position: relative; height: 44px; min-width: 0; border: 1px solid rgba(255, 255, 255, 0.24); border-radius: var(--r-pill); background: rgba(255, 255, 255, 0.16); color: #fff; padding: 0 16px; display: inline-flex; align-items: center; gap: 8px; font: 700 17px/1 var(--num-font); white-space: nowrap; }
+.white-pill, .hero-card .add { position: relative; height: 44px; border: 0; border-radius: var(--r-pill); background: #fff; color: var(--pill-fg); padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; font: 700 15px/1 var(--font); white-space: nowrap; flex: none; }
+.glass-pill, .hero-card .bal { position: relative; height: 44px; min-width: 0; border: 1px solid var(--ob-24); border-radius: var(--r-pill); background: var(--ob-16); color: var(--on-brand); padding: 0 16px; display: inline-flex; align-items: center; gap: 8px; font: 700 17px/1 var(--num-font); white-space: nowrap; }
 
 .devbar { position: sticky; top: 0; z-index: var(--z-devbar); height: 44px; display: flex; align-items: center; padding-inline: 8px; background: var(--page); }
 .devbar .textbtn { display: flex; align-items: center; gap: 2px; padding: 0 4px; }
@@ -591,7 +602,7 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .pay-opt .ttl { display: block; font: 600 16px/21px var(--font); }
 .pay-opt .sub { display: block; font: 400 13px/18px var(--font); color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pay-opt.low .sub { color: var(--destructive); }
-.pay-opt .tick { position: absolute; top: 8px; inset-inline-end: 8px; width: 20px; height: 20px; border-radius: var(--r-pill); background: var(--brand); color: #fff; display: grid; place-items: center; opacity: 0; transform: scale(0.4); transition: opacity var(--dur-2), transform var(--dur-3) var(--ease-spring); }
+.pay-opt .tick { position: absolute; top: 8px; inset-inline-end: 8px; width: 20px; height: 20px; border-radius: var(--r-pill); background: var(--brand); color: var(--on-brand); display: grid; place-items: center; opacity: 0; transform: scale(0.4); transition: opacity var(--dur-2), transform var(--dur-3) var(--ease-spring); }
 .pay-opt[aria-checked="true"] .tick { opacity: 1; transform: none; }
 .total { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; }
 .total .lbl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -635,18 +646,19 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
    ========================================================================= */
 
 /* Home hero */
-.hero-card { position: relative; overflow: hidden; isolation: isolate; border-radius: var(--r-hero); color: #fff; background: linear-gradient(160deg, #2457ff 0%, #2152f2 55%, #1b45d6 100%); padding: 18px 20px 20px; min-height: 236px; display: flex; flex-direction: column; box-shadow: var(--shadow-brand); }
+.hero-card { position: relative; overflow: hidden; isolation: isolate; border-radius: var(--r-hero); color: var(--on-brand); background: linear-gradient(160deg, var(--hero-1) 0%, var(--hero-2) 55%, var(--hero-3) 100%); padding: 18px 20px 20px; min-height: 236px; display: flex; flex-direction: column; box-shadow: var(--shadow-brand); }
 .hero-card > .art { position: absolute; top: 0; inset-inline-end: 0; width: 160px; height: 108px; z-index: -1; pointer-events: none; }
 .hero-card .brand { display: flex; align-items: center; gap: 8px; height: 26px; max-width: calc(100% - 112px); font: 700 18px/22px var(--display); letter-spacing: calc(-0.4px * var(--trk)); }
-.hero-card .brand img { flex: none; border-radius: 999px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35); }
+.hero-card .brand > span { min-width: 0; }
+.hero-card .brand .brand-mark { box-shadow: 0 0 0 2px var(--ob-35); }
 .hero-card .hi { margin-top: 8px; max-width: calc(100% - 112px); font: 500 15px/20px var(--font); color: var(--on-brand-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hero-card h1 { margin-top: 32px; color: #fff; font: 700 24px/28px var(--display); letter-spacing: calc(-0.6px * var(--trk)); }
+.hero-card h1 { margin-top: 32px; color: var(--on-brand); font: 700 24px/28px var(--display); letter-spacing: calc(-0.6px * var(--trk)); }
 .hero-card .actions { margin-top: auto; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
 /* Old DOM stickers, until Home renders <ArtHomeHero/> */
 .hero-card > :is(.ring, .disc, .sticker) { position: absolute; z-index: -1; pointer-events: none; }
-.hero-card > .ring { inset-inline-end: -46px; top: -54px; width: 210px; height: 210px; border-radius: 999px; border: 2px dashed rgba(255, 255, 255, 0.28); }
-.hero-card > .disc { inset-inline-end: -10px; top: -14px; width: 150px; height: 150px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
-.hero-card > .sticker { width: 42px; height: 42px; border-radius: 13px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 3px 6px 0 rgba(10, 24, 90, 0.3); }
+.hero-card > .ring { inset-inline-end: -46px; top: -54px; width: 210px; height: 210px; border-radius: 999px; border: 2px dashed var(--ob-28); }
+.hero-card > .disc { inset-inline-end: -10px; top: -14px; width: 150px; height: 150px; border-radius: 999px; background: var(--ob-10); }
+.hero-card > .sticker { width: 42px; height: 42px; border-radius: 13px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 3px 6px 0 var(--art-shadow-brand); }
 .hero-card > .sticker img { width: 24px; height: 24px; }
 .hero-card > .sticker ~ h1 { margin-top: 10px; max-width: 205px; }
 
@@ -706,7 +718,7 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .link-btn { min-height: 44px; min-width: 0; padding: 0; max-width: 200px; border: 0; background: transparent; color: var(--acc); font: 400 15px/20px var(--font); }
 
 /* Wallet */
-.balance-card { position: relative; overflow: hidden; isolation: isolate; border-radius: var(--r-hero); background: var(--brand); color: #fff; padding: 18px; padding-inline: 20px 18px; min-height: 132px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; box-shadow: var(--shadow-brand); }
+.balance-card { position: relative; overflow: hidden; isolation: isolate; border-radius: var(--r-hero); background: var(--brand); color: var(--on-brand); padding: 18px; padding-inline: 20px 18px; min-height: 132px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; box-shadow: var(--shadow-brand); }
 .balance-card > .art { position: absolute; top: 0; inset-inline-end: 0; width: 150px; height: 120px; z-index: -1; pointer-events: none; }
 .balance-card .lbl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .balance-card .lbl span { font: 500 15px/20px var(--font); color: var(--on-brand-2); }
@@ -720,8 +732,14 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .new-balance { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .new-balance > span { font: 400 13px/18px var(--font); color: var(--hint); }
 
-/* Profile */
-.wordmark { display: block; height: 22px; width: auto; margin: 8px auto 0; opacity: 0.9; }
+/* Brand mark: the owner's logo, or a monogram (first letter on the accent). Size comes from the --s variable. */
+.brand-mark { --s: 32px; width: var(--s); height: var(--s); flex: none; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; background: var(--brand); color: var(--on-brand); font: 700 calc(var(--s) * 0.5)/1 var(--display); letter-spacing: 0; user-select: none; }
+.brand-mark img { width: 100%; height: 100%; object-fit: cover; background: #fff; display: block; }
+.hero-card .brand-mark:not(.has-img) { background: var(--on-brand); color: var(--hero-1); }
+
+/* Profile footer: the brand under the last row */
+.brand-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 8px auto 0; max-width: 100%; color: var(--hint); font: 600 15px/20px var(--display); letter-spacing: calc(-0.2px * var(--trk)); }
+.brand-foot > span:last-child { min-width: 0; }
 
 /* =========================================================================
    18. Art (inline SVG from src/art.tsx)
@@ -864,3 +882,28 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 
 /* Onboarding (language, welcome, join channel): breathing room under Telegram's header */
 .screen.onboard { padding-block-start: calc(var(--safe-top, 0px) + 40px); }
+
+/* Setup wizard and "open in Telegram" page (src/setup/PublicPages.tsx) */
+a.btn { text-decoration: none; color: var(--on-brand); }
+.setup-mark { display: flex; justify-content: center; margin-top: 8px; }
+.setup-form { display: flex; flex-direction: column; gap: 16px; }
+.setup-how ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 8px; font: 400 15px/21px var(--font); }
+.setup-how li::marker { color: var(--hint); font-weight: 600; }
+.setup-how code { background: var(--chip); border-radius: 6px; padding: 1px 6px; }
+.setup-wait { display: flex; align-items: center; gap: 8px; }
+.setup-wait .spin { width: 14px; height: 14px; border-width: 2px; }
+.tile.run-done { background: var(--ok-bg); color: var(--ok); }
+.tile.run-failed { background: var(--destructive-bg); color: var(--destructive); }
+.tile.run-running, .tile.run-waiting { background: var(--sel); color: var(--sel-fg); }
+
+/* Admin > Branding */
+.brand-pick { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand-pick-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-inline-start: auto; }
+.brand-pick label.btn { cursor: pointer; }
+.brand-pick .sr:focus-visible + label.btn, .brand-pick label.btn:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; }
+.brand-banner { flex: 1 1 180px; max-width: 280px; aspect-ratio: 4 / 3; border-radius: var(--r-md); background: var(--fill); display: grid; place-items: center; overflow: hidden; font: 400 14px/19px var(--font); }
+.brand-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ptile .logo .swatch-check { color: #fff; filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.5)); }
+.color-pick { width: 44px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: none; cursor: pointer; flex: none; }
+.screen > .btn, .setup-form > .btn { flex: none; }
+.screen > .btn.sm.inline, .section + .btn.sm.inline { align-self: flex-start; }

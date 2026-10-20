@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { LANGS } from "../shared/types";
 import { en } from "../src/i18n/en";
+import botStrings from "../worker/bot-strings.json";
+import { BOT_EN, botPlain, botText, setBotBrand } from "../worker/i18n";
+import { botAboutFor } from "../worker/bot-about";
+import { LIMITS } from "../shared/brand";
 
 // Every non-English UI dictionary (20 languages incl. English), loaded the same way the app loads them (src/i18n/*.json).
 const modules = import.meta.glob<Record<string, string>>("../src/i18n/*.json", { eager: true, import: "default" });
@@ -58,7 +62,7 @@ describe.each(otherLangs)("i18n %s", (lang) => {
   });
 
   it("keeps brand names and emoji from English", () => {
-    const keep = ["NotPanel", "⭐", "👋"];
+    const keep = ["{brand}", "⭐", "👋"];
     const bad = enKeys.filter((k) => typeof dict[k] === "string" && keep.some((m) => enDict[k].includes(m) && !dict[k].includes(m)));
     expect(bad).toEqual([]);
   });
@@ -74,5 +78,58 @@ describe("i18n en", () => {
   it("keeps native button labels short enough", () => {
     for (const k of ["tab.new", "tab.orders", "tab.wallet", "tab.profile"]) expect(len(enDict[k]), k).toBeLessThanOrEqual(12);
     expect(len(enDict["form.addFunds"].replace("{amount}", "$999.99"))).toBeLessThanOrEqual(24);
+  });
+});
+
+describe("brand placeholder", () => {
+  const botAll = botStrings as Record<string, Record<string, string>>;
+  const texts: [string, string][] = [
+    ...Object.entries(enDict).map(([k, v]) => [`ui en ${k}`, v] as [string, string]),
+    ...Object.entries(dicts).flatMap(([l, d]) => Object.entries(d).map(([k, v]) => [`ui ${l} ${k}`, v] as [string, string])),
+    ...Object.entries(BOT_EN).map(([k, v]) => [`bot en ${k}`, v] as [string, string]),
+    ...Object.entries(botAll).flatMap(([l, d]) => Object.entries(d).map(([k, v]) => [`bot ${l} ${k}`, v] as [string, string])),
+  ];
+
+  it("never names NotPanel in a translation", () => {
+    expect(texts.filter(([, v]) => /notpanel/i.test(v)).map(([k]) => k)).toEqual([]);
+  });
+
+  it("spells every brand placeholder exactly {brand}", () => {
+    const bad = texts.filter(([, v]) => /\{\s*brand\s*\}/i.test(v.replace(/\{brand\}/g, "")) || /\{(?!\w+\})/.test(v));
+    expect(bad.map(([k]) => k)).toEqual([]);
+  });
+
+  it("fills {brand} in bot texts, escaping it only for HTML", () => {
+    setBotBrand("A&B");
+    expect(botText("en", "cmdStart")).toBe("Open A&amp;B");
+    expect(botPlain("en", "cmdStart")).toBe("Open A&B");
+    expect(botPlain("en", "cmdStart", { brand: "X" })).toBe("Open X");
+    setBotBrand("NotBot");
+  });
+});
+
+describe("botAboutFor", () => {
+  it.each(["NotBot", "B".repeat(LIMITS.brandName), "😀".repeat(LIMITS.brandName / 2), "Ж".repeat(LIMITS.brandName)])(
+    "stays within Telegram limits for brand %#",
+    (brand) => {
+      const about = botAboutFor(brand);
+      expect(Object.keys(about).sort()).toEqual([...LANGS].sort());
+      for (const a of Object.values(about)) {
+        expect(a.name.length).toBeLessThanOrEqual(64);
+        expect(a.short.length).toBeLessThanOrEqual(120);
+        expect(a.description.length).toBeLessThanOrEqual(512);
+        expect(a.name).toContain(brand);
+        expect(a.description).toContain(brand);
+        expect(/[\ud800-\udbff]$|^[\udc00-\udfff]/.test(a.name + a.description)).toBe(false);
+        expect(/notpanel|\$\{/i.test(a.name + a.short + a.description)).toBe(false);
+      }
+    },
+  );
+
+  it("trims an over-long brand without splitting a surrogate pair", () => {
+    const a = botAboutFor("😀".repeat(60));
+    expect(a.en.name.length).toBeLessThanOrEqual(64);
+    expect([...a.en.name].every((c) => c !== "\ufffd")).toBe(true);
+    expect(/[\ud800-\udbff](?![\udc00-\udfff])/.test(a.en.name)).toBe(false);
   });
 });

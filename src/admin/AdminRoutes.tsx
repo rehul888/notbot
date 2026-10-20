@@ -11,6 +11,8 @@ import { Icon, type IconName } from "../icons";
 import { refreshMe } from "../me";
 import { back as goBack, enc, navigate } from "../router";
 import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
+import { AdminBranding } from "./Branding";
+import { AdminsSection, NotPanelKeySection, type Owners } from "./Access";
 import {
   BackNav,
   BottomButtons,
@@ -51,6 +53,7 @@ export function AdminRoutes({ parts, query }: { parts: string[]; query: URLSearc
   if (a === "users") return <AdminUsers />;
   if (a === "referrals") return <AdminReferrals />;
   if (a === "orders") return <AdminOrders />;
+  if (a === "branding") return <AdminBranding />;
   if (a === "settings") return <AdminSettings />;
   return <AdminHome />;
 }
@@ -83,9 +86,9 @@ const usdStars = (micro: number) => starsText(shownStars(micro, starsRate()));
 /** A micro-USD balance, or a sum of credits, as users see it in Stars (rounded down). */
 const balStars = (micro: number) => starsText(balanceStars(micro, starsRate()));
 const invalidate = () => clearApiCache();
-const fail = (e: unknown) => toast(errText(e), "error");
+export const fail = (e: unknown) => toast(errText(e), "error");
 
-function Page({
+export function Page({
   back,
   title,
   sub,
@@ -206,7 +209,7 @@ function ShowMore({ next, busy, onClick }: { next: unknown; busy: boolean; onCli
 }
 
 /** One key/value line in a `dl.card`. With `id`, the label focuses that input. */
-function Kv({ label, id, children }: { label: string; id?: string; children: ComponentChildren }) {
+export function Kv({ label, id, children }: { label: string; id?: string; children: ComponentChildren }) {
   return (
     <div class="kv">
       <dt>{id ? <label for={id}>{label}</label> : label}</dt>
@@ -306,6 +309,7 @@ const MANAGE: [string, IconName, string, string][] = [
   ["Users", "users", "var(--pink)", "/admin/users"],
   ["Referrals", "star", "var(--cream)", "/admin/referrals"],
   ["All orders", "list", "var(--sky)", "/admin/orders"],
+  ["Branding", "spark", "var(--pink)", "/admin/branding"],
   ["Settings & connection", "plug", "var(--lavender)", "/admin/settings"],
 ];
 
@@ -337,7 +341,9 @@ function AdminHome() {
             <>
               <div class="card pad svc-card rise">
                 <div class="head">
-                  <img src="/brand/mark.svg" alt="" width={32} height={32} />
+                  <span class="tile md brand" aria-hidden="true">
+                    <Icon name="plug" size={20} stroke={1.8} />
+                  </span>
                   <div>
                     <b class="t-headline">Your NotPanel account</b>
                   </div>
@@ -1544,6 +1550,8 @@ interface AdminSettingsData {
   app_url: string;
   bot_username: string;
   key_hint: string | null;
+  notpanel_key_source?: "env" | "saved";
+  owners?: Owners;
 }
 
 /**
@@ -1864,18 +1872,12 @@ function AdminSettings() {
             help="Shown in the app and by /terms. Telegram requires terms for Stars payments."
           />
 
-          <Section
-            header="Connection"
-            footer={
-              <>
-                The API key is stored as a Cloudflare secret. To replace it, run <code class="mono">npx wrangler secret put NOTPANEL_API_KEY</code>
-              </>
-            }
-          >
+          <NotPanelKeySection hint={s.key_hint} source={s.notpanel_key_source} onSaved={(key_hint) => res.set({ ...res.data!, key_hint })} />
+
+          {s.owners ? <AdminsSection owners={s.owners} onChanged={(owners) => res.set({ ...res.data!, owners })} /> : null}
+
+          <Section header="Connection">
             <dl class="card">
-              <Kv label="NotPanel API key">
-                <span class="mono">{s.key_hint ?? "missing"}</span>
-              </Kv>
               <Kv label="Bot">{s.bot_username ? `@${s.bot_username}` : "not connected"}</Kv>
               <Kv label="Order updates">{s.webhook_connected ? "Instant" : "Every minute (webhook off)"}</Kv>
               <Kv label="Mini App URL">

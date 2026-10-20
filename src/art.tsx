@@ -3,10 +3,12 @@
 // on the `.success-art` wrapper (A4, A5) animates the a-* groups below. An animated <g> never carries its own
 // transform attribute (§7.8), so positioned content always sits one <g> deeper.
 import type { ComponentChildren, JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { t } from "./i18n";
 import { ICON_PATHS, type IconName } from "./icons";
-import { Chip, EmptyState, LargeTitle, Screen, Section, registerEmptyArt, type ArtName } from "./ui";
+import { brandStore } from "./theme";
+import { monogram } from "../shared/theme";
+import { BrandMark, Chip, EmptyState, LargeTitle, Screen, Section, registerEmptyArt, type ArtName } from "./ui";
 
 const PAPER = "var(--art-paper)";
 const LIME = "var(--lime)";
@@ -14,7 +16,7 @@ const PINK = "var(--pink)";
 const SKY = "var(--sky)";
 const LAVS = "var(--lavender-strong)";
 const CREAM = "var(--cream)";
-const COBALT = "#2457ff";
+const COBALT = "var(--brand)"; // the accent (name kept from the original cobalt design)
 const INK = "var(--ink)";
 const SHADOW = "var(--art-shadow)";
 const SHADOW_BRAND = "var(--art-shadow-brand)";
@@ -96,7 +98,7 @@ const Ring = ({ cx, cy, r }: { cx: number; cy: number; r: number }) => <circle c
 
 /** Dashed white ring on cobalt cards (A1, A10); the card clips it. */
 const BrandRing = ({ cx, cy, r, a }: { cx: number; cy: number; r: number; a: number }) => (
-  <circle class="a-fade" cx={cx} cy={cy} r={r} fill="none" stroke={`rgba(255,255,255,${a})`} stroke-width="2" stroke-dasharray="6 7" vector-effect="non-scaling-stroke" />
+  <circle class="a-fade" cx={cx} cy={cy} r={r} fill="none" style={`stroke:var(--on-brand);stroke-opacity:${a}`} stroke-width="2" stroke-dasharray="6 7" vector-effect="non-scaling-stroke" />
 );
 
 /** Star coin with its flat shadow. */
@@ -123,8 +125,8 @@ export function ArtHomeHero({ enter }: { enter?: boolean }) {
   return (
     <Frame vw={160} vh={108} cls={enter ? "enter" : undefined}>
       <BrandRing cx={x(132)} cy={16} r={92} a={0.28} />
-      <circle class="a-fade" cx={x(128)} cy={20} r={64} fill="rgba(255,255,255,.1)" />
-      <Spark cx={x(34)} cy={18} s={12} fill="#fff" o={0.85} />
+      <circle class="a-fade" cx={x(128)} cy={20} r={64} style="fill:var(--ob-10)" />
+      <Spark cx={x(34)} cy={18} s={12} fill="var(--on-brand)" o={0.85} />
       <Card x={x(58, 40)} y={12} w={40} r={12} rot={-10 * f} fill={PAPER} shadow={SHADOW_BRAND} m={{ d: 0, fy: 14, fr: -24 * f }}>
         <Logo slug="telegram" c={20} size={22} />
       </Card>
@@ -142,6 +144,32 @@ export function ArtHomeHero({ enter }: { enter?: boolean }) {
   );
 }
 
+/** The brand's logo (round) or monogram, 104×104 at (98, 64), inside the Welcome badge. */
+function BrandBadge() {
+  const b = brandStore.use();
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [b.logoUrl]);
+  if (b.logoUrl && !broken) {
+    return (
+      <>
+        <clipPath id="brand-clip">
+          <circle cx={150} cy={116} r={52} />
+        </clipPath>
+        <circle cx={150} cy={116} r={52} style="fill:var(--art-paper)" />
+        <image href={b.logoUrl} x={98} y={64} width={104} height={104} preserveAspectRatio="xMidYMid slice" clip-path="url(#brand-clip)" onError={() => setBroken(true)} />
+      </>
+    );
+  }
+  return (
+    <>
+      <circle cx={150} cy={116} r={52} style="fill:var(--brand)" />
+      <text x={150} y={118} font-size={52} style="fill:var(--on-brand)">
+        {monogram(b.name)}
+      </text>
+    </>
+  );
+}
+
 // ---------- A2 Welcome (300×232) ----------
 
 export function ArtWelcome({ enter = true }: { enter?: boolean }) {
@@ -151,7 +179,7 @@ export function ArtWelcome({ enter = true }: { enter?: boolean }) {
       <Ring cx={150} cy={116} r={112} />
       <g class="a-badge" style="--d:80ms">
         <circle cx={154} cy={124} r={52} style={`fill:${SHADOW}`} />
-        <image href="/brand/mark.svg" x={98} y={64} width={104} height={104} />
+        <BrandBadge />
         <circle cx={150} cy={116} r={52} class="ink" fill="none" />
       </g>
       <Card x={8} y={34} w={56} r={16} rot={-10} fill={PAPER} m={{ d: 160, fx: 18, fr: -26 }}>
@@ -359,7 +387,7 @@ export function ArtBalanceCard() {
         <path d={`M${f < 0 ? 13 : 31} 5v22`} class="ink" stroke-dasharray="2 3" style="stroke-width:1.2px" />
       </Card>
       <Coin cx={x(52)} cy={30} r={11} star={13} shadow={SHADOW_BRAND} />
-      <Spark cx={x(24)} cy={12} s={8} fill="#fff" o={0.8} />
+      <Spark cx={x(24)} cy={12} s={8} fill="var(--on-brand)" o={0.8} />
     </Frame>
   );
 }
@@ -423,8 +451,8 @@ export function ArtGallery() {
         <div class="hero-card">
           <ArtHomeHero enter />
           <div class="brand">
-            <img src="/brand/mark.svg" alt="" width={26} height={26} />
-            NotPanel
+            <BrandMark size={26} />
+            <span class="ellipsis">{brandStore.get().name}</span>
           </div>
           <div class="hi">{t("home.hi", { name: "Alex" })}</div>
           <h1>{t("home.headline")}</h1>

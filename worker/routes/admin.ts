@@ -2,24 +2,25 @@ import { Hono } from "hono";
 import { platformName } from "../../shared/platforms";
 import { balanceStars, MAX_STARS_PER_PAYMENT, shownStars, starsCredit } from "../../shared/stars";
 import { LANGS, type Lang } from "../../shared/types";
+import { LIMITS } from "../../shared/brand";
+import { checkImageUpload, deleteAssetStmts, detectImageMime, isAssetKind, putAssetStmts } from "../assets";
 import { sendPreviews } from "../botMessages";
-import { botPlain } from "../i18n";
-import { BOT_ABOUT } from "../bot-about";
+import { BRAND_KEYS, normalizeBrandSettings } from "../brandSettings";
 import { MARKUP_SQL, rebuildSummaryStmts, RULE_JOINS } from "../catalog";
-import { isOwner } from "../env";
-import { np, usdToMicro } from "../notpanel";
+import { connectAll, registerNotPanelWebhook, syncBotTexts } from "../connect";
+import { addedOwners, envOwners, isOwner } from "../env";
+import { npCall, npKey, usdToMicro, verifyNotPanelKey } from "../notpanel";
 import { orderView, type OrderRow } from "../orders";
 import { refundPayment } from "../payments";
 import { sellRate } from "../pricing";
 import { bumpCatalogStmt, DEFAULTS, getSettings, setSettings, setSettingsStmts, type Settings } from "../settings";
 import { startSync, syncProgress } from "../sync";
-import { tg } from "../telegram";
 import { type AppEnv, err, readBody } from "./app";
 
 export const admin = new Hono<AppEnv>();
 
 admin.use("*", async (c, next) => {
-  if (!isOwner(c.env, c.get("user").id)) return err(c, 403, "FORBIDDEN");
+  if (!isOwner(c.env, c.get("settings"), c.get("user").id)) return err(c, 403, "FORBIDDEN");
   await next();
 });
 
@@ -46,7 +47,7 @@ admin.get("/overview", async (c) => {
   let npBalance: number | null = null;
   let npError: string | null = null;
   try {
-    npBalance = usdToMicro((await np<{ balance: string }>(c.env.NOTPANEL_API_KEY, "balance")).balance);
+    npBalance = usdToMicro((await npCall<{ balance: string }>(c.env, "balance")).balance);
   } catch (e) {
     npError = (e as Error).message;
   }
@@ -86,7 +87,14 @@ const EDITABLE: (keyof Settings)[] = [
   "referral_reward_stars",
   "referral_daily_cap",
   "terms_text",
+  ...BRAND_KEYS,
 ];
+
+/** Last 4 characters only, never the key */
+const keyHint = (env: AppEnv["Bindings"], s: Settings) => {
+  const k = npKey(env, s);
+  return k ? "…" + k.slice(-4) : null;
+};
 
 admin.get("/settings", (c) => {
   const s = c.get("settings");
@@ -98,7 +106,9 @@ admin.get("/settings", (c) => {
     webhook_connected: !!s.np_webhook_id,
     app_url: s.app_url,
     bot_username: s.bot_username,
-    key_hint: c.env.NOTPANEL_API_KEY ? "…" + c.env.NOTPANEL_API_KEY.slice(-4) : null,
+    key_hint: keyHint(c.env, s),
+    notpanel_key_source: s.np_api_key ? "saved" : "env",
+    owners: { env: envOwners(c.env), added: addedOwners(s) },
   });
 });
 
@@ -113,7 +123,7 @@ admin.put("/settings", async (c) => {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) return err(c, 400, "INVALID_VALUE", { key: k });
       (values as Record<string, unknown>)[k] = n;
-    } else (values as Record<string, unknown>)[k] = String(v).slice(0, 4000);
+    } else (values as Record<string, unknown>)[k] = (typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)).slice(0, 4000);
   }
   if (values.default_markup_pct !== undefined && values.default_markup_pct > 1000) return err(c, 400, "INVALID_VALUE", { key: "default_markup_pct" });
   const bad = (key: string) => err(c, 400, "INVALID_VALUE", { key });
@@ -136,11 +146,67 @@ admin.put("/settings", async (c) => {
   if (values.support_username) values.support_username = values.support_username.replace(/^@/, "");
   if (values.channel_url && !/^https:\/\/t\.me\//.test(values.channel_url)) return err(c, 400, "INVALID_VALUE", { key: "channel_url" });
   if (values.channel_id && !/^-100\d{5,}$/.test(values.channel_id)) return err(c, 400, "INVALID_VALUE", { key: "channel_id" });
+  const badBrand = normalizeBrandSettings(values);
+  if (badBrand) return bad(badBrand);
   await c.env.DB.batch([...setSettingsStmts(c.env, values), bumpCatalogStmt(c.env)]);
   const s = await getSettings(c.env);
   if (values.default_markup_pct !== undefined) await c.env.DB.batch(rebuildSummaryStmts(c.env, s));
   // The listing filter changed: re-scan the catalog now and drop services that no longer qualify
   if (values.only_timed !== undefined && values.only_timed !== c.get("settings").only_timed) await startSync(c.env, { force: true, strict: true });
+  return c.json({ ok: true });
+});
+
+/** Admins added in the app. Admins from the OWNER_IDS variable are fixed; the app always keeps at least one admin. */
+admin.put("/owners", async (c) => {
+  const b = await readBody<{ added?: unknown }>(c);
+  if (!b || !Array.isArray(b.added) || b.added.length > 20) return err(c, 400, "INVALID_BODY");
+  const ids: number[] = [];
+  for (const v of b.added) {
+    const n = Number(v);
+    if (!Number.isSafeInteger(n) || n <= 0) return err(c, 400, "INVALID_VALUE", { key: "added" });
+    if (!ids.includes(n)) ids.push(n);
+  }
+  const fixed = envOwners(c.env);
+  const added = ids.filter((n) => !fixed.includes(n));
+  if (!fixed.length && !added.length) return err(c, 400, "LAST_OWNER");
+  await setSettings(c.env, { owner_ids: added.join(",") });
+  return c.json({ ok: true, owners: { env: fixed, added } });
+});
+
+/** Replaces the NotPanel API key after NotPanel itself accepted it. The key is never returned, only its last 4 characters. */
+admin.put("/notpanel-key", async (c) => {
+  const b = await readBody<{ key?: unknown }>(c);
+  if (!b || typeof b.key !== "string" || b.key.length > 200) return err(c, 400, "INVALID_BODY");
+  const key = b.key.trim();
+  const check = await verifyNotPanelKey(key);
+  if (!check.ok) return err(c, 400, check.code, { message: check.message });
+  const old = c.get("settings");
+  await setSettings(c.env, { np_api_key: key });
+  // The NotPanel webhook belongs to the account of the key: register it again with the new one
+  const wh = await registerNotPanelWebhook(c.env, { ...old, np_webhook_id: "" }, new URL(c.req.url).origin);
+  if (wh.values) await setSettings(c.env, wh.values);
+  return c.json({ ok: true, key_hint: "…" + key.slice(-4), webhook: !wh.error });
+});
+
+/** Logo / welcome banner: raw image body (PNG, JPEG or WebP, checked by content, not by name) */
+admin.put("/assets/:kind", async (c) => {
+  const kind = c.req.param("kind");
+  if (!isAssetKind(kind)) return err(c, 404, "NOT_FOUND");
+  const len = Number(c.req.header("content-length") ?? 0);
+  if (len > LIMITS.imageBytes) return err(c, 413, "TOO_LARGE", { max: LIMITS.imageBytes });
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const bad = checkImageUpload(c.req.header("content-type"), bytes);
+  if (bad) return err(c, bad === "TOO_LARGE" ? 413 : 400, bad, bad === "TOO_LARGE" ? { max: LIMITS.imageBytes } : undefined);
+  const s = await getSettings(c.env, { fresh: true });
+  await c.env.DB.batch(putAssetStmts(c.env, s, kind, detectImageMime(bytes)!, bytes));
+  const next = await getSettings(c.env, { fresh: true });
+  return c.json({ ok: true, version: kind === "logo" ? next.logo_ver : next.banner_ver });
+});
+
+admin.delete("/assets/:kind", async (c) => {
+  const kind = c.req.param("kind");
+  if (!isAssetKind(kind)) return err(c, 404, "NOT_FOUND");
+  await c.env.DB.batch(deleteAssetStmts(c.env, await getSettings(c.env, { fresh: true }), kind));
   return c.json({ ok: true });
 });
 
@@ -600,56 +666,4 @@ admin.post("/connect", async (c) => {
   return c.json(result);
 });
 
-/**
- * Sets the name, command menu, profile "About" text and description for one batch of 10 languages (4 Telegram calls each),
- * staying under the free plan's 50 outgoing calls per request. Returns the next batch number, or null when done.
- */
-export async function syncBotTexts(env: AppEnv["Bindings"], batch: number): Promise<number | null> {
-  const langs = LANGS.slice(batch * 10, batch * 10 + 10);
-  for (const l of langs) {
-    const lc = l === "en" ? {} : { language_code: l };
-    const commands = [
-      { command: "start", description: botPlain(l, "cmdStart") },
-      { command: "language", description: botPlain(l, "cmdLanguage") },
-      { command: "help", description: botPlain(l, "cmdHelp") },
-    ];
-    await tg(env.BOT_TOKEN, "setMyCommands", { commands, ...lc });
-    await tg(env.BOT_TOKEN, "setMyName", { name: BOT_ABOUT[l].name, ...lc });
-    await tg(env.BOT_TOKEN, "setMyShortDescription", { short_description: BOT_ABOUT[l].short, ...lc });
-    await tg(env.BOT_TOKEN, "setMyDescription", { description: BOT_ABOUT[l].description, ...lc });
-  }
-  return (batch + 1) * 10 < LANGS.length ? batch + 1 : null;
-}
-
 admin.post("/bot-texts/:batch", async (c) => c.json({ next: await syncBotTexts(c.env, Number(c.req.param("batch")) || 0) }));
-
-export async function connectAll(env: AppEnv["Bindings"], origin: string) {
-  const s = await getSettings(env);
-  const out: Record<string, unknown> = { appUrl: origin };
-  const me = await tg<{ username: string }>(env.BOT_TOKEN, "getMe");
-  out.bot = me.username;
-  await tg(env.BOT_TOKEN, "setWebhook", {
-    url: `${origin}/bot`,
-    secret_token: env.TG_WEBHOOK_SECRET,
-    allowed_updates: ["message", "callback_query", "pre_checkout_query", "my_chat_member"],
-    drop_pending_updates: false,
-  });
-  // Per-language command menu, About text and description: see syncBotTexts (batched for the free plan's 50-call limit)
-  await tg(env.BOT_TOKEN, "setChatMenuButton", { menu_button: { type: "web_app", text: "Open", web_app: { url: origin } } });
-  const values: Partial<Settings> = { app_url: origin, bot_username: me.username };
-  // NotPanel webhook for instant order updates (the cron job is the backup)
-  try {
-    if (s.np_webhook_id) await np(env.NOTPANEL_API_KEY, "webhook.remove", { id: s.np_webhook_id }).catch(() => undefined);
-    const wh = await np<{ id: string; webhook_id?: string; secret: string }>(env.NOTPANEL_API_KEY, "webhook.add", {
-      url: `${origin}/hooks/notpanel`,
-      events: "order.processing,order.in_progress,order.completed,order.partial,order.canceled,refill.completed,refill.rejected",
-    });
-    values.np_webhook_id = String(wh.id ?? wh.webhook_id);
-    values.np_webhook_secret = wh.secret;
-    out.notpanelWebhook = true;
-  } catch (e) {
-    out.notpanelWebhook = (e as Error).message;
-  }
-  await setSettings(env, values);
-  return out;
-}

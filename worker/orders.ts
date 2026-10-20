@@ -2,10 +2,10 @@ import { FINAL_STATUSES, type Lang, type OrderStatus, type OrderView, pickLang }
 import type { Env } from "./env";
 import { botText } from "./i18n";
 import { amountText, linkText } from "./botMessages";
-import { NotPanelError, np, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
+import { NotPanelError, npCall, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
 import { orderCharge } from "./pricing";
 import { getSettings } from "./settings";
-import { tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
+import { tg, webAppButton } from "./telegram";
 import type { ServiceDetail } from "../shared/types";
 
 export interface OrderRow {
@@ -179,7 +179,7 @@ export async function placeOrder(
     drip_feed_total_minutes: dripMinutes,
   });
   try {
-    const r = await np<NpAddResult>(env.NOTPANEL_API_KEY, "add", params);
+    const r = await npCall<NpAddResult>(env, "add", params);
     const addStatus = normStatus(r.status_key) ?? "pending";
     const addCost = usdToMicro(r.charge);
     if (addCost > charge) console.warn("order sold below cost", { order: id, charge, cost: addCost });
@@ -337,7 +337,7 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
       text,
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
-      reply_markup: { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/order/${o.id}`, VIEW_ORDER_ICON_EMOJI_ID)]] },
+      reply_markup: { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/order/${o.id}`, "viewOrder")]] },
     });
   } catch (e) {
     // 403 = the user blocked the bot; stop trying
@@ -351,13 +351,13 @@ export async function refreshOrder(env: Env, o: OrderRow): Promise<OrderRow> {
   if (!OPEN_STATUSES.includes(o.status) && !(o.refill_id && o.refill_status === "pending")) return o;
   try {
     if (o.np_order_id && o.status !== "submitting") {
-      const st = await np<NpStatus>(env.NOTPANEL_API_KEY, "status", { order: o.np_order_id });
+      const st = await npCall<NpStatus>(env, "status", { order: o.np_order_id });
       o = await applyStatus(env, o, st);
     } else if (o.status === "submitting") {
       o = await recoverSubmitting(env, o);
     }
     if (o.refill_id && o.refill_status === "pending") {
-      const r = await np<{ status_key: string }>(env.NOTPANEL_API_KEY, "refill_status", { refill: o.refill_id });
+      const r = await npCall<{ status_key: string }>(env, "refill_status", { refill: o.refill_id });
       const rs = r.status_key === "completed" || r.status_key === "rejected" ? r.status_key : "pending";
       if (rs !== "pending") await env.DB.prepare("UPDATE orders SET refill_status = ?2 WHERE id = ?1").bind(o.id, rs).run();
       o = (await getOrderRow(env, o.id))!;
@@ -371,7 +371,7 @@ export async function refreshOrder(env: Env, o: OrderRow): Promise<OrderRow> {
 /** An order whose add call timed out: ask NotPanel by request_id whether it exists. */
 async function recoverSubmitting(env: Env, o: OrderRow): Promise<OrderRow> {
   try {
-    const d = await np<NpStatus & { order: number }>(env.NOTPANEL_API_KEY, "order_details", { request_id: requestId(env, o.id) });
+    const d = await npCall<NpStatus & { order: number }>(env, "order_details", { request_id: requestId(env, o.id) });
     await env.DB.prepare("UPDATE orders SET np_order_id = ?2 WHERE id = ?1").bind(o.id, d.order).run();
     return applyStatus(env, { ...o, np_order_id: d.order }, d);
   } catch (e) {
@@ -406,7 +406,7 @@ export async function pollOpenOrders(env: Env): Promise<void> {
   const withId = open.results;
   if (withId.length) {
     try {
-      const map = await np<Record<string, NpStatus>>(env.NOTPANEL_API_KEY, "status", { orders: withId.map((o) => o.np_order_id).join(",") });
+      const map = await npCall<Record<string, NpStatus>>(env, "status", { orders: withId.map((o) => o.np_order_id).join(",") });
       for (const o of withId) {
         const st = map[String(o.np_order_id)];
         const next = st && !st.error_code ? normStatus(st.status_key) : null;
@@ -431,12 +431,12 @@ export async function cancelOrder(env: Env, o: OrderRow): Promise<OrderRow> {
   assertOrdersAllowed(env);
   if (!o.np_order_id) throw new OrderError("CANCEL_NOT_AVAILABLE");
   try {
-    await np(env.NOTPANEL_API_KEY, "cancel", { order: o.np_order_id });
+    await npCall(env, "cancel", { order: o.np_order_id });
   } catch (e) {
     if (e instanceof NotPanelError) throw shopSafeError(e);
     throw e;
   }
-  const st = await np<NpStatus>(env.NOTPANEL_API_KEY, "status", { order: o.np_order_id });
+  const st = await npCall<NpStatus>(env, "status", { order: o.np_order_id });
   return applyStatus(env, o, st);
 }
 
@@ -444,7 +444,7 @@ export async function refillOrder(env: Env, o: OrderRow): Promise<OrderRow> {
   assertOrdersAllowed(env);
   if (!o.np_order_id) throw new OrderError("REFILL_NOT_AVAILABLE");
   try {
-    const r = await np<{ refill: number }>(env.NOTPANEL_API_KEY, "refill", { order: o.np_order_id });
+    const r = await npCall<{ refill: number }>(env, "refill", { order: o.np_order_id });
     await env.DB.prepare("UPDATE orders SET refill_id = ?2, refill_status = 'pending' WHERE id = ?1").bind(o.id, r.refill).run();
   } catch (e) {
     if (e instanceof NotPanelError) throw shopSafeError(e);

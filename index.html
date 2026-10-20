@@ -4,14 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <title>NotPanel</title>
-    <link rel="icon" href="/brand/mark.svg" />
+    <title>Mini App</title>
+    <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Non-blocking: the app paints with system fonts and swaps in DM Sans / Space Grotesk when they arrive -->
     <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600..700&display=swap" />
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600..700&display=swap" /></noscript>
-    <link rel="preload" as="image" href="/brand/mark.svg" />
     <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
     <!-- Start /api/me now; the app picks this request up instead of waiting for the bundle -->
     <script>
@@ -34,6 +33,20 @@
           else if (/iPhone|iPad|iPod/.test(ua) || (w && w.platform === "ios")) low = false;
           else low = (n.hardwareConcurrency || 8) <= 4 || (n.deviceMemory || 8) <= 3;
           d.dataset.perf = low ? "low" : "high";
+        } catch (e) {}
+      })();
+    </script>
+    <!-- The owner's brand colors and name from the last visit: no color flash while the app loads (src/theme.ts keeps it fresh) -->
+    <script>
+      (function () {
+        try {
+          var c = JSON.parse(localStorage.getItem("np_brand_css") || "null");
+          if (!c || typeof c.css !== "string") return;
+          var s = document.createElement("style");
+          s.id = "brand-theme";
+          s.textContent = c.css;
+          document.head.appendChild(s);
+          if (c.name) document.title = c.name;
         } catch (e) {}
       })();
     </script>

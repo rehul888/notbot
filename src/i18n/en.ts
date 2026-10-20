@@ -55,7 +55,7 @@ export const en = {
   "invite.yourLink": "Your invite link",
   "invite.copy": "Copy link",
   "invite.share": "Share",
-  "invite.shareText": "Grow your Telegram, Instagram, TikTok and more with NotPanel 🚀",
+  "invite.shareText": "Grow your Telegram, Instagram, TikTok and more with {brand} 🚀",
   "invite.how": "How it works",
   "invite.how1": "Send your link to a friend",
   "invite.how2": "They open the bot, pick a language and join our update channel",
@@ -73,7 +73,7 @@ export const en = {
   "invite.cta": "Invite friends, earn balance",
 
   // Welcome
-  "welcome.title": "Welcome to NotPanel",
+  "welcome.title": "Welcome to {brand}",
   "welcome.subtitle": "Get followers, views and likes for Telegram, Instagram, TikTok and more, in a few taps.",
   "welcome.f1": "Paste a link and pick what you need",
   "welcome.f2": "Pay with Telegram Stars",
@@ -271,7 +271,7 @@ export const en = {
   "profile.homeAdded": "Added",
   "profile.support": "Contact support",
   "profile.terms": "Terms of service",
-  "profile.website": "Visit NotPanel",
+  "profile.website": "Website",
   "profile.channel": "Join update channel",
   "profile.channelSub": "News and offers",
   "profile.admin": "Admin panel",

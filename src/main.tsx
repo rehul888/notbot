@@ -3,12 +3,17 @@ import "./styles.css";
 import "./art"; // registers the empty-state art with ui.tsx
 import { App, applyStartRoute } from "./app";
 import { keyboardStore } from "./store";
-import { cachedApi } from "./api";
+import { api, cachedApi } from "./api";
+import type { PublicStatus } from "../shared/brand";
+import { applyBrand, hasCachedBrand } from "./theme";
 import { savedLang, setLang } from "./i18n";
 import { initData, initTelegram } from "./tg";
 
 initTelegram();
 applyStartRoute();
+
+// First ever launch (no cached brand yet): fetch the colors and name now instead of waiting for /api/me.
+if (initData && !hasCachedBrand) api<PublicStatus>("/public").then((p) => applyBrand(p.brand)).catch(() => {});
 
 // Load translations in parallel with /api/me (no English flash); the /me result still wins afterwards.
 void setLang(savedLang() ?? (globalThis as any).Telegram?.WebApp?.initDataUnsafe?.user?.language_code);

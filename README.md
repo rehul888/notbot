@@ -1,63 +1,118 @@
-# NotBot — NotPanel Telegram Mini App
+# NotBot: your own SMM shop inside Telegram
 
-A Telegram Mini App + bot that resells [NotPanel](https://notpanel.com) services. Users browse platform → category →
-service, place orders, and pay with **Telegram Stars**. Every order is placed through the owner's NotPanel API key; the
-owner earns the markup. Runs entirely on **Cloudflare Workers (free plan)** with a **D1** database.
+NotBot is a Telegram bot and Mini App that sells social media growth services (followers, views, likes and more
+for Telegram, Instagram, TikTok, YouTube, X and 30+ platforms). Customers pay with **Telegram Stars**, and every
+order is fulfilled automatically by [NotPanel](https://notpanel.com) through your own NotPanel API key. You set the
+prices; the markup is your profit.
 
-## What's inside
+It runs on **Cloudflare's free plan** and deploys in a few clicks. Name, logo, colors and links are yours to set.
 
-| Path | What |
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/rehul888/notbot)
+
+## Features
+
+- **Full shop in a Mini App**: browse platform → category → service, order form with every NotPanel option,
+  order tracking, wallet, refunds, order history, referral program.
+- **Telegram Stars payments**: top up a balance (presets or any amount) or pay for a single order directly.
+- **Automatic catalog and prices**: services, categories and prices sync from NotPanel on a schedule. New services
+  can go on sale automatically; services NotPanel removes or pauses are taken off sale.
+- **Your pricing**: default markup, per platform, per category or per service, or a fixed price per service.
+- **Live order updates**: instant NotPanel webhooks plus a once-a-minute check. The bot messages customers when an
+  order finishes, and refunds undelivered parts automatically.
+- **White-label branding**: your name, logo, welcome banner, 10 color themes or any custom color, website and terms
+  links, custom welcome text, optional Telegram Premium custom emojis in bot messages.
+- **20 languages** for customers (English, Español, Português, Русский, Türkçe, العربية, हिन्दी, Indonesia, Français,
+  中文, Deutsch, Italiano, Polski, Українська, 日本語, 한국어, Tiếng Việt, فارسی, اردو, বাংলা).
+- **Admin panel inside Telegram**: sales and profit, orders, users and balances, payments and Stars refunds,
+  referrals, price changes, branding, admins and settings.
+- **Optional update channel gate**: require customers to join your channel before ordering.
+
+## What you need
+
+1. A **Telegram bot**: open [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token.
+2. A **NotPanel account and API key**: sign up on [notpanel.com](https://notpanel.com) and create an API key on the
+   [developers page](https://notpanel.com/developers). Add funds there: your orders are paid from that balance.
+3. A free **Cloudflare** account and a **GitHub** account.
+
+## Deploy in one click
+
+1. Click **Deploy to Cloudflare** above and sign in.
+2. Cloudflare copies this project to your GitHub, creates the database and asks for:
+   - `BOT_TOKEN`: your bot token from @BotFather.
+   - `NOTPANEL_API_KEY`: your NotPanel API key (starts with `np_live_`).
+   - `OWNER_IDS` (optional): your Telegram user ID, if you want to be admin straight away. Leave it empty to claim
+     admin in the next step instead.
+3. When the deploy finishes, open your app's address (for example `https://notbot.<you>.workers.dev`).
+4. The setup page asks for your bot token once (to prove the bot is yours), checks your NotPanel key, and sets up
+   everything in Telegram for you: webhook, the **Open App** button, commands, and the bot's name and description
+   in all languages.
+5. Tap **Claim admin**. Telegram opens your bot with a one-time code, and you're the admin.
+6. Open your bot, tap **Open App**, then **Profile → Admin** to set your markup, branding and links. The first
+   catalog sync takes about 20 minutes.
+
+That's it. Telegram Stars payments need no extra setup.
+
+> **Note:** a few profile options can only be set in @BotFather (the bot's profile photo, and making the Mini App the
+> bot's "main app"). They're optional.
+
+## Customize
+
+Everything is in the admin panel (Telegram → your bot → Open App → Profile → Admin):
+
+| Where | What |
 |---|---|
-| `src/` | Mini App (Preact + Vite). Screens in `src/screens`, admin in `src/admin`, translations in `src/i18n` (10 languages). |
-| `worker/` | Cloudflare Worker (Hono): API for the Mini App, bot webhook, NotPanel webhook, cron jobs. |
-| `shared/` | Types shared by both sides. |
-| `migrations/` | D1 schema. |
-| `public/` | Platform logos and NotPanel brand marks. |
+| Branding | Name, logo, welcome banner, color theme (10 presets or any color), website, terms link, welcome text, Premium custom emojis and button icons. "Update bot name & description in Telegram" applies the new name to the bot's profile. |
+| Services & prices | Markup per platform / category / service, fixed prices, show or hide anything. |
+| Settings | Stars per $1, top-up limits, price sync, NotPanel low-balance alert, support username, update channel, referral reward and daily cap, terms text, NotPanel API key, admins. |
 
-**Flow**
-- First open: language picker → welcome/terms → New order. The bot's `/start` asks for the language first too.
-- Prices: NotPanel cost + markup (service → category → platform → default), or a fixed price per service.
-- Price sync: a cron job walks NotPanel's paged catalog a few pages per minute (free-plan friendly), stores only
-  services with a measured average time (admin setting) and only writes what changed. Price changes are logged.
-- Orders: balance is charged and the order row is created in one transaction; NotPanel failures are refunded
-  automatically. Partial/canceled orders refund the undelivered part.
-- Order updates: NotPanel webhooks (instant) with a once-a-minute status check as backup. The bot messages users
-  who turned on updates, with a **View order** button that opens the Mini App on that order.
-- Payments: Stars invoices (top-up, or pay for one order directly). `/paysupport` and `/terms` are built in.
+## How money works
 
-## Local development
+- Money is kept in **US dollars** (NotPanel bills in dollars). Customers only ever see **whole Stars**: prices are
+  rounded up, balances rounded down.
+- A Stars payment credits its dollar value: at the default 77 Stars per $1, 1 ⭐ ≈ $0.013. Telegram pays out about
+  $0.013 per Star, so 77 is roughly break-even and your markup is the profit. You can change the rate in Settings.
+- Withdraw Stars as Telegram allows (Fragment), and keep your NotPanel balance topped up.
+
+## Update your copy
+
+Your copy lives in your own GitHub repository. To get a new version, pull this repository into yours and push;
+Cloudflare redeploys automatically and applies database updates:
+
+```bash
+git remote add upstream https://github.com/rehul888/notbot.git   # once
+git pull upstream main
+git push
+```
+
+## Develop locally
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # fill in NOTPANEL_API_KEY; DEV_FAKE_USER_ID lets you open it in a browser
+cp .dev.vars.example .dev.vars   # add your keys; add DEV_FAKE_USER_ID=1 and OWNER_IDS=1 to open it in a browser
 npm run db:migrate:local
 npm run dev                      # http://localhost:5173
 ```
 
-Trigger a cron tick locally (price sync step + order checks):
+Local development never places real NotPanel orders unless `ALLOW_LIVE_ORDERS=1` is set in `.dev.vars`.
+Checks: `npm run typecheck && npm test && npm run build`.
 
-```bash
-curl -X POST "http://localhost:5173/cdn-cgi/local/explorer/api/local/scheduled?worker=notpanel-miniapp" -H 'content-type: application/json' -d '{"cron":"* * * * *"}'
-```
+Manual deploy without the button: `npx wrangler d1 create notpanel` (put the id in `wrangler.jsonc`),
+`npx wrangler secret put BOT_TOKEN`, `npx wrangler secret put NOTPANEL_API_KEY`, then `npm run deploy` and open your
+app's address to finish setup.
 
-Local dev never places real NotPanel orders unless `ALLOW_LIVE_ORDERS=1` is set in `.dev.vars`.
+## Project layout
 
-Checks before pushing: `npm run typecheck && npm test && npm run build`.
+| Path | What |
+|---|---|
+| `src/` | Mini App (Preact + Vite): screens, admin panel, setup page, translations. |
+| `worker/` | Cloudflare Worker (Hono): app API, setup, bot webhook, NotPanel webhook, cron jobs. |
+| `shared/` | Code shared by both sides: types, money conversion, branding and themes. |
+| `migrations/` | D1 database schema. |
 
-## Deploy (Cloudflare)
+## License
 
-1. `npx wrangler d1 create notpanel` → put the printed `database_id` in `wrangler.jsonc`.
-2. `npm run db:migrate:remote`
-3. Secrets: `npx wrangler secret put NOTPANEL_API_KEY`, `BOT_TOKEN`, `TG_WEBHOOK_SECRET` and `SETUP_SECRET` (each a
-   different long random string). `TG_WEBHOOK_SECRET` only signs Telegram's webhook calls; `SETUP_SECRET` only protects
-   the one-time setup pages. If `SETUP_SECRET` is not set, the `/setup/*` pages do not exist (404).
-4. Set `OWNER_IDS` in `wrangler.jsonc` to your Telegram user ID (comma-separate several).
-5. `npm run deploy`
-6. Open `https://<worker-url>/setup/<SETUP_SECRET>` once. It connects the bot webhook, menu button and NotPanel order
-   webhooks. Then open `/setup/<SETUP_SECRET>/texts/0` and `/setup/<SETUP_SECRET>/texts/1` to set the bot's command
-   menus, About text and descriptions in all languages. (Optional: `/setup/<SETUP_SECRET>/channel` checks the update
-   channel, `/setup/<SETUP_SECRET>/preview` sends sample bot messages to the owner.) To lock setup again, delete the
-   secret: `npx wrangler secret delete SETUP_SECRET`.
-7. In @BotFather → your bot → Bot Settings → Configure Mini App / Menu Button, use `https://<worker-url>`.
+NotBot is **source-available** under the [NotBot License (NotPanel-only)](LICENSE): free to use, modify, deploy and
+run commercially, **only with the NotPanel API**. It is not an OSI open source license. The app checks every API key
+with NotPanel before using it.
 
-The first price sync starts within a minute of deploying and takes ~20 minutes.
+Security issues: see [SECURITY.md](SECURITY.md).

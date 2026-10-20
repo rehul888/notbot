@@ -42,9 +42,19 @@ export async function setLang(code: string | null | undefined) {
   langStore.set({ lang, dict });
 }
 
+let uiBrand = "NotBot";
+
+/** Sets the brand name that fills {brand} in every UI text; re-renders anything using useLang(). */
+export function setUiBrand(name: string) {
+  const next = name.trim();
+  if (!next || next === uiBrand) return;
+  uiBrand = next;
+  langStore.set((s) => ({ ...s })); // new object so subscribers re-render
+}
+
 export function t(key: Key, vars: Record<string, string | number> = {}): string {
   const tpl = langStore.get().dict[key] ?? en[key] ?? key;
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? (k === "brand" ? uiBrand : "")));
 }
 
 /** Translates an API error code, falling back to a generic message */

@@ -1,10 +1,11 @@
 import { Fragment, type JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { ApiError } from "./api";
 import { refreshMe } from "./me";
 import { setLang, useLang } from "./i18n";
 import { useRoute } from "./router";
 import { meStore } from "./store";
-import { startParam } from "./tg";
+import { inTelegram, startParam } from "./tg";
 import { ErrorState, Screen, Skeleton, SkeletonGrid, TabBar, Toasts } from "./ui";
 import { ArtGallery } from "./art";
 import { Welcome } from "./screens/Welcome";
@@ -21,7 +22,7 @@ import { OrderDetail } from "./screens/OrderDetail";
 import { Wallet } from "./screens/Wallet";
 import { TopUp } from "./screens/TopUp";
 import { Profile } from "./screens/Profile";
-import { LazyAdminRoutes } from "./lazy";
+import { LazyAdminRoutes, LazyPublicPages } from "./lazy";
 
 /** Deep links: t.me/<bot>?startapp=order_12 / s_2828 / wallet */
 function routeFromStartParam(p: string | null): string | null {
@@ -60,12 +61,17 @@ export function App() {
   const me = meStore.use();
   const route = useRoute();
   const [error, setError] = useState<unknown>(null);
+  // A plain browser (not Telegram, not the local dev user): the setup wizard, or "Open the bot in Telegram"
+  const [outside, setOutside] = useState(false);
 
   const load = () => {
     setError(null);
     refreshMe()
       .then((m) => setLang(m.lang))
-      .catch(setError);
+      .catch((e) => {
+        if (!inTelegram && e instanceof ApiError && e.code === "UNAUTHORIZED") setOutside(true);
+        else setError(e);
+      });
   };
   useEffect(load, []);
 
@@ -77,6 +83,10 @@ export function App() {
     // Dev-only art gallery (spec §8.3); not linked anywhere.
     key = "__art";
     screen = <ArtGallery />;
+  } else if (outside || (import.meta.env.DEV && route.path === "/__public")) {
+    // (Dev only: #/__public previews the setup wizard / "open in Telegram" page while signed in as the dev user.)
+    key = "public";
+    screen = <LazyPublicPages />;
   } else if (error) {
     key = "error";
     screen = (

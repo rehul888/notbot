@@ -2,12 +2,11 @@
 import { balanceStars, shownStars } from "../shared/stars";
 import { langLabel, type Lang } from "../shared/types";
 import type { Env } from "./env";
-import { botText } from "./i18n";
+import { validHttpsUrl } from "../shared/brand";
+import { brandName } from "./brand";
+import { botText, escapeHtml } from "./i18n";
 import { getSettings, setSettings, type Settings } from "./settings";
-import { TERMS_ICON_EMOJI_ID, tg, VIEW_ORDER_ICON_EMOJI_ID, webAppButton } from "./telegram";
-
-export const TERMS_URL = "https://notpanel.com/tos";
-const BANNER_PATH = "/brand/welcome-banner.jpg";
+import { linkButton, tg, webAppButton } from "./telegram";
 
 /** Whole Stars for bot messages: "1,250 ⭐" */
 export const starsText = (stars: number) => `${Math.round(stars).toLocaleString("en-US")} ⭐`;
@@ -15,7 +14,7 @@ export const starsText = (stars: number) => `${Math.round(stars).toLocaleString(
 export const amountText = (micro: number, s: Settings) => starsText(shownStars(micro, s.stars_per_usd));
 /** A micro-USD balance as users see it: Stars, rounded down */
 export const balanceText = (micro: number, s: Settings) => starsText(balanceStars(micro, s.stars_per_usd));
-export const supportHandle = (s: Settings) => (s.support_username ? "@" + s.support_username : s.bot_username ? "@" + s.bot_username : "NotPanel");
+export const supportHandle = (s: Settings) => (s.support_username ? "@" + s.support_username : s.bot_username ? "@" + s.bot_username : brandName(s));
 /** Telegram links in captions: show without the scheme and keep them short */
 export const linkText = (link: string) => {
   const l = link.replace(/^https?:\/\/(www\.)?/, "");
@@ -26,35 +25,54 @@ export function openButton(lang: Lang, s: Settings, path = "") {
   return s.app_url ? webAppButton(botText(lang, "open"), `${s.app_url}${path}`) : null;
 }
 
-/** Welcome photo (4:3 banner) with the feature caption and an Open button. Reuses Telegram's file_id after the first send. */
+/** The owner's welcome text (plain text, escaped here) with {name} and {brand} filled in */
+export function customWelcome(template: string, name: string, brand: string): string {
+  return escapeHtml(template).replace(/\{name\}/g, escapeHtml(name)).replace(/\{brand\}/g, escapeHtml(brand));
+}
+
+/**
+ * Welcome with the owner's banner (if one is uploaded), the feature caption and an Open button; text only otherwise.
+ * Reuses Telegram's file_id after the first send; a new banner changes the URL (banner_ver), which drops the cache.
+ */
 export async function sendWelcome(env: Env, chatId: number, lang: Lang, name: string): Promise<void> {
   const s = await getSettings(env);
   const open = openButton(lang, s);
   const reply_markup = open ? { inline_keyboard: [[open]] } : undefined;
-  const caption = botText(lang, "welcome", { name: name || "there" });
-  const url = s.app_url ? `${s.app_url}${BANNER_PATH}` : "";
-  const [cachedUrl, fileId] = (s.welcome_photo || "|").split("|");
-  const photo = fileId && cachedUrl === url ? fileId : url;
-  try {
-    if (!photo) throw new Error("no app url");
-    const msg = await tg<{ photo?: { file_id: string }[] }>(env.BOT_TOKEN, "sendPhoto", { chat_id: chatId, photo, caption, parse_mode: "HTML", reply_markup });
-    const id = msg.photo?.at(-1)?.file_id;
-    if (id && photo === url) await setSettings(env, { welcome_photo: `${url}|${id}` });
-  } catch (e) {
-    console.warn("welcome photo failed, sending text", (e as Error).message);
-    await tg(env.BOT_TOKEN, "sendMessage", { chat_id: chatId, text: caption, parse_mode: "HTML", reply_markup });
+  const caption = s.welcome_text.trim() ? customWelcome(s.welcome_text, name || "there", brandName(s)) : botText(lang, "welcome", { name: name || "there" });
+  const url = s.app_url && s.banner_ver > 0 ? `${s.app_url}/media/banner?v=${s.banner_ver}` : "";
+  if (url) {
+    const [cachedUrl, fileId] = (s.welcome_photo || "|").split("|");
+    const photo = fileId && cachedUrl === url ? fileId : url;
+    try {
+      const msg = await tg<{ photo?: { file_id: string }[] }>(env.BOT_TOKEN, "sendPhoto", { chat_id: chatId, photo, caption, parse_mode: "HTML", reply_markup });
+      const id = msg.photo?.at(-1)?.file_id;
+      if (id && photo === url) await setSettings(env, { welcome_photo: `${url}|${id}` });
+      return;
+    } catch (e) {
+      console.warn("welcome photo failed, sending text", (e as Error).message);
+    }
   }
+  await tg(env.BOT_TOKEN, "sendMessage", { chat_id: chatId, text: caption, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
+}
+
+/** Terms button: the owner's terms link, else the in-app terms page, else none */
+export function termsButton(lang: Lang, s: Settings) {
+  if (validHttpsUrl(s.terms_url)) return linkButton(botText(lang, "termsButton"), s.terms_url, "terms");
+  if (s.app_url) return webAppButton(botText(lang, "termsButton"), `${s.app_url}/#/terms`, "terms");
+  return null;
 }
 
 export async function sendHelp(env: Env, chatId: number, lang: Lang, key: "help" | "paysupport" = "help"): Promise<void> {
   const s = await getSettings(env);
   const open = openButton(lang, s);
+  const terms = termsButton(lang, s);
+  const rows = [...(open ? [[open]] : []), ...(terms ? [[terms]] : [])];
   await tg(env.BOT_TOKEN, "sendMessage", {
     chat_id: chatId,
     text: botText(lang, key, { support: supportHandle(s) }),
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
-    reply_markup: { inline_keyboard: [...(open ? [[open]] : []), [{ text: botText(lang, "termsButton"), url: TERMS_URL, style: "primary", icon_custom_emoji_id: TERMS_ICON_EMOJI_ID }]] },
+    reply_markup: rows.length ? { inline_keyboard: rows } : undefined,
   });
 }
 
@@ -67,8 +85,8 @@ export function languageKeyboard(langs: readonly Lang[]) {
 /** Owner preview: sends one of every message type with sample data, in the given language. */
 export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: string, langs: readonly Lang[]): Promise<number> {
   const s = await getSettings(env);
-  const sample = { id: "16502", service: "Telegram Post Views — Real", quantity: "1,000", link: "t.me/notpanel_com/42", refund: "27 ⭐", amount: "500 ⭐", balance: "1,240 ⭐", reason: "LINK_BUSY" };
-  const view = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/orders`, VIEW_ORDER_ICON_EMOJI_ID)]] } : undefined;
+  const sample = { id: "16502", service: "Telegram Post Views — Real", quantity: "1,000", link: "t.me/example/42", refund: "27 ⭐", amount: "500 ⭐", balance: "1,240 ⭐", reason: "LINK_BUSY" };
+  const view = s.app_url ? { inline_keyboard: [[webAppButton(botText(lang, "viewOrder"), `${s.app_url}/#/orders`, "viewOrder")]] } : undefined;
   const open = openButton(lang, s);
   const send = (text: string, reply_markup?: unknown) =>
     tg(env.BOT_TOKEN, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
