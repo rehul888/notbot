@@ -74,8 +74,8 @@ export async function np<T = unknown>(key: string, action: string, params: Recor
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") body.set(k, String(v));
   let res: Response;
   try {
-    // Never follow a redirect: the key must only ever be sent to NotPanel
-    res = await fetch(BASE, { method: "POST", body, redirect: "error", signal: AbortSignal.timeout(25_000) });
+    // Never follow a redirect: the key must only ever be sent to NotPanel ("manual" returns the 3xx unfollowed)
+    res = await fetch(BASE, { method: "POST", body, redirect: "manual", signal: AbortSignal.timeout(25_000) });
   } catch (e) {
     throw new NotPanelError(`NotPanel unreachable: ${(e as Error).message}`, "NETWORK", true, 0);
   }

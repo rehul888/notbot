@@ -454,3 +454,23 @@ describe("bot command menus", () => {
     expect(dayStartUtc(Date.UTC(2026, 9, 20, 23, 59))).toBe(Date.UTC(2026, 9, 20) / 1000);
   });
 });
+
+describe("NotPanel requests", () => {
+  it("use fetch options that Cloudflare Workers accept (redirect 'error' is rejected at the edge)", async () => {
+    const { np } = await import("../worker/notpanel");
+    const calls: RequestInit[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Response(JSON.stringify({ balance: "1.00", currency: "USD" }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      await np("np_live_0123456789abcdef0123456789abcdef", "balance");
+    } finally {
+      globalThis.fetch = real;
+    }
+    expect(calls).toHaveLength(1);
+    expect(["manual", "follow"]).toContain(calls[0].redirect);
+    expect(calls[0].redirect).toBe("manual"); // the key must never follow a redirect to another host
+  });
+});
