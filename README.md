@@ -9,6 +9,10 @@ It runs on **Cloudflare's free plan** and deploys in a few clicks. Name, logo, c
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/rehul888/notbot)
 
+<p align="center">
+  <img src="docs/screenshots/hero.webp" alt="NotBot Mini App: home screen, order form and order tracking" width="100%">
+</p>
+
 ## Features
 
 - **Full shop in a Mini App**: browse platform → category → service, order form with every NotPanel option,
@@ -26,6 +30,11 @@ It runs on **Cloudflare's free plan** and deploys in a few clicks. Name, logo, c
 - **Admin panel inside Telegram**: sales and profit, orders, users and balances, payments and Stars refunds,
   referrals, price changes, branding, admins and settings.
 - **Optional update channel gate**: require customers to join your channel before ordering.
+
+<p align="center">
+  <img src="docs/screenshots/app.webp" alt="Home, services list, order form and orders screens" width="100%">
+  <img src="docs/screenshots/more.webp" alt="Wallet and profile screens, and the app in dark mode" width="100%">
+</p>
 
 ## What you need
 
@@ -52,12 +61,21 @@ It runs on **Cloudflare's free plan** and deploys in a few clicks. Name, logo, c
 
 That's it. Telegram Stars payments need no extra setup.
 
+<p align="center">
+  <img src="docs/screenshots/owner.webp" alt="The one-time setup page and the admin Branding page" width="60%">
+</p>
+
 > **Note:** a few profile options can only be set in @BotFather (the bot's profile photo, and making the Mini App the
 > bot's "main app"). They're optional.
 
 ## Customize
 
-Everything is in the admin panel (Telegram → your bot → Open App → Profile → Admin):
+Everything is in the admin panel (Telegram → your bot → Open App → Profile → Admin). Pick a ready-made color theme
+or any color you like; the whole app, light and dark, follows it:
+
+<p align="center">
+  <img src="docs/screenshots/themes.webp" alt="The same home screen in five color themes: cobalt, violet, emerald, sunset and rose in dark mode" width="100%">
+</p>
 
 | Where | What |
 |---|---|
