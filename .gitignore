@@ -5,3 +5,7 @@ dist
 !.dev.vars.example
 .DS_Store
 *.log
+
+# Local AI-assistant config (project notes live in AGENTS.md)
+.claude/
+CLAUDE.md
