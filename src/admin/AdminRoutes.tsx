@@ -4,8 +4,8 @@ import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { platformName } from "../../shared/platforms";
 import type { OrderView } from "../../shared/types";
-import { api, clearApiCache } from "../api";
-import { balanceStars, shownStars } from "../../shared/stars";
+import { api, ApiError, clearApiCache } from "../api";
+import { balanceStars, MAX_STARS_PER_PAYMENT, shownStars } from "../../shared/stars";
 import { dateTime, num, starsRate } from "../format";
 import { Icon, type IconName } from "../icons";
 import { refreshMe } from "../me";
@@ -1546,6 +1546,40 @@ interface AdminSettingsData {
   key_hint: string | null;
 }
 
+/**
+ * What's wrong with a settings value, in plain words (same rules as the server's PUT /admin/settings), or null.
+ * `v` is the settings with the unsaved changes applied.
+ */
+function settingProblem(key: string, v: AdminSettingsData): string | null {
+  const whole = (n: number) => Number.isInteger(n);
+  switch (key) {
+    case "stars_per_usd":
+      return v.stars_per_usd >= 1 && v.stars_per_usd <= 1000 ? null : "Stars per $1 must be between 1 and 1,000.";
+    case "min_topup_stars":
+    case "max_topup_stars":
+      if (!whole(v.min_topup_stars) || v.min_topup_stars < 1) return "Smallest top-up must be at least 1 ⭐.";
+      if (!whole(v.max_topup_stars) || v.max_topup_stars > MAX_STARS_PER_PAYMENT)
+        return `Largest top-up can be at most ${num(MAX_STARS_PER_PAYMENT)} ⭐ (Telegram's limit for one Stars payment).`;
+      return v.max_topup_stars >= v.min_topup_stars ? null : "Largest top-up must be at least the smallest top-up.";
+    case "referral_reward_stars":
+      return whole(v.referral_reward_stars) && v.referral_reward_stars >= 0 && v.referral_reward_stars <= 100
+        ? null
+        : "Reward per friend must be a whole number from 0 to 100 ⭐.";
+    case "referral_daily_cap":
+      return v.referral_daily_cap >= 0 && v.referral_daily_cap <= 10_000 ? null : "Max paid referrals per day must be between 0 and 10,000.";
+    case "sync_every_hours":
+      return v.sync_every_hours >= 1 && v.sync_every_hours <= 168 ? null : "Check every must be between 1 and 168 hours.";
+    case "low_balance":
+      return v.low_balance >= 0 ? null : "The balance alert can't be negative.";
+    case "channel_url":
+      return !v.channel_url || /^https:\/\/t\.me\//.test(v.channel_url) ? null : "Channel link must start with https://t.me/";
+    case "channel_id":
+      return !v.channel_id || /^-100\d{5,}$/.test(v.channel_id) ? null : "Channel ID must look like -1001234567890.";
+    default:
+      return null;
+  }
+}
+
 type NumKey = "stars_per_usd" | "min_topup_stars" | "max_topup_stars" | "low_balance" | "referral_reward_stars" | "referral_daily_cap";
 const USD_KEYS: NumKey[] = ["low_balance"];
 
@@ -1570,6 +1604,13 @@ function AdminSettings() {
   const set = <K extends keyof AdminSettingsData>(k: K, v: AdminSettingsData[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const save = async () => {
     if (!res.data) return;
+    // Say exactly what's wrong instead of a generic error
+    const next = { ...res.data, ...draft };
+    const problem = Object.keys(draft).map((k) => settingProblem(k, next)).find(Boolean);
+    if (problem) {
+      toast(problem, "error");
+      return;
+    }
     setBusy(true);
     try {
       await api("/admin/settings", { method: "PUT", body: draft });
@@ -1582,7 +1623,10 @@ function AdminSettings() {
       toast("Settings saved", "ok");
       res.reload();
     } catch (e) {
-      fail(e);
+      const key = e instanceof ApiError && e.code === "INVALID_VALUE" ? String(e.details?.key ?? "") : "";
+      const problem = key ? settingProblem(key, { ...res.data, ...draft }) : null;
+      if (problem || key) toast(problem ?? `That value isn't allowed (${key}).`, "error");
+      else fail(e);
     }
     setBusy(false);
   };
@@ -1666,7 +1710,7 @@ function AdminSettings() {
         )
       ) : (
         <>
-          <Section header="Telegram Stars" footer="Telegram pays out roughly $0.013 per Star, so 77 Stars per $1 is about break-even. Your markup is the profit. Money is kept in USD; Stars are only how users see it. Changing the rate re-prices everything: every price, balance and past amount is shown at the new rate (100 ⭐ bought at 77 shows as 130 ⭐ at 100).">
+          <Section header="Telegram Stars" footer="Telegram pays out roughly $0.013 per Star, so 77 Stars per $1 is about break-even. Your markup is the profit. Top-ups are whole Stars, at most 10,000 per payment (Telegram's limit). Money is kept in USD; Stars are only how users see it. Changing the rate re-prices everything: every price, balance and past amount is shown at the new rate (100 ⭐ bought at 77 shows as 130 ⭐ at 100).">
             <dl class="card">
               <Kv label="Stars per $1 (sets prices)" id="set-stars">
                 {numInput("stars_per_usd", "set-stars")}
