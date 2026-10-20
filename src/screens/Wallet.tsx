@@ -2,8 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { LedgerItem } from "../../shared/types";
 import { api } from "../api";
 import { ArtBalanceCard } from "../art";
-import { balanceStars } from "../../shared/stars";
-import { amount as amountText, dateTime, isoIds, stars, starsRate } from "../format";
+import { balanceStars, underOneStar } from "../../shared/stars";
+import { amount as amountText, balance as balanceText, dateTime, isoIds, stars, starsRate } from "../format";
 import { t } from "../i18n";
 import { Icon, StarIcon, type IconName } from "../icons";
 import { useCountUp } from "../motion";
@@ -68,6 +68,8 @@ function LedgerRow({ item }: { item: LedgerItem }) {
 function BalanceCard({ balance: micro }: { balance: number }) {
   // Stored in micro-USD, shown as whole Stars (rounded down)
   const balance = balanceStars(micro, starsRate());
+  // Less than one Star left: "<1 ⭐", not a misleading 0
+  const tiny = underOneStar(micro, starsRate());
   // Count up only when the balance went up since the last visit. `from` is read once, at mount.
   const [from] = useState(() => (lastSeenBalance !== undefined && balance > lastSeenBalance ? lastSeenBalance : undefined));
   const shown = useCountUp(balance, { from, delay: 200, step: 1 });
@@ -81,9 +83,9 @@ function BalanceCard({ balance: micro }: { balance: number }) {
       <div class="lbl">
         <span>{t("wallet.balance")}</span>
         <b class="num-xl count" aria-hidden="true">
-          <Num>{stars(shown)}</Num>
+          <Num>{tiny ? balanceText(micro) : stars(shown)}</Num>
         </b>
-        <span class="sr">{stars(balance)}</span>
+        <span class="sr">{balanceText(micro)}</span>
       </div>
       <button type="button" class="white-pill press" onClick={() => (haptic.tap(), navigate("/topup"))}>
         <Icon name="plus" size={16} stroke={2.6} />

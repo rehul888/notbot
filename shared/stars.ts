@@ -21,6 +21,11 @@ export function balanceStars(micro: number, starsPerUsd: number): number {
   return Math.floor((micro * starsPerUsd) / 1_000_000 + 1e-9);
 }
 
+/** Some money, but less than one whole Star: shown as "<1 ⭐" rather than a misleading "0 ⭐" */
+export function underOneStar(micro: number, starsPerUsd: number): boolean {
+  return micro > 0 && balanceStars(micro, starsPerUsd) === 0;
+}
+
 /** Dollars credited for Stars paid, rounded up to the micro-dollar. */
 export function starsCredit(stars: number, starsPerUsd: number): number {
   return starsPerUsd > 0 ? Math.ceil((stars * 1_000_000) / starsPerUsd - 1e-9) : 0;

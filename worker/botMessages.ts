@@ -1,5 +1,5 @@
 // Rich bot messages: the photo welcome, help, and an owner-only preview of every message type.
-import { balanceStars, shownStars } from "../shared/stars";
+import { balanceStars, shownStars, underOneStar } from "../shared/stars";
 import { langLabel, type Lang } from "../shared/types";
 import type { Env } from "./env";
 import { validHttpsUrl } from "../shared/brand";
@@ -13,7 +13,8 @@ export const starsText = (stars: number) => `${Math.round(stars).toLocaleString(
 /** A micro-USD amount (charge, refund, credit) as users see it: Stars, rounded up */
 export const amountText = (micro: number, s: Settings) => starsText(shownStars(micro, s.stars_per_usd));
 /** A micro-USD balance as users see it: Stars, rounded down */
-export const balanceText = (micro: number, s: Settings) => starsText(balanceStars(micro, s.stars_per_usd));
+export const balanceText = (micro: number, s: Settings) =>
+  underOneStar(micro, s.stars_per_usd) ? "<1 ⭐" : starsText(balanceStars(micro, s.stars_per_usd));
 export const supportHandle = (s: Settings) => (s.support_username ? "@" + s.support_username : s.bot_username ? "@" + s.bot_username : brandName(s));
 /** Telegram links in captions: show without the scheme and keep them short */
 export const linkText = (link: string) => {

@@ -474,3 +474,59 @@ describe("NotPanel requests", () => {
     expect(calls[0].redirect).toBe("manual"); // the key must never follow a redirect to another host
   });
 });
+
+describe("money is dollars, Stars are only the label (owner's examples)", () => {
+  const RATE = 77; // Stars per $1
+  it("charges, refunds and blocks orders by the exact dollar amount", async () => {
+    const { orderCharge } = await import("../worker/pricing");
+    const { refundFor } = await import("../worker/orders");
+    const { starsCredit, shownStars, balanceStars, starsToCover } = await import("../shared/stars");
+    const canPay = (balance: number, charge: number) => balance >= charge; // same rule as the app and the server's debit
+
+    // Pays 1 ⭐ in Telegram: credited exactly its dollar value ($0.012988), shown as 1 ⭐
+    let balance = starsCredit(1, RATE);
+    expect(balance).toBe(12_988);
+    expect(balanceStars(balance, RATE)).toBe(1);
+
+    // Orders a $0.006 service: shown as 1 ⭐, but exactly $0.006 leaves the balance
+    const charge = orderCharge(6_000, 1000, "free");
+    expect(charge).toBe(6_000);
+    expect(starsToCover(charge, RATE)).toBe(1);
+    expect(canPay(balance, charge)).toBe(true);
+    balance -= charge;
+    expect(balance).toBe(6_988); // $0.006988 left: less than 1 ⭐, shown as "<1 ⭐"
+    expect(balanceStars(balance, RATE)).toBe(0);
+
+    // Canceled: the refund is the order's exact dollar value ($0.006), shown as "+1 ⭐"
+    const refund = refundFor({ id: 1, charge, quantity: 1000 } as never, "cancelled", null);
+    expect(refund).toBe(6_000);
+    expect(shownStars(refund, RATE)).toBe(1);
+    balance += refund;
+    expect(balance).toBe(12_988);
+
+    // Balance $0.006 vs a $0.011 service: both look like "1 ⭐" or less, but the order is refused
+    expect(starsToCover(11_000, RATE)).toBe(1);
+    expect(canPay(6_000, 11_000)).toBe(false);
+    // A partial refund never gives back more than was paid
+    expect(refundFor({ id: 2, charge: 11_000, quantity: 1000 } as never, "partial", 999)).toBeLessThanOrEqual(11_000);
+  });
+
+  it("never shows a balance that can't pay for a total it seems to cover", async () => {
+    const { balanceStars, starsToCover } = await import("../shared/stars");
+    for (let balance = 0; balance <= 40_000; balance += 37) {
+      for (const total of [1, 999, 6_000, 12_987, 12_988, 12_989, 25_976, 30_000]) {
+        if (balanceStars(balance, RATE) >= starsToCover(total, RATE)) expect(balance).toBeGreaterThanOrEqual(total);
+      }
+    }
+  });
+});
+
+describe("tiny balances", () => {
+  it("show as '<1 ⭐', never as 0 ⭐ when there is money left", async () => {
+    const { underOneStar } = await import("../shared/stars");
+    expect(underOneStar(6_988, 77)).toBe(true); // $0.006988
+    expect(underOneStar(0, 77)).toBe(false); // empty is 0 ⭐
+    expect(underOneStar(12_988, 77)).toBe(false); // a full Star
+    expect(underOneStar(-5, 77)).toBe(false);
+  });
+});

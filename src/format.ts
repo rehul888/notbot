@@ -1,4 +1,4 @@
-import { balanceStars, shownStars } from "../shared/stars";
+import { balanceStars, shownStars, underOneStar } from "../shared/stars";
 import { getLang } from "./i18n";
 import { meStore } from "./store";
 
@@ -12,6 +12,7 @@ export function amount(micro: number, opts: { sign?: boolean } = {}): string {
 
 /** A micro-USD balance → "1 ⭐" (rounded down: never shows more than the user has) */
 export function balance(micro: number): string {
+  if (underOneStar(micro, starsRate())) return `<${num(1)} ⭐`;
   return stars(balanceStars(micro, starsRate()));
 }
 
