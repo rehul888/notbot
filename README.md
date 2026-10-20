@@ -86,8 +86,9 @@ repository**), fill in the form like this:
 | Build command | `npm run build` |
 | Deploy command | `npm run deploy` (or `npx wrangler deploy`) |
 
-This way doesn't ask for the secrets. After the first deploy, open your Worker → **Settings → Variables and Secrets**
-and add `BOT_TOKEN` and `NOTPANEL_API_KEY` as secrets, then open your app's address to finish setup. The database is
+Unless you add them under **Advanced settings**, this way doesn't ask for the secrets: after the first deploy, open
+your Worker → **Settings → Variables and Secrets** and add `BOT_TOKEN` and `NOTPANEL_API_KEY` as secrets, then open
+your app's address to finish setup. The database is
 created on the first deploy and the app sets up its own tables.
 
 ### Troubleshooting
