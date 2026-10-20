@@ -75,11 +75,27 @@ That's it. Telegram Stars payments need no extra setup.
 > **Note:** a few profile options can only be set in @BotFather (the bot's profile photo, and making the Mini App the
 > bot's "main app"). They're optional.
 
+### Deploying your own copy of the repository instead
+
+If you copied this repository into your GitHub and connect it in Cloudflare (**Workers & Pages → Create → Import a
+repository**), fill in the form like this:
+
+| Field | Value |
+|---|---|
+| Git repository | Your copy. If it says **Missing git connection**, open the repository menu and connect your GitHub account, then allow Cloudflare to access that repository. |
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy` (or `npx wrangler deploy`) |
+
+This way doesn't ask for the secrets. After the first deploy, open your Worker → **Settings → Variables and Secrets**
+and add `BOT_TOKEN` and `NOTPANEL_API_KEY` as secrets, then open your app's address to finish setup. The database is
+created on the first deploy and the app sets up its own tables.
+
 ### Troubleshooting
 
 | You see | Do this |
 |---|---|
 | "This uploader does not yet support projects that require a build process" | You're on the dashboard's upload screen. Go back and use the **Deploy to Cloudflare** button instead. |
+| "Missing git connection" | Cloudflare can't see your GitHub repository yet: connect your GitHub account in that screen and give Cloudflare access to the repository. |
 | The build or deploy fails | Open your Worker in the Cloudflare dashboard → **Deployments** → the failed build's log. Check that the build command is `npm run build` and the deploy command is `npm run deploy`, then click **Retry**. |
 | The setup page says the bot token doesn't match | Paste the same token you entered during deploy. To change it: Worker → **Settings → Variables and Secrets** → `BOT_TOKEN`. |
 | "This isn't a NotPanel API key" | Only NotPanel keys work (they start with `np_live_`). Create one on [notpanel.com/developers](https://notpanel.com/developers). |
@@ -131,9 +147,9 @@ npm run dev                      # http://localhost:5173
 Local development never places real NotPanel orders unless `ALLOW_LIVE_ORDERS=1` is set in `.dev.vars`.
 Checks: `npm run typecheck && npm test && npm run build`.
 
-Manual deploy without the button: `npx wrangler d1 create notpanel` (put the id in `wrangler.jsonc`),
-`npx wrangler secret put BOT_TOKEN`, `npx wrangler secret put NOTPANEL_API_KEY`, then `npm run deploy` and open your
-app's address to finish setup.
+Manual deploy without the button: `npx wrangler login`, then `npm run deploy` (it creates the database), then
+`npx wrangler secret put BOT_TOKEN` and `npx wrangler secret put NOTPANEL_API_KEY`, and open your app's address to
+finish setup. The app creates and updates its database tables by itself.
 
 ## Project layout
 

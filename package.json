@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite build && vite preview",
-    "deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "deploy": "vite build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply notpanel --local",

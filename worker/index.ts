@@ -17,12 +17,19 @@ import { app as api } from "./routes/app";
 import { bot } from "./routes/bot";
 import { cleanupWebhookEvents, hooks } from "./routes/hooks";
 import { commandsTick } from "./commands";
+import { ensureSchema } from "./migrate";
 import { cleanupRateLimits } from "./rateLimit";
 import { syncTick } from "./sync";
 
 api.route("/admin", admin);
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Creates or updates the database tables before anything uses them (once per isolate, see worker/migrate.ts)
+app.use("*", async (c, next) => {
+  await ensureSchema(c.env);
+  await next();
+});
 
 /** /setup routes only exist when SETUP_SECRET is set, and only answer to that exact secret. */
 const setupOk = (env: Env, given: string) => !!env.SETUP_SECRET && timingSafeEqual(given, env.SETUP_SECRET);
@@ -94,6 +101,12 @@ app.onError((e, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(controller, env, ctx) {
+    try {
+      await ensureSchema(env);
+    } catch (e) {
+      console.error("database setup failed", e);
+      return;
+    }
     const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env)];
     // Hourly housekeeping (minute :07) so the every-minute run stays light
     if (new Date(controller.scheduledTime).getUTCMinutes() === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env));

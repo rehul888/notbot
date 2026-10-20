@@ -530,3 +530,21 @@ describe("tiny balances", () => {
     expect(underOneStar(-5, 77)).toBe(false);
   });
 });
+
+describe("automatic database setup", () => {
+  it("bundles every migration in order and splits them into statements", async () => {
+    const { MIGRATIONS, splitSql } = await import("../worker/migrate");
+    const names = MIGRATIONS.map(([n]) => n);
+    expect(names[0]).toBe("0001_init.sql");
+    expect([...names].sort()).toEqual(names);
+    for (const [name, sql] of MIGRATIONS) {
+      const stmts = splitSql(sql);
+      expect(stmts.length, name).toBeGreaterThan(0);
+      for (const st of stmts) {
+        expect(st.endsWith(";"), name).toBe(false);
+        expect(st.startsWith("--"), name).toBe(false);
+      }
+    }
+    expect(splitSql("-- a; comment\nCREATE TABLE a (x INT);\n\nINSERT INTO a VALUES (1);")).toEqual(["CREATE TABLE a (x INT)", "INSERT INTO a VALUES (1)"]);
+  });
+});
