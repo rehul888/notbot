@@ -45,7 +45,14 @@ It runs on **Cloudflare's free plan** and deploys in a few clicks. Name, logo, c
 
 ## Deploy in one click
 
-1. Click **Deploy to Cloudflare** above and sign in.
+> [!IMPORTANT]
+> Use the **Deploy to Cloudflare** button. Don't download the files and upload them in the Cloudflare dashboard
+> ("Upload and deploy" / drag and drop): that screen can't build this app and shows a warning about a build process.
+> The button builds it for you, on a phone too.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/rehul888/notbot)
+
+1. Click **Deploy to Cloudflare** and sign in (connect your GitHub account when Cloudflare asks).
 2. Cloudflare copies this project to your GitHub, creates the database and asks for:
    - `BOT_TOKEN`: your bot token from @BotFather.
    - `NOTPANEL_API_KEY`: your NotPanel API key (starts with `np_live_`).
@@ -67,6 +74,16 @@ That's it. Telegram Stars payments need no extra setup.
 
 > **Note:** a few profile options can only be set in @BotFather (the bot's profile photo, and making the Mini App the
 > bot's "main app"). They're optional.
+
+### Troubleshooting
+
+| You see | Do this |
+|---|---|
+| "This uploader does not yet support projects that require a build process" | You're on the dashboard's upload screen. Go back and use the **Deploy to Cloudflare** button instead. |
+| The build or deploy fails | Open your Worker in the Cloudflare dashboard → **Deployments** → the failed build's log. Check that the build command is `npm run build` and the deploy command is `npm run deploy`, then click **Retry**. |
+| The setup page says the bot token doesn't match | Paste the same token you entered during deploy. To change it: Worker → **Settings → Variables and Secrets** → `BOT_TOKEN`. |
+| "This isn't a NotPanel API key" | Only NotPanel keys work (they start with `np_live_`). Create one on [notpanel.com/developers](https://notpanel.com/developers). |
+| The bot doesn't answer | Open your app's address once more and finish the setup page; every step must show a check mark. |
 
 ## Customize
 
