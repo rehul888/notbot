@@ -17,6 +17,7 @@ import { api, ApiError } from "../api";
 import { Icon } from "../icons";
 import { refreshMe } from "../me";
 import { meStore } from "../store";
+import { confirmDialog } from "../tg";
 import { applyBrand, brandStore, previewColors } from "../theme";
 import { BrandMark, ErrorState, Field, List, Notice, Row, Section, SkeletonList, toast, useAsync } from "../ui";
 import { Page, fail } from "./AdminRoutes";
@@ -256,6 +257,12 @@ export function AdminBranding() {
   const [syncing, setSyncing] = useState(false);
   const syncBot = async () => {
     if (syncing) return;
+    const ok = await confirmDialog(
+      "This sets the bot's name to your brand name + \"SMM Panel\" (translated) in all 76 languages, and replaces any name you set in @BotFather. Continue?",
+      "Update",
+      "Cancel",
+    );
+    if (!ok) return;
     setSyncing(true);
     try {
       // Name, About text, description and commands in every language, in batches (same as "Reconnect" in Settings)

@@ -63,16 +63,18 @@ const BATCH = 10;
 export const PROFILE_BATCHES = Math.ceil(ABOUT_LANGS.length / BATCH);
 
 /**
- * The bot's name, short description and description for one batch of 10 profile languages (3 Telegram calls each).
+ * The bot's short description and description (and its name, only when `names` is set) for one batch of 10 profile
+ * languages (up to 3 Telegram calls each).
  * A language Telegram refuses is skipped; a rate limit stops the batch with TelegramRetryLater. Returns the next batch,
  * or null when done.
  */
-export async function setProfileTexts(env: Env, batch: number): Promise<number | null> {
+export async function setProfileTexts(env: Env, batch: number, opts: { names?: boolean } = {}): Promise<number | null> {
   const about = botAboutAll(brandName(await getSettings(env)));
   for (const l of ABOUT_LANGS.slice(batch * BATCH, batch * BATCH + BATCH)) {
     const lc = l === "en" ? {} : { language_code: l };
     const calls: [string, Record<string, unknown>][] = [
-      ["setMyName", { name: about[l].name, ...lc }],
+      // The name only on request (setup, or "Update bot name" in admin): a name the owner set in @BotFather must stay
+      ...(opts.names ? ([["setMyName", { name: about[l].name, ...lc }]] as [string, Record<string, unknown>][]) : []),
       ["setMyShortDescription", { short_description: about[l].short, ...lc }],
       ["setMyDescription", { description: about[l].description, ...lc }],
     ];
@@ -102,7 +104,8 @@ export async function syncBotTexts(env: Env, batch: number, parts: TextParts = "
     }
     more ||= (batch + 1) * BATCH < LANGS.length;
   }
-  if (parts !== "commands") more ||= (await setProfileTexts(env, batch)) !== null;
+  // syncBotTexts runs on an explicit request (setup page or admin button), so it sets the names too
+  if (parts !== "commands") more ||= (await setProfileTexts(env, batch, { names: true })) !== null;
   return more ? batch + 1 : null;
 }
 

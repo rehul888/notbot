@@ -1,4 +1,4 @@
-// The bot's command menus and profile texts. Customers get the user commands in their language; admins get the same list
+// The bot's command menus and profile descriptions (never its name: that changes only on request). Customers get the user commands in their language; admins get the same list
 // plus the admin commands (English, like the admin panel), set per admin chat. The bot's name and descriptions are set
 // in every profile language (worker/bot-about.ts). The cron job keeps Telegram in sync on its own: after a deploy that
 // changes them, a brand rename, an admin change or a new bot token, everything is refreshed within minutes.
@@ -91,7 +91,7 @@ export async function commandsTick(env: Env): Promise<void> {
       await setAdminCommands(env, s, s.commands_admins.split(",").map(Number).filter(Boolean));
       await setSettings(env, { commands_step: PROFILE_FIRST_STEP, commands_admins: ownerIds(env, s).join(",") });
     } else {
-      const next = await setProfileTexts(env, Math.min(step - PROFILE_FIRST_STEP, PROFILE_BATCHES - 1));
+      const next = await setProfileTexts(env, Math.min(step - PROFILE_FIRST_STEP, PROFILE_BATCHES - 1), { names: false });
       if (next === null) await setSettings(env, { commands_key: key, commands_step: 0 });
       else await setSettings(env, { commands_step: PROFILE_FIRST_STEP + next });
     }
