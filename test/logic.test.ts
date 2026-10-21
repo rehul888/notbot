@@ -548,3 +548,32 @@ describe("automatic database setup", () => {
     expect(splitSql("-- a; comment\nCREATE TABLE a (x INT);\n\nINSERT INTO a VALUES (1);")).toEqual(["CREATE TABLE a (x INT)", "INSERT INTO a VALUES (1)"]);
   });
 });
+
+describe("bot profile in every language", () => {
+  it("covers the app languages first, then the profile-only ones, each once and within Telegram's limits", async () => {
+    const { ABOUT_LANGS, botAboutAll } = await import("../worker/bot-about");
+    const { LANGS } = await import("../shared/types");
+    expect(ABOUT_LANGS.slice(0, LANGS.length)).toEqual([...LANGS]);
+    expect(new Set(ABOUT_LANGS).size).toBe(ABOUT_LANGS.length);
+    expect(ABOUT_LANGS.length).toBeGreaterThanOrEqual(70);
+    for (const brand of ["NotBot", "A".repeat(40), "Ракета SMM Супер Бот Продвижение Аккаунтов"]) {
+      const about = botAboutAll(brand);
+      for (const l of ABOUT_LANGS) {
+        expect(l).toMatch(/^[a-z]{2}$/);
+        const t = about[l];
+        expect(t, l).toBeTruthy();
+        expect(t.name.length, l).toBeLessThanOrEqual(64);
+        expect(t.short.length, l).toBeLessThanOrEqual(120);
+        expect(t.description.length, l).toBeLessThanOrEqual(512);
+        expect(t.description, l).not.toContain("{brand}");
+        expect(t.name.length, l).toBeGreaterThan(3);
+      }
+    }
+  });
+
+  it("reads Telegram's 'retry after' from rate-limit errors", async () => {
+    const { retryAfterSeconds } = await import("../worker/connect");
+    expect(retryAfterSeconds("Telegram setMyName: 429 Too Many Requests: retry after 1234")).toBe(1234);
+    expect(retryAfterSeconds("Telegram setMyName: 400 Bad Request: language code is invalid")).toBeNull();
+  });
+});

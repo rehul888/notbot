@@ -2,7 +2,7 @@
 // Shared by the setup page (routes/setup.ts), the admin panel and the legacy /setup/<secret> routes.
 import { LANGS } from "../shared/types";
 import { webhookSecret } from "./auth";
-import { botAboutFor } from "./bot-about";
+import { ABOUT_LANGS, botAboutAll } from "./bot-about";
 import { userCommands } from "./commands";
 import { brandName } from "./brand";
 import type { Env } from "./env";
@@ -47,25 +47,63 @@ export async function setMenuButton(env: Env, origin: string): Promise<{ usernam
 
 export type TextParts = "all" | "texts" | "commands";
 
+/** Telegram asked us to slow down (429): try again after this many seconds */
+export class TelegramRetryLater extends Error {
+  constructor(public seconds: number) {
+    super(`Telegram rate limit, retry after ${seconds}s`);
+  }
+}
+
+export function retryAfterSeconds(message: string): number | null {
+  const m = /\b429\b.*?retry after (\d+)/i.exec(message);
+  return m ? Number(m[1]) : null;
+}
+
+const BATCH = 10;
+export const PROFILE_BATCHES = Math.ceil(ABOUT_LANGS.length / BATCH);
+
 /**
- * Sets the command menu and the bot's name, "About" text and description for one batch of 10 languages (4 Telegram calls
- * each), staying under the free plan's 50 outgoing calls per request. Returns the next batch number, or null when done.
- * `parts` limits the work: "texts" skips the command menus, "commands" does only those.
+ * The bot's name, short description and description for one batch of 10 profile languages (3 Telegram calls each).
+ * A language Telegram refuses is skipped; a rate limit stops the batch with TelegramRetryLater. Returns the next batch,
+ * or null when done.
  */
-export async function syncBotTexts(env: Env, batch: number, parts: TextParts = "all"): Promise<number | null> {
-  const s = await getSettings(env);
-  const about = botAboutFor(brandName(s));
-  const langs = LANGS.slice(batch * 10, batch * 10 + 10);
-  for (const l of langs) {
+export async function setProfileTexts(env: Env, batch: number): Promise<number | null> {
+  const about = botAboutAll(brandName(await getSettings(env)));
+  for (const l of ABOUT_LANGS.slice(batch * BATCH, batch * BATCH + BATCH)) {
     const lc = l === "en" ? {} : { language_code: l };
-    if (parts !== "texts") await tg(env.BOT_TOKEN, "setMyCommands", { commands: userCommands(l), ...lc });
-    if (parts !== "commands") {
-      await tg(env.BOT_TOKEN, "setMyName", { name: about[l].name, ...lc });
-      await tg(env.BOT_TOKEN, "setMyShortDescription", { short_description: about[l].short, ...lc });
-      await tg(env.BOT_TOKEN, "setMyDescription", { description: about[l].description, ...lc });
+    const calls: [string, Record<string, unknown>][] = [
+      ["setMyName", { name: about[l].name, ...lc }],
+      ["setMyShortDescription", { short_description: about[l].short, ...lc }],
+      ["setMyDescription", { description: about[l].description, ...lc }],
+    ];
+    for (const [method, params] of calls) {
+      try {
+        await tg(env.BOT_TOKEN, method, params);
+      } catch (e) {
+        const msg = (e as Error).message;
+        const wait = retryAfterSeconds(msg);
+        if (wait !== null) throw new TelegramRetryLater(wait);
+        console.warn("bot profile text refused", l, method, msg);
+      }
     }
   }
-  return (batch + 1) * 10 < LANGS.length ? batch + 1 : null;
+  return batch + 1 < PROFILE_BATCHES ? batch + 1 : null;
+}
+
+/**
+ * Command menus (20 app languages) and/or profile texts (every profile language) for one batch of 10 languages, at most
+ * 40 Telegram calls, under the free plan's 50 per request. Returns the next batch number, or null when done.
+ */
+export async function syncBotTexts(env: Env, batch: number, parts: TextParts = "all"): Promise<number | null> {
+  let more = false;
+  if (parts !== "texts") {
+    for (const l of LANGS.slice(batch * BATCH, batch * BATCH + BATCH)) {
+      await tg(env.BOT_TOKEN, "setMyCommands", { commands: userCommands(l), ...(l === "en" ? {} : { language_code: l }) });
+    }
+    more ||= (batch + 1) * BATCH < LANGS.length;
+  }
+  if (parts !== "commands") more ||= (await setProfileTexts(env, batch)) !== null;
+  return more ? batch + 1 : null;
 }
 
 /** Everything except the per-language texts (legacy /setup/<secret> and admin "Connect") */

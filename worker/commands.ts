@@ -1,15 +1,18 @@
-// The bot's command menus. Customers get the user commands in their language; admins get the same list plus the
-// admin commands (English, like the admin panel), set per admin chat. The cron job keeps Telegram in sync on its own:
-// after a deploy that changes the commands, a brand rename or an admin change, the menus are refreshed within minutes.
+// The bot's command menus and profile texts. Customers get the user commands in their language; admins get the same list
+// plus the admin commands (English, like the admin panel), set per admin chat. The bot's name and descriptions are set
+// in every profile language (worker/bot-about.ts). The cron job keeps Telegram in sync on its own: after a deploy that
+// changes them, a brand rename, an admin change or a new bot token, everything is refreshed within minutes.
 import { type Lang, LANGS, pickLang } from "../shared/types";
+import { ABOUT_LANGS } from "./bot-about";
 import { brandName } from "./brand";
+import { PROFILE_BATCHES, setProfileTexts, TelegramRetryLater } from "./connect";
 import { type Env, ownerIds } from "./env";
 import { botPlain } from "./i18n";
 import { getSettings, setSettings, type Settings } from "./settings";
 import { tg } from "./telegram";
 
 /** Bump when the command lists change, so every deployment refreshes its menus after updating */
-export const COMMANDS_VERSION = 2;
+export const COMMANDS_VERSION = 3;
 
 type Command = { command: string; description: string };
 
@@ -59,33 +62,49 @@ export async function setAdminCommands(env: Env, s: Settings, previous: number[]
   }
 }
 
-/** What the menus depend on: the code version, the brand name (in /start's text) and who the admins are */
-export const commandsKey = (env: Env, s: Settings) => `${COMMANDS_VERSION}|${brandName(s)}|${ownerIds(env, s).join(",")}`;
+/** What the menus and profile texts depend on: code version, profile languages, the bot, its brand and its admins */
+export const commandsKey = (env: Env, s: Settings) =>
+  `${COMMANDS_VERSION}|${ABOUT_LANGS.length}|${(env.BOT_TOKEN ?? "").split(":")[0]}|${brandName(s)}|${ownerIds(env, s).join(",")}`;
+
+/** Steps: 0-1 customer menus, 2 admin menus, then one step per batch of 10 profile languages */
+const PROFILE_FIRST_STEP = 3;
 
 /**
- * Cron: when the menus are out of date, refresh them one step per minute (customer menus in two batches, then the
- * admin menus). Waits while a price sync is running so a single run never makes too many outgoing calls.
+ * Cron: when the menus or profile texts are out of date, refresh them one step per minute. Waits while a price sync is
+ * running (so one run never makes too many outgoing calls) and for as long as Telegram asks after a rate limit.
  */
 export async function commandsTick(env: Env): Promise<void> {
   const s = await getSettings(env, { fresh: true });
   if (!s.bot_username || !s.setup_done || s.sync_state) return;
+  const now = Math.floor(Date.now() / 1000);
+  if (s.commands_wait_until > now) return;
   const key = commandsKey(env, s);
   if (s.commands_key === key) return;
   const step = s.commands_step;
-  if (step < 2) {
-    const next = await setUserCommands(env, step);
-    await setSettings(env, { commands_step: next ?? 2 });
-    return;
+  try {
+    if (step < 2) {
+      const next = await setUserCommands(env, step);
+      await setSettings(env, { commands_step: next ?? 2 });
+    } else if (step === 2) {
+      await setAdminCommands(env, s, s.commands_admins.split(",").map(Number).filter(Boolean));
+      await setSettings(env, { commands_step: PROFILE_FIRST_STEP, commands_admins: ownerIds(env, s).join(",") });
+    } else {
+      const next = await setProfileTexts(env, Math.min(step - PROFILE_FIRST_STEP, PROFILE_BATCHES - 1));
+      if (next === null) await setSettings(env, { commands_key: key, commands_step: 0 });
+      else await setSettings(env, { commands_step: PROFILE_FIRST_STEP + next });
+    }
+  } catch (e) {
+    if (!(e instanceof TelegramRetryLater)) throw e;
+    // Telegram asked to slow down: resume this same step after the wait (plus a minute of margin)
+    await setSettings(env, { commands_wait_until: now + e.seconds + 60 });
   }
-  const previous = s.commands_admins.split(",").map(Number).filter(Boolean);
-  await setAdminCommands(env, s, previous);
-  await setSettings(env, { commands_key: key, commands_step: 0, commands_admins: ownerIds(env, s).join(",") });
 }
 
-/** Setup: everything at once (about 20 + admins calls), then mark the menus as current */
+/** Setup: all command menus at once (about 20 + admins calls); the cron job then adds the remaining profile languages */
 export async function setAllCommands(env: Env): Promise<void> {
   for (let b: number | null = 0; b !== null; ) b = await setUserCommands(env, b);
   const s = await getSettings(env, { fresh: true });
   await setAdminCommands(env, s, s.commands_admins.split(",").map(Number).filter(Boolean));
-  await setSettings(env, { commands_key: commandsKey(env, s), commands_step: 0, commands_admins: ownerIds(env, s).join(",") });
+  // The setup page already set the first 20 profile languages (texts0/texts1): continue after those
+  await setSettings(env, { commands_key: "", commands_step: PROFILE_FIRST_STEP + 2, commands_admins: ownerIds(env, s).join(",") });
 }

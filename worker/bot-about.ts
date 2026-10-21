@@ -20,7 +20,8 @@
 //   ur: SMM پینل - "SMM پینل" (Urdu transliteration of panel)
 //   bn: SMM প্যানেল - "SMM প্যানেল" (Bengali transliteration of panel)
 // Bot profile texts (name via setMyName ≤64 chars, setMyShortDescription ≤120 chars, setMyDescription ≤512 chars), per language.
-import type { Lang } from "../shared/types";
+import { type Lang, LANGS } from "../shared/types";
+import extra from "./bot-about-extra.json";
 
 export type BotAbout = { name: string; short: string; description: string };
 
@@ -53,6 +54,26 @@ export function botAboutFor(brand: string): Record<Lang, BotAbout> {
       name: fit(LIMIT.name, (b) => t.name(b), brand),
       short: clip(t.short, LIMIT.short),
       description: fit(LIMIT.description, (b) => t.description(b), brand),
+    };
+  }
+  return out;
+}
+
+type ExtraAbout = { term: string; short: string; description: string };
+const EXTRA = extra as Record<string, ExtraAbout>;
+
+/** Languages the bot profile is translated into: the 20 app languages first, then profile-only languages */
+export const ABOUT_LANGS: string[] = [...LANGS, ...Object.keys(EXTRA).filter((l) => !(LANGS as readonly string[]).includes(l))];
+
+/** Profile texts for every profile language (app languages + profile-only ones), brand inserted, within limits */
+export function botAboutAll(brand: string): Record<string, BotAbout> {
+  const out: Record<string, BotAbout> = { ...botAboutFor(brand) };
+  for (const [l, t] of Object.entries(EXTRA)) {
+    if (out[l]) continue;
+    out[l] = {
+      name: fit(LIMIT.name, (b) => `${b} - ${t.term}⚡️`, brand),
+      short: clip(t.short, LIMIT.short),
+      description: fit(LIMIT.description, (b) => t.description.replace("{brand}", b), brand),
     };
   }
   return out;
