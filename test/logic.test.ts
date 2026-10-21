@@ -436,7 +436,7 @@ describe("bot command menus", () => {
         expect(c.description).not.toMatch(/[<>{}]/); // plain text, every placeholder filled
       }
     }
-    expect(ADMIN_COMMANDS.map((c) => c.command)).toEqual(["admin", "stats", "preview"]);
+    expect(ADMIN_COMMANDS.map((c) => c.command)).toEqual(["admin", "stats", "broadcast", "preview"]);
   });
 
   it("refresh when the code version, the brand name or the admins change", async () => {
@@ -575,5 +575,74 @@ describe("bot profile in every language", () => {
     const { retryAfterSeconds } = await import("../worker/connect");
     expect(retryAfterSeconds("Telegram setMyName: 429 Too Many Requests: retry after 1234")).toBe(1234);
     expect(retryAfterSeconds("Telegram setMyName: 400 Bad Request: language code is invalid")).toBeNull();
+  });
+});
+
+describe("broadcast", () => {
+  it("recognises users who can't receive messages any more, and reads its saved state safely", async () => {
+    const { isBlocked, readBroadcast } = await import("../worker/broadcast");
+    expect(isBlocked("Telegram copyMessage: 403 Forbidden: bot was blocked by the user")).toBe(true);
+    expect(isBlocked("Telegram copyMessage: 403 Forbidden: user is deactivated")).toBe(true);
+    expect(isBlocked("Telegram copyMessage: 429 Too Many Requests: retry after 5")).toBe(false);
+    expect(isBlocked("Telegram copyMessage: 500 Internal Server Error")).toBe(false);
+    expect(readBroadcast("")).toBeNull();
+    expect(readBroadcast("{broken")).toBeNull();
+    expect(readBroadcast('{"chat":1,"msg":2,"cursor":0,"total":3,"sent":0,"blocked":0,"failed":0,"startedAt":1}')?.msg).toBe(2);
+  });
+});
+
+describe("money reporting (sale, cost, profit, margin)", () => {
+  it("sale is charge minus refund, profit is sale minus cost, margin is profit over sale", async () => {
+    const { saleOf, profitOf, orderMargin, marginPct } = await import("../shared/profit");
+    const done = { charge: 130_000, refund: 0, cost: 100_000 };
+    expect(saleOf(done)).toBe(130_000);
+    expect(profitOf(done)).toBe(30_000);
+    expect(orderMargin(done)).toBeCloseTo(23.077, 3);
+    // partial: half refunded, NotPanel kept half of its cost
+    const partial = { charge: 130_000, refund: 65_000, cost: 50_000 };
+    expect(profitOf(partial)).toBe(15_000);
+    expect(orderMargin(partial)).toBeCloseTo(23.077, 3);
+    // sold below cost is a negative margin
+    expect(orderMargin({ charge: 80_000, refund: 0, cost: 100_000 })).toBeCloseTo(-25, 6);
+    expect(marginPct(5, 0)).toBeNull();
+  });
+
+  it("an order without a cost has no profit or margin; a fully refunded order has no margin", async () => {
+    const { profitOf, orderMargin } = await import("../shared/profit");
+    expect(profitOf({ charge: 100, refund: 0, cost: null })).toBeNull();
+    expect(orderMargin({ charge: 100, refund: 0, cost: null })).toBeNull();
+    expect(orderMargin({ charge: 100, refund: 100, cost: 0 })).toBeNull();
+  });
+
+  it("totals keep orders without a cost out of cost, profit and margin", async () => {
+    const { totalsFrom } = await import("../shared/profit");
+    const t = totalsFrom({ orders: 3, sales: 300_000, cost: 160_000, salesWithCost: 200_000, noCost: 1 });
+    expect(t.profit).toBe(40_000);
+    expect(t.margin).toBeCloseTo(20, 6);
+    expect(t.noCost).toBe(1);
+    expect(t.sales).toBe(300_000);
+    const empty = totalsFrom(undefined);
+    expect(empty).toMatchObject({ orders: 0, sales: 0, cost: 0, profit: 0, margin: null, noCost: 0 });
+  });
+
+  it("per-1,000 margin compares the sell price with NotPanel's price", async () => {
+    const { rateMargin } = await import("../shared/profit");
+    expect(rateMargin(52_000, sellRate(52_000, 30, null))).toMatchObject({ profit: 15_600 });
+    expect(rateMargin(52_000, sellRate(52_000, 30, null)).margin).toBeCloseTo(23.08, 2);
+    expect(rateMargin(52_000, 52_000)).toEqual({ profit: 0, margin: 0 }); // 0% markup: zero margin
+    expect(rateMargin(52_000, 40_000).margin).toBeCloseTo(-30, 6); // fixed price below cost
+  });
+
+  it("periods are UTC days: today, last 7, last 30, all time", async () => {
+    const { periodStart, parsePeriod } = await import("../shared/profit");
+    const now = Date.UTC(2026, 9, 21, 15, 30, 0); // 2026-10-21 15:30 UTC
+    const midnight = Date.UTC(2026, 9, 21) / 1000;
+    expect(periodStart("today", now)).toBe(midnight);
+    expect(periodStart("7d", now)).toBe(midnight - 6 * 86400);
+    expect(periodStart("30d", now)).toBe(midnight - 29 * 86400);
+    expect(periodStart("all", now)).toBe(0);
+    expect(parsePeriod("30d")).toBe("30d");
+    expect(parsePeriod("nonsense")).toBe("today");
+    expect(parsePeriod(undefined)).toBe("today");
   });
 });

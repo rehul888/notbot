@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { platformName } from "../../shared/platforms";
+import { MONEY_SUMS_SQL, parsePeriod, periodStart, totalsFrom, type MoneySums, type ReportPeriod } from "../../shared/profit";
 import { balanceStars, MAX_STARS_PER_PAYMENT, shownStars, starsCredit } from "../../shared/stars";
 import { LANGS, type Lang } from "../../shared/types";
 import { LIMITS } from "../../shared/brand";
@@ -24,21 +25,46 @@ admin.use("*", async (c, next) => {
   await next();
 });
 
-const dayStart = () => {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return Math.floor(d.getTime() / 1000);
-};
+const dayStart = () => periodStart("today", Date.now());
+
+/** Orders in a UTC-day period with sale, cost, profit and margin (see shared/profit.ts) plus the top services by profit. */
+function reportStmts(env: AppEnv["Bindings"], period: ReportPeriod) {
+  const since = periodStart(period, Date.now());
+  return [
+    // One range scan on orders.created_at; failed orders are fully refunded and left out
+    env.DB.prepare(`SELECT ${MONEY_SUMS_SQL} FROM orders WHERE created_at >= ?1 AND status != 'failed'`).bind(since),
+    env.DB.prepare(
+      `SELECT service_id AS id, MAX(service_name) AS name, COUNT(*) AS orders, SUM(charge - refund) AS sales, SUM(cost) AS cost,
+         SUM(charge - refund - cost) AS profit
+       FROM orders WHERE created_at >= ?1 AND status != 'failed' AND cost IS NOT NULL
+       GROUP BY service_id HAVING SUM(charge - refund) > 0 ORDER BY profit DESC LIMIT 5`,
+    ).bind(since),
+  ];
+}
+
+function reportJson(s: Settings, period: ReportPeriod, sums: unknown, top: unknown[]) {
+  const t = totalsFrom(sums as MoneySums);
+  return {
+    period,
+    ...t,
+    salesStars: shownStars(t.sales, s.stars_per_usd),
+    topServices: (top as { id: number; name: string; orders: number; sales: number; cost: number; profit: number }[]).map((r) => ({
+      ...r,
+      margin: r.sales > 0 ? (r.profit / r.sales) * 100 : null,
+    })),
+  };
+}
+
+admin.get("/report", async (c) => {
+  const period = parsePeriod(c.req.query("period"));
+  const [sums, top] = await c.env.DB.batch(reportStmts(c.env, period));
+  return c.json(reportJson(c.get("settings"), period, sums.results[0], top.results));
+});
 
 admin.get("/overview", async (c) => {
   const s = c.get("settings");
-  const since = dayStart();
-  const [today, users, pending, attention, joined] = await c.env.DB.batch([
-    c.env.DB.prepare(
-      // All micro-USD: what users paid (charge - refund) and NotPanel's cost
-      `SELECT COUNT(*) AS orders, COALESCE(SUM(charge - refund), 0) AS sales, COALESCE(SUM(charge - refund - COALESCE(cost, 0)), 0) AS profit
-       FROM orders WHERE created_at >= ?1 AND status != 'failed'`,
-    ).bind(since),
+  const [today, topToday, users, pending, attention, joined] = await c.env.DB.batch([
+    ...reportStmts(c.env, "today"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM users"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status IN ('submitting','pending','processing','in_progress')"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM services WHERE present = 1 AND enabled = 1 AND fixed_rate IS NOT NULL AND fixed_rate < rate"),
@@ -51,8 +77,8 @@ admin.get("/overview", async (c) => {
   } catch (e) {
     npError = (e as Error).message;
   }
-  const r = today.results[0] as { orders: number; sales: number; profit: number };
-  const t = { ...r, salesStars: shownStars(r.sales, s.stars_per_usd) };
+  // `today` keeps its old fields (orders, sales, salesStars, profit) and adds cost, margin, noCost, topServices
+  const t = reportJson(s, "today", today.results[0], topToday.results);
   return c.json({
     npBalance,
     npError,
@@ -617,10 +643,6 @@ admin.get("/orders", async (c) => {
   const before = intParam(c.req.query("before"));
   const where: string[] = [];
   const vals: unknown[] = [];
-  if (before) {
-    vals.push(before);
-    where.push(`o.id < ?${vals.length}`);
-  }
   if (status === "open") where.push("o.status IN ('submitting','pending','processing','in_progress')");
   else if (status) {
     vals.push(status);
@@ -630,15 +652,26 @@ admin.get("/orders", async (c) => {
     vals.push(q.slice(0, 200), likeOf(q.slice(0, 200)));
     where.push(`(CAST(o.id AS TEXT) = ?${vals.length - 1} OR CAST(o.np_order_id AS TEXT) = ?${vals.length - 1} OR CAST(o.user_id AS TEXT) = ?${vals.length - 1} OR o.link LIKE ?${vals.length})`);
   }
-  const { results } = await c.env.DB.prepare(
+  // The totals cover the whole filter (not just this page) and are only needed with the first page
+  const filterVals = [...vals];
+  const filterWhere = [...where];
+  if (before) {
+    vals.push(before);
+    where.push(`o.id < ?${vals.length}`);
+  }
+  const listStmt = c.env.DB.prepare(
     `SELECT o.*, u.first_name, u.username FROM orders o LEFT JOIN users u ON u.id = o.user_id
      ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT ${PAGE + 1}`,
-  )
-    .bind(...vals)
-    .all<OrderRow & { rate: number | null; first_name: string; username: string | null }>();
-  const pg = page(results, (o) => o.id);
+  ).bind(...vals);
+  const totalsStmt = before
+    ? null
+    : c.env.DB.prepare(`SELECT ${MONEY_SUMS_SQL} FROM orders o WHERE ${[...filterWhere, "o.status != 'failed'"].join(" AND ")}`).bind(...filterVals);
+  const [list, totals] = await c.env.DB.batch(totalsStmt ? [listStmt, totalsStmt] : [listStmt]);
+  const pg = page(list.results as (OrderRow & { rate: number | null; first_name: string; username: string | null })[], (o) => o.id);
   return c.json({
     next: pg.next,
+    // Sale, cost, profit and margin of every non-failed order in this filter (shared/profit.ts); only on the first page
+    totals: totals ? totalsFrom(totals.results[0] as MoneySums) : undefined,
     // charge/refund/cost are micro-USD; rate is Stars per $1 when the order was placed (null on very old rows)
     starsPerUsd: c.get("settings").stars_per_usd,
     items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, rate: o.rate, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),

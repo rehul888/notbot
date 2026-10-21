@@ -10,6 +10,7 @@ import { botText } from "../i18n";
 import { balanceText, languageKeyboard, openButton, sendHelp, sendPreviews, sendWelcome } from "../botMessages";
 import { ADMIN_COMMANDS, userCommands } from "../commands";
 import { sendAdminLink, sendStats } from "../stats";
+import { onBroadcastCallback, onBroadcastCommand } from "../broadcast";
 import { onPreCheckout, onSuccessfulPayment } from "../payments";
 import { tg } from "../telegram";
 
@@ -40,6 +41,7 @@ bot.post("/", async (c) => {
 
 /** Language buttons → save the choice (shared with the Mini App) and show the welcome in that language. */
 async function onCallback(env: Env, q: any): Promise<void> {
+  if (typeof q.data === "string" && q.data.startsWith("bc:")) return onBroadcastCallback(env, q);
   const m = /^lang:(\w+)$/.exec(q.data ?? "");
   if (!m || !(LANGS as readonly string[]).includes(m[1])) return void (await tg(env.BOT_TOKEN, "answerCallbackQuery", { callback_query_id: q.id }));
   const lang = m[1] as Lang;
@@ -145,6 +147,9 @@ async function handle(env: Env, u: any): Promise<void> {
     return void (await send(text, open ? { inline_keyboard: [[open]] } : undefined));
   }
   // Admin only (English, like the admin panel)
+  if (cmd === "broadcast" && isOwner(env, await getSettings(env), from.id)) {
+    return void (await onBroadcastCommand(env, from.id, (text.split(/\s+/)[1] ?? "").toLowerCase(), m.reply_to_message));
+  }
   if ((cmd === "admin" || cmd === "stats") && isOwner(env, await getSettings(env), from.id)) {
     return void (await (cmd === "admin" ? sendAdminLink(env, from.id) : sendStats(env, from.id)));
   }
@@ -155,5 +160,7 @@ async function handle(env: Env, u: any): Promise<void> {
     await sendPreviews(env, from.id, l, from.first_name, LANGS);
     return;
   }
+  // An admin writing a message to broadcast (not a command) gets no help reply in between
+  if (!cmd && isOwner(env, await getSettings(env), from.id)) return;
   await sendHelp(env, from.id, lang);
 }

@@ -5,13 +5,16 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { platformName } from "../../shared/platforms";
 import type { OrderView } from "../../shared/types";
 import { api, ApiError, clearApiCache } from "../api";
-import { balanceStars, MAX_STARS_PER_PAYMENT, shownStars } from "../../shared/stars";
-import { dateTime, num, starsRate } from "../format";
+import { MAX_STARS_PER_PAYMENT, shownStars } from "../../shared/stars";
+import type { MoneyTotals } from "../../shared/profit";
+import { dateTime, num } from "../format";
 import { Icon, type IconName } from "../icons";
 import { refreshMe } from "../me";
 import { back as goBack, enc, navigate } from "../router";
 import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
 import { AdminBranding } from "./Branding";
+import { balStars, money, starsText, usdStars } from "./fmt";
+import { LEGEND, MoneyCells, MoneyTotalsBar, orderCells, ProfitReport, rateCells, type Report } from "./Money";
 import { AdminsSection, NotPanelKeySection, type Owners } from "./Access";
 import {
   BackNav,
@@ -71,20 +74,6 @@ const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Same rounding as the worker's sellRate(): cost plus markup, rounded up to the next 100 micro-USD per 1K. */
 const sellFor = (cost: number, markupPct: number) => Math.ceil((cost * (1 + Math.max(0, markupPct) / 100)) / 100 - 1e-9) * 100;
-/** micro-USD → "$1.23" (3-4 decimals under $0.10). Admin keeps its own copy: the user screens no longer show USD. */
-function money(micro: number): string {
-  const v = Math.abs(micro) / 1e6;
-  const digits = v === 0 || v >= 0.1 ? 2 : v >= 0.01 ? 3 : 4;
-  let t = v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  if (digits > 2) t = t.replace(/(\.\d\d\d*?)0+$/, "$1");
-  return `${micro < 0 ? "−" : ""}$${t}`;
-}
-/** Whole Telegram Stars, e.g. "1,250 ⭐" (Stars paid in Telegram, settings in Stars). */
-const starsText = (n: number) => `${num(Math.round(n))} ⭐`;
-/** A micro-USD amount as users see it in Stars (rounded up). Money is stored in micro-USD everywhere. */
-const usdStars = (micro: number) => starsText(shownStars(micro, starsRate()));
-/** A micro-USD balance, or a sum of credits, as users see it in Stars (rounded down). */
-const balStars = (micro: number) => starsText(balanceStars(micro, starsRate()));
 const invalidate = () => clearApiCache();
 export const fail = (e: unknown) => toast(errText(e), "error");
 
@@ -293,7 +282,7 @@ interface Overview {
   npBalance: number | null;
   npError: string | null;
   lowBalance: number;
-  today: { orders: number; salesStars: number; sales: number; profit: number };
+  today: Report;
   users: number;
   referralsJoined?: number;
   openOrders: number;
@@ -364,26 +353,7 @@ function AdminHome() {
                 {!o.npError && !low ? <span class="t-footnote hint">Every order is paid from this balance.</span> : null}
               </div>
 
-              <Section header="Today">
-                <div class="grid2 stagger">
-                  <Stat label="Orders">
-                    <Num>{num(o.today.orders)}</Num>
-                  </Stat>
-                  <Stat
-                    label="Sales"
-                    sub={
-                      <>
-                        ≈ <Num>{money(o.today.sales)}</Num>
-                      </>
-                    }
-                  >
-                    <Num>{starsText(o.today.salesStars)}</Num>
-                  </Stat>
-                  <Stat label="Profit (USD)" ok wide>
-                    <Num>{money(o.today.profit)}</Num>
-                  </Stat>
-                </div>
-              </Section>
+              <ProfitReport initial={o.today} />
 
               {n ? (
                 <Notice tone="warn" onClick={() => navigate("/admin/prices?q=attention")}>
@@ -766,28 +736,24 @@ function AdminServiceList({ items, onEdit, onChanged, empty }: { items: AdminSer
             title={s.customName ?? s.name}
             meta={
               <>
-                <Num>#{s.id}</Num> · Costs <Num>{money(s.cost)}</Num>
+                <Num>#{s.id}</Num>
                 {diff ? (
                   <>
-                    {" "}
+                    {" · NotPanel price "}
                     <Num>{diff}</Num>
                   </>
-                ) : null}{" "}
-                · Sells{" "}
-                <b class="acc">
-                  <Num>{starsText(s.sellStars)}</Num>
-                </b>{" "}
-                (≈ <Num>{money(s.sell)}</Num>) / 1K
+                ) : null}
                 {s.fixedRate !== null ? (
-                  " (fixed)"
+                  " · fixed price"
                 ) : s.markupPct !== null ? (
                   <>
-                    {" ("}
-                    <Num>{pct(s.markupPct)}</Num>)
+                    {" · markup "}
+                    <Num>{pct(s.markupPct)}</Num>
                   </>
                 ) : (
                   ""
                 )}
+                <MoneyCells inline cells={rateCells(s.cost, s.sell, s.sellStars)} />
                 {below ? (
                   <>
                     <br />
@@ -1452,7 +1418,7 @@ const ORDER_FILTERS: [string, string][] = [
 function AdminOrders() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
-  const pg = usePaged<AdminOrder, { starsPerUsd: number }>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
+  const pg = usePaged<AdminOrder, { starsPerUsd: number; totals?: MoneyTotals }>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
   const list = pg.items;
   return (
     <Page back="/admin" title="All orders">
@@ -1478,12 +1444,11 @@ function AdminOrders() {
         <SkeletonList rows={5} lead="logo" />
       ) : list.length ? (
         <>
+          {pg.extra?.totals ? <MoneyTotalsBar totals={pg.extra.totals} /> : null}
           <List stagger>
-            {list.map((o) => {
-              const paid = o.charge - o.refund;
-              return (
+            {list.map((o) => (
+              <div class="ord" key={o.id}>
                 <Row
-                  key={o.id}
                   wrap
                   lead={<PlatformLogo slug={o.platform} size={36} radius={10} />}
                   title={o.serviceName}
@@ -1498,22 +1463,16 @@ function AdminOrders() {
                       ) : null}{" "}
                       · {o.userName}
                       {o.username ? ` @${o.username}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
-                      <br />
-                      Paid <Num>{usdStars(paid)}</Num> (<Num>{money(paid)}</Num>) · cost {o.cost !== null ? <Num>{money(o.cost)}</Num> : "—"}
-                      {o.cost !== null ? (
-                        <>
-                          {" "}
-                          · profit <Num>{money(paid - o.cost)}</Num>
-                        </>
-                      ) : null}
                       {o.error ? ` · ${o.error}` : ""}
                     </>
                   }
                   control={<StatusPill status={o.status} />}
                 />
-              );
-            })}
+                <MoneyCells cells={orderCells(o)} />
+              </div>
+            ))}
           </List>
+          <p class="note">{LEGEND}</p>
           <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
         </>
       ) : (

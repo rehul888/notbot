@@ -1,0 +1,18 @@
+/* Admin money reporting (sale / cost / profit / margin). Colors use the theme tokens, so dark mode follows. */
+.mcells { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 4px 8px; margin-top: 6px; }
+.mcells.block { margin: 0; padding: 0 var(--row-inset) 12px; }
+.mc { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.mc .ml { font: 500 11px/14px var(--font); color: var(--hint); text-transform: uppercase; letter-spacing: 0.3px; }
+.mc b { font: 600 14px/18px var(--num-font); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc .ms { font: 400 11px/14px var(--font); color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc.pos b, .pos { color: var(--ok); }
+.mc.neg b, .neg { color: var(--st-cancel); }
+.ord + .ord { border-top: var(--hairline) solid var(--sep); }
+.ord .row:first-child > .body { border-top: 0; }
+.mtotals { display: flex; flex-direction: column; gap: 10px; }
+.mtotals .mcells { margin-top: 0; }
+.mtotals .mhead { display: flex; justify-content: space-between; gap: 12px; font: 600 14px/19px var(--font); }
+.mtotals .note { padding: 0; }
+.mtotals .mhead span:last-child { color: var(--hint); font-weight: 400; }
+.mstale { opacity: 0.55; transition: opacity var(--dur-2); }
+.mtotals .mcells.block { padding: 0; }

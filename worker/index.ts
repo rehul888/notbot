@@ -17,6 +17,7 @@ import { app as api } from "./routes/app";
 import { bot } from "./routes/bot";
 import { cleanupWebhookEvents, hooks } from "./routes/hooks";
 import { checkNotPanelBalance } from "./alerts";
+import { broadcastTick } from "./broadcast";
 import { commandsTick } from "./commands";
 import { ensureSchema } from "./migrate";
 import { cleanupRateLimits } from "./rateLimit";
@@ -108,7 +109,7 @@ export default {
       console.error("database setup failed", e);
       return;
     }
-    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env), retryReferrals(env)];
+    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env), retryReferrals(env), broadcastTick(env)];
     // Hourly housekeeping (minute :07) so the every-minute run stays light
     if (new Date(controller.scheduledTime).getUTCMinutes() === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env), checkNotPanelBalance(env));
     ctx.waitUntil(

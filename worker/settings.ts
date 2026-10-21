@@ -56,6 +56,7 @@ export const DEFAULTS = {
   setup_done: 0,
   commands_key: "", // what the command menus were last set for (see worker/commands.ts)
   commands_step: 0,
+  broadcast_state: "", // running admin broadcast (worker/broadcast.ts), "" when none
   alerts_sent: "{}", // last time each admin alert kind was sent (worker/alerts.ts)
   commands_wait_until: 0, // Telegram rate limit: resume menu/profile updates after this time
   commands_admins: "", // admin chats that got the admin menu
