@@ -9,3 +9,4 @@ dist
 # Local AI-assistant config (project notes live in AGENTS.md)
 .claude/
 CLAUDE.md
+ARTICLE_BRIEF.md
