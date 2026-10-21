@@ -4,6 +4,7 @@ import { botText } from "./i18n";
 import { amountText, linkText } from "./botMessages";
 import { NotPanelError, npCall, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
 import { orderCharge } from "./pricing";
+import { alertAdmins } from "./alerts";
 import { getSettings } from "./settings";
 import { tg, webAppButton } from "./telegram";
 import type { ServiceDetail } from "../shared/types";
@@ -115,9 +116,10 @@ function assertOrdersAllowed(env: Env): void {
 }
 
 /** Maps a NotPanel error for cancel/refill; shop-side codes are hidden behind SERVICE_UNAVAILABLE with no supplier details. */
-function shopSafeError(e: NotPanelError): OrderError {
+function shopSafeError(env: Env, e: NotPanelError): OrderError {
   if (SHOP_SIDE.has(e.code)) {
     console.error("NotPanel shop-side error", e.code, e.message);
+    void alertAdmins(env, "notpanel", `NotPanel refused a request: <b>${e.code}</b>. Check your NotPanel account and API key.`);
     return new OrderError("SERVICE_UNAVAILABLE", undefined);
   }
   return new OrderError(e.code, e.details);
@@ -205,7 +207,10 @@ export async function placeOrder(
     if (e instanceof NotPanelError && !e.retryable) {
       const shop = SHOP_SIDE.has(e.code);
       await failOrder(env, id, shop ? "SERVICE_UNAVAILABLE" : e.code);
-      if (shop) console.error("NotPanel shop-side error", e.code, e.message);
+      if (shop) {
+        console.error("NotPanel shop-side error", e.code, e.message);
+        await alertAdmins(env, "notpanel", `NotPanel refused an order: <b>${e.code}</b>${e.code === "INSUFFICIENT_BALANCE" ? " (your NotPanel balance is too low; top it up on notpanel.com)" : ""}. Customers can't order until this is fixed; their money was refunded to their balance.`);
+      }
       // Supplier details are never shown to users
       throw new OrderError(shop ? "SERVICE_UNAVAILABLE" : e.code, shop ? undefined : e.details);
     }
@@ -433,7 +438,7 @@ export async function cancelOrder(env: Env, o: OrderRow): Promise<OrderRow> {
   try {
     await npCall(env, "cancel", { order: o.np_order_id });
   } catch (e) {
-    if (e instanceof NotPanelError) throw shopSafeError(e);
+    if (e instanceof NotPanelError) throw shopSafeError(env, e);
     throw e;
   }
   const st = await npCall<NpStatus>(env, "status", { order: o.np_order_id });
@@ -447,7 +452,7 @@ export async function refillOrder(env: Env, o: OrderRow): Promise<OrderRow> {
     const r = await npCall<{ refill: number }>(env, "refill", { order: o.np_order_id });
     await env.DB.prepare("UPDATE orders SET refill_id = ?2, refill_status = 'pending' WHERE id = ?1").bind(o.id, r.refill).run();
   } catch (e) {
-    if (e instanceof NotPanelError) throw shopSafeError(e);
+    if (e instanceof NotPanelError) throw shopSafeError(env, e);
     throw e;
   }
   return (await getOrderRow(env, o.id))!;

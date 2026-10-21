@@ -3,8 +3,9 @@ import { type Lang, pickLang, type ReferralStats } from "../shared/types";
 import { starsCredit } from "../shared/stars";
 import { balanceText, starsText } from "./botMessages";
 import { type Env, isOwner } from "./env";
+import { alertAdmins } from "./alerts";
 import { botText } from "./i18n";
-import type { Settings } from "./settings";
+import { getSettings, type Settings } from "./settings";
 import { tg, webAppButton } from "./telegram";
 
 const DAY = 86400;
@@ -27,6 +28,13 @@ export async function checkChannel(env: Env, s: Settings, userId: number): Promi
     if (/user not found|participant/i.test(msg)) return "not_member";
     if (/\b429\b|too many requests/i.test(msg)) throw new RetryLater(msg);
     console.error("channel check unavailable", msg);
+    await alertAdmins(
+      env,
+      "channel",
+      "The bot can't check members of your update channel, so new users can't be confirmed and <b>referral rewards are on hold</b>.\n\n" +
+        "Make the bot an <b>admin of the channel</b> (and check the channel ID in Settings). Held rewards are paid automatically once it works.\n\n" +
+        `<i>Telegram said: ${msg.replace(/[<>&]/g, "")}</i>`,
+    );
     return "unavailable";
   }
 }
@@ -137,7 +145,22 @@ export function rewardMicro(s: Settings): number {
 export async function onHomeReached(env: Env, s: Settings, waitUntil: (p: Promise<unknown>) => void, userId: number): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare("UPDATE users SET home_at = ?2 WHERE id = ?1 AND home_at IS NULL").bind(userId, now).run();
-  if (!s.referral_enabled) return;
+  await payReferral(env, s, waitUntil, userId);
+}
+
+/**
+ * Pays the referrer of `userId` once, if the referral is still pending and the friend has picked a language, accepted
+ * the terms and has a Telegram-confirmed channel membership (asked again here if not confirmed yet). Returns
+ * "paid" | "capped" | "not_member" | "unavailable" | "skip".
+ */
+export async function payReferral(
+  env: Env,
+  s: Settings,
+  waitUntil: (p: Promise<unknown>) => void,
+  userId: number,
+): Promise<"paid" | "capped" | "not_member" | "unavailable" | "skip"> {
+  const now = Math.floor(Date.now() / 1000);
+  if (!s.referral_enabled) return "skip";
   const ref = await env.DB.prepare(
     `SELECT r.referrer_id, u.first_name, u.channel_ok FROM referrals r JOIN users u ON u.id = r.referred_id
      WHERE r.referred_id = ?1 AND r.status = 'pending' AND u.lang IS NOT NULL AND u.terms_accepted_at IS NOT NULL AND u.banned = 0
@@ -145,17 +168,17 @@ export async function onHomeReached(env: Env, s: Settings, waitUntil: (p: Promis
   )
     .bind(userId)
     .first<{ referrer_id: number; first_name: string; channel_ok: number }>();
-  if (!ref) return;
+  if (!ref) return "skip";
   // A reward needs a Telegram-confirmed membership. If the join step didn't confirm it (gate off, or Telegram was
-  // unavailable at Verify), ask Telegram now.
+  // unavailable at Verify), ask Telegram now. Unconfirmed referrals are retried by the cron (retryReferrals).
   if (ref.channel_ok !== MEMBER_OK) {
-    if (!s.channel_id) return;
+    if (!s.channel_id) return "skip";
     const r = await checkChannel(env, s, userId).catch(() => "unavailable" as const);
-    if (r !== "member") return;
+    if (r !== "member") return r;
     await env.DB.prepare("UPDATE users SET channel_ok = 1, channel_checked_at = ?2 WHERE id = ?1").bind(userId, now).run();
   }
   const reward = rewardMicro(s);
-  if (reward <= 0) return;
+  if (reward <= 0) return "skip";
   // Daily cap per referrer: over the cap the referral is recorded as "capped" (counted, not paid).
   const [mark] = await env.DB.batch([
     env.DB.prepare(
@@ -172,9 +195,40 @@ export async function onHomeReached(env: Env, s: Settings, waitUntil: (p: Promis
     ).bind(userId, ref.referrer_id, reward, now),
     env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND changes() = 1").bind(ref.referrer_id, reward),
   ]);
-  if (!mark.meta.changes) return; // someone else already handled it
+  if (!mark.meta.changes) return "skip"; // someone else already handled it
   const paid = await env.DB.prepare("SELECT status FROM referrals WHERE referred_id = ?1").bind(userId).first<{ status: string }>();
-  if (paid?.status === "rewarded") waitUntil(notifyReferrer(env, s, ref.referrer_id, ref.first_name).catch((e) => console.warn("referral notify failed", e)));
+  if (paid?.status !== "rewarded") return "capped";
+  waitUntil(notifyReferrer(env, s, ref.referrer_id, ref.first_name).catch((e) => console.warn("referral notify failed", e)));
+  return "paid";
+}
+
+const RETRY_BATCH = 4; // per cron run: one membership check (+ one message) each, so the run stays well under 50 calls
+const RETRY_EVERY = 3600; // re-check an unconfirmed friend at most hourly
+const RETRY_FOR = 30 * DAY; // stop asking after a month
+
+/**
+ * Cron: referrals whose friend reached the home screen but whose channel membership couldn't be confirmed then (for
+ * example the bot wasn't a channel admin yet). Checks a few per run and pays as soon as Telegram confirms the membership,
+ * so a reward is never stuck. Stops early if Telegram can't answer (the admins are alerted by checkChannel).
+ */
+export async function retryReferrals(env: Env): Promise<void> {
+  const s = await getSettings(env);
+  if (!s.referral_enabled || !s.channel_id || s.sync_state) return;
+  const now = Math.floor(Date.now() / 1000);
+  const { results } = await env.DB.prepare(
+    `SELECT r.referred_id FROM referrals r JOIN users u ON u.id = r.referred_id
+     WHERE r.status = 'pending' AND u.home_at IS NOT NULL AND u.home_at > ?1 AND u.banned = 0 AND COALESCE(r.checked_at, 0) < ?2
+     ORDER BY COALESCE(r.checked_at, 0), r.created_at LIMIT ${RETRY_BATCH}`,
+  )
+    .bind(now - RETRY_FOR, now - RETRY_EVERY)
+    .all<{ referred_id: number }>();
+  const later: Promise<unknown>[] = [];
+  for (const { referred_id } of results) {
+    const r = await payReferral(env, s, (p) => later.push(p), referred_id);
+    if (r === "unavailable") break; // Telegram can't check the channel: try again next hour
+    await env.DB.prepare("UPDATE referrals SET checked_at = ?2 WHERE referred_id = ?1").bind(referred_id, now).run();
+  }
+  await Promise.allSettled(later);
 }
 
 async function notifyReferrer(env: Env, s: Settings, referrerId: number, friend: string) {

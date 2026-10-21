@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { LANGS, pickLang } from "../shared/types";
 import { timingSafeEqual } from "./auth";
 import { sendPreviews } from "./botMessages";
-import { checkChannel } from "./growth";
+import { checkChannel, retryReferrals } from "./growth";
 import { connectAll, syncBotTexts } from "./connect";
 import { ownerIds } from "./env";
 import { mediaResponse } from "./assets";
@@ -16,6 +16,7 @@ import { admin } from "./routes/admin";
 import { app as api } from "./routes/app";
 import { bot } from "./routes/bot";
 import { cleanupWebhookEvents, hooks } from "./routes/hooks";
+import { checkNotPanelBalance } from "./alerts";
 import { commandsTick } from "./commands";
 import { ensureSchema } from "./migrate";
 import { cleanupRateLimits } from "./rateLimit";
@@ -107,9 +108,9 @@ export default {
       console.error("database setup failed", e);
       return;
     }
-    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env)];
+    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env), retryReferrals(env)];
     // Hourly housekeeping (minute :07) so the every-minute run stays light
-    if (new Date(controller.scheduledTime).getUTCMinutes() === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env));
+    if (new Date(controller.scheduledTime).getUTCMinutes() === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env), checkNotPanelBalance(env));
     ctx.waitUntil(
       Promise.allSettled(jobs).then((rs) => {
         for (const r of rs) if (r.status === "rejected") console.error("cron job failed", r.reason);
