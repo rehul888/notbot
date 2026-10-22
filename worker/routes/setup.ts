@@ -179,6 +179,8 @@ async function runStep(env: Env, s: Settings, step: SetupStep, origin: string): 
       return;
     }
     case "texts0":
+      // A (new) setup: the background job names the remaining languages once, then never again
+      await setSettings(env, { names_done: 0 });
       await syncBotTexts(env, 0, "texts");
       return;
     case "texts1":

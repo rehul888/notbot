@@ -58,7 +58,8 @@ export const DEFAULTS = {
   commands_step: 0,
   broadcast_state: "", // running admin broadcast (worker/broadcast.ts), "" when none
   alerts_sent: "{}", // last time each admin alert kind was sent (worker/alerts.ts)
-  commands_wait_until: 0, // Telegram rate limit: resume menu/profile updates after this time
+  commands_wait_until: 0,
+  names_done: 0, // 1 once the bot was named in every profile language after setup; names are never set automatically again // Telegram rate limit: resume menu/profile updates after this time
   commands_admins: "", // admin chats that got the admin menu
   setup_steps: "", // comma list of setup steps that finished
 };

@@ -1,4 +1,5 @@
-// The bot's command menus and profile descriptions (never its name: that changes only on request). Customers get the user commands in their language; admins get the same list
+// The bot's command menus and profile texts. The bot's name is set in every language only once, right after setup;
+// after that it changes only on request (admin Branding), so a name the owner sets in @BotFather is kept. Customers get the user commands in their language; admins get the same list
 // plus the admin commands (English, like the admin panel), set per admin chat. The bot's name and descriptions are set
 // in every profile language (worker/bot-about.ts). The cron job keeps Telegram in sync on its own: after a deploy that
 // changes them, a brand rename, an admin change or a new bot token, everything is refreshed within minutes.
@@ -91,8 +92,9 @@ export async function commandsTick(env: Env): Promise<void> {
       await setAdminCommands(env, s, s.commands_admins.split(",").map(Number).filter(Boolean));
       await setSettings(env, { commands_step: PROFILE_FIRST_STEP, commands_admins: ownerIds(env, s).join(",") });
     } else {
-      const next = await setProfileTexts(env, Math.min(step - PROFILE_FIRST_STEP, PROFILE_BATCHES - 1), { names: false });
-      if (next === null) await setSettings(env, { commands_key: key, commands_step: 0 });
+      // Names only in the first round after setup (or after connecting a new bot); later the owner's names are kept
+      const next = await setProfileTexts(env, Math.min(step - PROFILE_FIRST_STEP, PROFILE_BATCHES - 1), { names: !s.names_done });
+      if (next === null) await setSettings(env, { commands_key: key, commands_step: 0, names_done: 1 });
       else await setSettings(env, { commands_step: PROFILE_FIRST_STEP + next });
     }
   } catch (e) {
