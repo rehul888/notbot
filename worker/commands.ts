@@ -6,6 +6,7 @@
 import { type Lang, LANGS, pickLang } from "../shared/types";
 import { ABOUT_LANGS } from "./bot-about";
 import { brandName } from "./brand";
+import { broadcastBusy } from "./broadcastCore";
 import { PROFILE_BATCHES, setProfileTexts, TelegramRetryLater } from "./connect";
 import { type Env, ownerIds } from "./env";
 import { botPlain } from "./i18n";
@@ -13,7 +14,7 @@ import { getSettings, setSettings, type Settings } from "./settings";
 import { tg } from "./telegram";
 
 /** Bump when the command lists change, so every deployment refreshes its menus after updating */
-export const COMMANDS_VERSION = 4;
+export const COMMANDS_VERSION = 5;
 
 type Command = { command: string; description: string };
 
@@ -30,7 +31,7 @@ export function userCommands(lang: Lang): Command[] {
 export const ADMIN_COMMANDS: Command[] = [
   { command: "admin", description: "Admin panel" },
   { command: "stats", description: "Sales, users and NotPanel balance" },
-  { command: "broadcast", description: "Send a message to all users (reply to it)" },
+  { command: "broadcast", description: "Broadcast a message to all users" },
   { command: "preview", description: "Preview every bot message" },
 ];
 
@@ -77,8 +78,8 @@ const PROFILE_FIRST_STEP = 3;
  */
 export async function commandsTick(env: Env): Promise<void> {
   const s = await getSettings(env, { fresh: true });
-  // Waits for price syncs and broadcasts, so one cron run never makes too many outgoing calls
-  if (!s.bot_username || !s.setup_done || s.sync_state || s.broadcast_state) return;
+  // Waits for price syncs and sending broadcasts (not paused ones), so one cron run never makes too many outgoing calls
+  if (!s.bot_username || !s.setup_done || s.sync_state || broadcastBusy(s.broadcast_state)) return;
   const now = Math.floor(Date.now() / 1000);
   if (s.commands_wait_until > now) return;
   const key = commandsKey(env, s);

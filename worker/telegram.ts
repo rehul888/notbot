@@ -41,6 +41,9 @@ export const emojiFallbacks = { count: 0, last: "" };
 
 const stripCustomEmoji = (html: string) => html.replace(/<tg-emoji[^>]*>([\s\S]*?)<\/tg-emoji>/g, "$1");
 
+/** Message entities without custom emojis (for sends that carry entities instead of HTML) */
+const stripCustomEntities = (v: unknown) => (Array.isArray(v) ? v.filter((e) => e?.type !== "custom_emoji") : v);
+
 function stripIcons(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(stripIcons);
   if (v && typeof v === "object") {
@@ -76,8 +79,12 @@ export async function tg<T = any>(token: string, method: string, params: Record<
     emojiFallbacks.last = data.description ?? "";
     const plain: Record<string, unknown> = { ...params };
     if (plain.reply_markup) plain.reply_markup = stripIcons(plain.reply_markup);
-    if (typeof plain.text === "string") plain.text = stripCustomEmoji(plain.text);
-    if (typeof plain.caption === "string") plain.caption = stripCustomEmoji(plain.caption);
+    if (plain.parse_mode === "HTML") {
+      if (typeof plain.text === "string") plain.text = stripCustomEmoji(plain.text);
+      if (typeof plain.caption === "string") plain.caption = stripCustomEmoji(plain.caption);
+    }
+    if (plain.entities) plain.entities = stripCustomEntities(plain.entities);
+    if (plain.caption_entities) plain.caption_entities = stripCustomEntities(plain.caption_entities);
     data = await call<T>(token, method, plain);
   }
   if (!data.ok) throw new Error(`Telegram ${method}: ${data.error_code} ${data.description}`);

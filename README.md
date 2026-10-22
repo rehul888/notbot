@@ -28,7 +28,9 @@ It runs on **Cloudflare's free plan** and deploys in a few clicks. Name, logo, c
 - **20 languages** for customers (English, Español, Português, Русский, Türkçe, العربية, हिन्दी, Indonesia, Français,
   中文, Deutsch, Italiano, Polski, Українська, 日本語, 한국어, Tiếng Việt, فارسی, اردو, বাংলা).
 - **Admin panel inside Telegram**: sales and profit, orders, users and balances, payments and Stars refunds,
-  referrals, price changes, branding, admins and settings.
+  referrals, price changes, branding, admins and settings. Admins also get a **/broadcast** menu in the bot: write a
+  message (text or media with a caption, formatting and Premium emojis kept, `{name}` for the user's first name), add
+  colored buttons, preview it, send it, and follow a live status card with pause, resume and stop.
 - **Optional update channel gate**: require customers to join your channel before ordering.
 
 <p align="center">

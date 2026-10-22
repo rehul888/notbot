@@ -10,7 +10,7 @@ import { botText } from "../i18n";
 import { balanceText, languageKeyboard, openButton, sendHelp, sendPreviews, sendWelcome } from "../botMessages";
 import { ADMIN_COMMANDS, userCommands } from "../commands";
 import { sendAdminLink, sendStats } from "../stats";
-import { onBroadcastCallback, onBroadcastCommand } from "../broadcast";
+import { onBroadcastCallback, onBroadcastCommand, onBroadcastMessage } from "../broadcast";
 import { onPreCheckout, onSuccessfulPayment } from "../payments";
 import { tg } from "../telegram";
 
@@ -160,7 +160,7 @@ async function handle(env: Env, u: any): Promise<void> {
     await sendPreviews(env, from.id, l, from.first_name, LANGS);
     return;
   }
-  // An admin writing a message to broadcast (not a command) gets no help reply in between
-  if (!cmd && isOwner(env, await getSettings(env), from.id)) return;
+  // An admin's message that isn't a command is never answered with help: the broadcast menu may be waiting for it
+  if (!cmd && isOwner(env, await getSettings(env), from.id)) return void (await onBroadcastMessage(env, from.id, m));
   await sendHelp(env, from.id, lang);
 }
