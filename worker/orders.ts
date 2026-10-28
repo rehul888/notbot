@@ -275,6 +275,25 @@ export function refundFor(o: OrderRow, status: OrderStatus, remains: number | nu
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
 
+/** Stores a NotPanel status on the order (updated_at only moves when something changed). */
+function statusStmt(env: Env, id: number, status: OrderStatus, st: NpStatus, now: number): D1PreparedStatement {
+  return env.DB.prepare(
+    `UPDATE orders SET status = ?2, start_count = ?3, remains = ?4, reason_code = ?5, can_cancel = ?6, can_refill = ?7,
+       cost = COALESCE(?8, cost), updated_at = CASE WHEN status = ?2 AND remains IS ?4 THEN updated_at ELSE ?9 END, checked_at = ?9
+     WHERE id = ?1`,
+  ).bind(
+    id,
+    status,
+    num(st.start_count),
+    num(st.remains),
+    st.reason_code ?? null,
+    st.cancel_available ?? st.can_cancel ? 1 : 0,
+    st.can_refill ? 1 : 0,
+    st.charge !== undefined ? usdToMicro(st.charge) : null,
+    now,
+  );
+}
+
 /** Applies a NotPanel status (from polling or a webhook). Refunds and notifies when the order finishes. */
 export async function applyStatus(env: Env, o: OrderRow, st: NpStatus): Promise<OrderRow> {
   const status = normStatus(st.status_key);
@@ -283,23 +302,7 @@ export async function applyStatus(env: Env, o: OrderRow, st: NpStatus): Promise<
   if (FINAL_STATUSES.includes(o.status) && !FINAL_STATUSES.includes(status)) return o;
   const now = Math.floor(Date.now() / 1000);
   const remains = num(st.remains);
-  await env.DB.prepare(
-    `UPDATE orders SET status = ?2, start_count = ?3, remains = ?4, reason_code = ?5, can_cancel = ?6, can_refill = ?7,
-       cost = COALESCE(?8, cost), updated_at = CASE WHEN status = ?2 AND remains IS ?4 THEN updated_at ELSE ?9 END, checked_at = ?9
-     WHERE id = ?1`,
-  )
-    .bind(
-      o.id,
-      status,
-      num(st.start_count),
-      remains,
-      st.reason_code ?? null,
-      st.cancel_available ?? st.can_cancel ? 1 : 0,
-      st.can_refill ? 1 : 0,
-      st.charge !== undefined ? usdToMicro(st.charge) : null,
-      now,
-    )
-    .run();
+  await statusStmt(env, o.id, status, st, now).run();
 
   if (FINAL_STATUSES.includes(status) && !o.refunded) {
     const refund = refundFor(o, status, remains, st);
@@ -397,6 +400,8 @@ async function recoverSubmitting(env: Env, o: OrderRow): Promise<OrderRow> {
  * Cron backup for webhooks (runs every 3 minutes): re-checks open orders that haven't been checked for 20 minutes.
  * Stays well under the free plan's ~50 D1 queries per run: at most 12 open orders and 3 submitting recoveries,
  * and it stops early when a rough query budget is used up (unprocessed orders keep their old checked_at and go first next time).
+ * Orders that are still running are saved together in one batch (one D1 call, no re-read) to keep the run's CPU low;
+ * only finished ones go through applyStatus (refund + message).
  */
 export async function pollOpenOrders(env: Env): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
@@ -413,14 +418,20 @@ export async function pollOpenOrders(env: Env): Promise<void> {
   if (withId.length) {
     try {
       const map = await npCall<Record<string, NpStatus>>(env, "status", { orders: withId.map((o) => o.np_order_id).join(",") });
+      const running: D1PreparedStatement[] = [];
       for (const o of withId) {
         const st = map[String(o.np_order_id)];
         const next = st && !st.error_code ? normStatus(st.status_key) : null;
-        const cost = next && FINAL_STATUSES.includes(next) ? 7 : 2;
-        if (used + cost > BUDGET) break;
-        used += cost;
-        if (st && !st.error_code) await applyStatus(env, o, st);
-        else await env.DB.prepare("UPDATE orders SET checked_at = ?2 WHERE id = ?1").bind(o.id, now).run();
+        if (next && FINAL_STATUSES.includes(next)) {
+          if (used + 7 > BUDGET) continue;
+          used += 7;
+          await applyStatus(env, o, st);
+        } else if (next) running.push(statusStmt(env, o.id, next, st, now));
+        else running.push(env.DB.prepare("UPDATE orders SET checked_at = ?2 WHERE id = ?1").bind(o.id, now));
+      }
+      if (running.length) {
+        used += 1;
+        await env.DB.batch(running);
       }
     } catch (e) {
       console.warn("poll failed", (e as Error).message);
