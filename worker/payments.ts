@@ -8,6 +8,7 @@ import { OrderError, placeOrder } from "./orders";
 import { checkDraft } from "./pricing";
 import { getSettings } from "./settings";
 import { tg, webAppButton } from "./telegram";
+import { groupInt } from "../shared/num";
 
 
 interface PaymentRow {
@@ -165,11 +166,11 @@ export async function onSuccessfulPayment(
     if (!svc) throw new OrderError("SERVICE_UNAVAILABLE");
     const check = checkDraft({ ...svc, type_key: svc.typeKey, dripfeed: !!svc.dripFeed, dripMax: svc.dripFeed?.max_total_minutes ?? null }, draft);
     if ("error" in check) throw new OrderError(check.error);
-    const order = await placeOrder(env, p.user_id, svc, draft.link.trim(), check.quantity, check.fields, draft.dripMinutes);
+    const order = await placeOrder(env, p.user_id, svc, check.link, check.quantity, check.fields, draft.dripMinutes);
     await env.DB.prepare("UPDATE payments SET order_id = ?2 WHERE id = ?1").bind(p.id, order.id).run();
     await tg(env.BOT_TOKEN, "sendMessage", {
       chat_id: p.user_id,
-      text: botText(lang, "orderPlaced", { id: String(order.np_order_id ?? order.id), service: order.service_name, quantity: order.quantity.toLocaleString("en-US"), link: linkText(order.link) }),
+      text: botText(lang, "orderPlaced", { id: String(order.np_order_id ?? order.id), service: order.service_name, quantity: groupInt(order.quantity), link: linkText(order.link) }),
       link_preview_options: { is_disabled: true },
       parse_mode: "HTML",
       reply_markup: button(order.id),

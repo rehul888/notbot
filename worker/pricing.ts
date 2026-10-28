@@ -1,4 +1,6 @@
 import type { QuantityMode, ServiceField } from "../shared/types";
+import { linkProblem, normalizeLink, type LinkNeed } from "../shared/links";
+import { platformName } from "../shared/platforms";
 
 const FIXED = new Set(["package", "custom_comments_package"]);
 const LINES: Record<string, string> = {
@@ -42,17 +44,22 @@ const MAX_FIELD_LENGTH = 2000; // single-value fields without their own max_leng
 const MAX_LINES = 10_000;
 
 export interface DraftCheck {
+  /** The link to send, normalized (shared/links.ts) */
+  link: string;
   quantity: number;
   fields: Record<string, string>;
 }
 
 /** Validates a draft against the service and returns the normalized quantity and fields, or an error code. */
 export function checkDraft(
-  svc: { type_key: string; min: number; max: number; step: number; fields: ServiceField[]; dripfeed: boolean; dripMax: number | null },
+  svc: { type_key: string; platform?: string; linkNeed?: LinkNeed; min: number; max: number; step: number; fields: ServiceField[]; dripfeed: boolean; dripMax: number | null },
   draft: { link?: string; quantity?: number; fields?: Record<string, string>; dripMinutes?: number },
 ): DraftCheck | { error: string; details?: Record<string, unknown> } {
   // The draft comes straight from user JSON, so check types at runtime rather than trusting the declared ones
   if (typeof draft.link !== "string" || draft.link.trim().length < 2 || draft.link.length > 2048) return { error: "INVALID_LINK" };
+  const link = normalizeLink(svc.platform ?? "", draft.link);
+  const bad = linkProblem(svc.platform ?? "", svc.linkNeed ?? "any", link);
+  if (bad) return { error: bad.code, details: bad.platform ? { platform: platformName(bad.platform) } : undefined };
   const mode = quantityMode(svc.type_key);
   const fields: Record<string, string> = {};
   const raw = draft.fields as unknown;
@@ -96,5 +103,5 @@ export function checkDraft(
     if (!svc.dripfeed || !svc.dripMax) return { error: "DRIP_FEED_NOT_AVAILABLE" };
     if (!Number.isInteger(draft.dripMinutes) || draft.dripMinutes < 1 || draft.dripMinutes > svc.dripMax) return { error: "DRIP_FEED_INVALID" };
   }
-  return { quantity, fields };
+  return { link, quantity, fields };
 }

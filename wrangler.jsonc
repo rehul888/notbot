@@ -17,7 +17,8 @@
       "migrations_dir": "migrations"
     }
   ],
-  // Every minute: order status backup check + the next step of a price sync when one is running/due.
+  // Every minute: the next step of a price sync when one is running/due, command menus and broadcasts; every 3 minutes
+  // the order status backup check, every 5 the channel re-check for referrals.
   // At minute :07 of each hour it also runs cleanup (old webhook events, stale pending payments).
   "triggers": { "crons": ["* * * * *"] },
   "vars": {

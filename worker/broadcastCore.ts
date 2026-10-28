@@ -1,6 +1,7 @@
 // Admin broadcast, pure parts (no database, no Telegram calls): the draft model, {name} personalization, button
 // parsing, keyboards, the Telegram request for one user, and the progress / state arithmetic. English only (admin).
 import { validHttpsUrl } from "../shared/brand";
+import { groupInt } from "../shared/num";
 
 /** Sends per cron run; leaves room for the other cron jobs within the free plan's 50 outgoing calls */
 export const BROADCAST_BATCH = 25;
@@ -235,7 +236,7 @@ export function extractContent(m: any): { ok: true; content: Content } | { ok: f
     entities = ents(m.caption_entities);
   }
   const limit = kind === "text" ? TEXT_LIMIT : CAPTION_LIMIT;
-  if (text.length > limit) return { ok: false, error: `That ${kind === "text" ? "message" : "caption"} is too long (${text.length.toLocaleString("en-US")} of ${limit.toLocaleString("en-US")} characters).` };
+  if (text.length > limit) return { ok: false, error: `That ${kind === "text" ? "message" : "caption"} is too long (${groupInt(text.length)} of ${groupInt(limit)} characters).` };
   const content: Content = { kind, text, entities };
   if (file) content.file = file;
   if (kind === "text" && m.link_preview_options && typeof m.link_preview_options === "object") {
@@ -380,7 +381,7 @@ export const fmtClock = (ts: number) => {
   return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())} UTC`;
 };
 
-export const num = (n: number) => n.toLocaleString("en-US");
+export const num = groupInt;
 
 /** Telegram's answer means this user can't receive messages from the bot any more */
 export const isBlocked = (message: string) => /\b403\b|blocked|deactivated|chat not found|user not found/i.test(message);

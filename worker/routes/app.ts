@@ -12,6 +12,7 @@ import { attachReferral, channelGateRequired, onHomeReached, parseRef, referralS
 import { checkDraft, orderCharge } from "../pricing";
 import { brandInfo } from "../brand";
 import { getSettings, type Settings } from "../settings";
+import { groupInt } from "../../shared/num";
 
 export interface UserRow {
   id: number;
@@ -266,10 +267,10 @@ app.post("/orders", async (c) => {
   if (!draft || typeof draft.link !== "string") return err(c, 400, "INVALID_BODY");
   try {
     const { svc, check, charge } = await draftFor(c, draft);
-    const link = draft.link.trim();
+    const link = check.link;
     if (draft.payWith === "stars") {
       const lang = c.get("lang");
-      const label = botPlain(lang, "invoiceOrder", { service: svc.name, quantity: check.quantity.toLocaleString("en-US") });
+      const label = botPlain(lang, "invoiceOrder", { service: svc.name, quantity: groupInt(check.quantity) });
       // Fewest whole Stars whose dollar value covers the charge; any change stays on the balance
       const rate = c.get("settings").stars_per_usd;
       const stars = starsToCover(charge, rate);

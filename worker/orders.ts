@@ -8,6 +8,7 @@ import { alertAdmins } from "./alerts";
 import { getSettings } from "./settings";
 import { tg, webAppButton } from "./telegram";
 import type { ServiceDetail } from "../shared/types";
+import { groupInt } from "../shared/num";
 
 export interface OrderRow {
   id: number;
@@ -332,7 +333,7 @@ export async function notifyOrder(env: Env, o: OrderRow): Promise<void> {
   const text = botText(lang, key, {
     id: String(o.np_order_id ?? o.id),
     service: o.service_name,
-    quantity: o.quantity.toLocaleString("en-US"),
+    quantity: groupInt(o.quantity),
     refund: amountText(o.refund, s),
     link: linkText(o.link),
   });
@@ -393,7 +394,7 @@ async function recoverSubmitting(env: Env, o: OrderRow): Promise<OrderRow> {
 }
 
 /**
- * Cron backup for webhooks (runs every minute): re-checks open orders that haven't been checked for 20 minutes.
+ * Cron backup for webhooks (runs every 3 minutes): re-checks open orders that haven't been checked for 20 minutes.
  * Stays well under the free plan's ~50 D1 queries per run: at most 12 open orders and 3 submitting recoveries,
  * and it stops early when a rough query budget is used up (unprocessed orders keep their old checked_at and go first next time).
  */

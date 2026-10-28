@@ -6,10 +6,11 @@ import type { Env } from "./env";
 import { npCall, usdToMicro } from "./notpanel";
 import { getSettings } from "./settings";
 import { tg, webAppButton } from "./telegram";
+import { groupInt, usdText } from "../shared/num";
 
 const DAY = 86400;
-const usd = (micro: number) => "$" + (micro / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const n = (v: number) => v.toLocaleString("en-US");
+const usd = usdText;
+const n = groupInt;
 
 export function dayStartUtc(now = Date.now()): number {
   const d = new Date(now);

@@ -33,9 +33,14 @@ describe("pricing", () => {
     const svc = { type_key: "default", min: 10, max: 1000, step: 1, fields: [], dripfeed: false, dripMax: null };
     expect(checkDraft(svc, { link: "https://t.me/x/1", quantity: 5 })).toEqual({ error: "MINIMUM_QUANTITY", details: { n: 10 } });
     expect(checkDraft(svc, { link: "", quantity: 50 })).toEqual({ error: "INVALID_LINK" });
-    expect(checkDraft(svc, { link: "https://t.me/x/1", quantity: 50 })).toEqual({ quantity: 50, fields: {} });
+    expect(checkDraft(svc, { link: "https://t.me/x/1", quantity: 50 })).toEqual({ link: "https://t.me/x/1", quantity: 50, fields: {} });
+    // The link is checked for the service it is for (shared/links.ts)
+    expect(checkDraft({ ...svc, platform: "telegram", linkNeed: "post" }, { link: "t.me/x", quantity: 50 })).toEqual({ error: "LINK_NEED_POST" });
+    expect(checkDraft({ ...svc, platform: "telegram", linkNeed: "post" }, { link: "https://vm.tiktok.com/a/", quantity: 50 })).toEqual({ error: "LINK_WRONG_PLATFORM", details: { platform: "Telegram" } });
+    expect(checkDraft({ ...svc, platform: "telegram", linkNeed: "chat" }, { link: "@chan", quantity: 50 })).toMatchObject({ link: "https://t.me/chan" });
     const comments = { ...svc, min: 1, type_key: "custom_comments", fields: [{ key: "comments", kind: "lines" as const, required: true, label: "" }] };
     expect(checkDraft(comments, { link: "https://x.com/a", fields: { comments: "a\n\nb\n c " } })).toEqual({
+      link: "https://x.com/a",
       quantity: 3,
       fields: { comments: "a\nb\nc" },
     } as never);
@@ -61,7 +66,7 @@ describe("draft input hardening", () => {
   });
   it("ignores inherited object keys", () => {
     const svc = { ...base, fields: [{ ...text, key: "constructor" }] };
-    expect(checkDraft(svc as never, { link, quantity: 5, fields: {} })).toEqual({ quantity: 5, fields: {} });
+    expect(checkDraft(svc as never, { link, quantity: 5, fields: {} })).toEqual({ link, quantity: 5, fields: {} });
   });
   it("caps field lengths", () => {
     const svc = { ...base, fields: [text] };
@@ -78,7 +83,7 @@ describe("draft input hardening", () => {
   });
   it("validates drip-feed minutes", () => {
     const svc = { ...base, fields: [] };
-    expect(checkDraft(svc, { link, quantity: 5, dripMinutes: 60 })).toEqual({ quantity: 5, fields: {} });
+    expect(checkDraft(svc, { link, quantity: 5, dripMinutes: 60 })).toEqual({ link, quantity: 5, fields: {} });
     for (const bad of [0, -1, 1.5, 601, Number.NaN, "60" as never, Infinity])
       expect(checkDraft(svc, { link, quantity: 5, dripMinutes: bad })).toMatchObject({ error: expect.stringMatching(/DRIP_FEED/) });
     expect(checkDraft(svc, { link, quantity: 5, dripMinutes: 1.5 })).toEqual({ error: "DRIP_FEED_INVALID" });

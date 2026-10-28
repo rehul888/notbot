@@ -1,4 +1,5 @@
 import type { BrandInfo } from "./brand";
+import type { LinkNeed } from "./links";
 // Types shared by the Worker API and the Mini App.
 
 export const LANGS = [
@@ -159,6 +160,8 @@ export type QuantityMode = "free" | "fixed" | "lines";
 
 export interface ServiceDetail extends ServiceItem {
   typeKey: string;
+  /** What the order link must point to (shared/links.ts) */
+  linkNeed: LinkNeed;
   quantityMode: QuantityMode;
   linesField: string | null; // field whose line count becomes the quantity
   step: number;

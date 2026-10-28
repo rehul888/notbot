@@ -8,7 +8,7 @@ const FILES = import.meta.glob("../migrations/*.sql", { query: "?raw", import: "
 /** The migrations in order: [file name, SQL] */
 export const MIGRATIONS: [string, string][] = Object.entries(FILES)
   .map(([path, sql]): [string, string] => [path.split("/").pop()!, sql])
-  .sort(([a], [b]) => a.localeCompare(b));
+  .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)); // not localeCompare: Intl is slow to start in a Worker
 
 /** SQL file → statements. Our migrations only use ";" to end statements; whole-line "--" comments are dropped first. */
 export function splitSql(sql: string): string[] {

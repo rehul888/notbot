@@ -109,9 +109,16 @@ export default {
       console.error("database setup failed", e);
       return;
     }
-    const jobs: Promise<unknown>[] = [pollOpenOrders(env), syncTick(env), commandsTick(env), retryReferrals(env), broadcastTick(env)];
+    // One settings read for the whole run: the jobs below reuse it (their "fresh" reads accept 2 s old)
+    await getSettings(env, { fresh: true }).catch(() => undefined); // a failure here: each job reads them itself
+    const minute = new Date(controller.scheduledTime).getUTCMinutes();
+    // Each run must stay under the free plan's 10 ms CPU, so the backups run less often: webhooks deliver most order
+    // updates (polling re-checks orders not heard from in 20 min) and friends are re-checked hourly anyway
+    const jobs: Promise<unknown>[] = [syncTick(env), commandsTick(env), broadcastTick(env)];
+    if (minute % 3 === 0) jobs.push(pollOpenOrders(env));
+    if (minute % 5 === 1) jobs.push(retryReferrals(env));
     // Hourly housekeeping (minute :07) so the every-minute run stays light
-    if (new Date(controller.scheduledTime).getUTCMinutes() === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env), checkNotPanelBalance(env));
+    if (minute === 7) jobs.push(cleanupWebhookEvents(env), cleanupPendingPayments(env), cleanupRateLimits(env), checkNotPanelBalance(env));
     ctx.waitUntil(
       Promise.allSettled(jobs).then((rs) => {
         for (const r of rs) if (r.status === "rejected") console.error("cron job failed", r.reason);

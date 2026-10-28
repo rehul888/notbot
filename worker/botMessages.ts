@@ -7,9 +7,10 @@ import { brandName } from "./brand";
 import { botText, escapeHtml } from "./i18n";
 import { getSettings, setSettings, type Settings } from "./settings";
 import { linkButton, tg, webAppButton } from "./telegram";
+import { groupInt } from "../shared/num";
 
 /** Whole Stars for bot messages: "1,250 ⭐" */
-export const starsText = (stars: number) => `${Math.round(stars).toLocaleString("en-US")} ⭐`;
+export const starsText = (stars: number) => `${groupInt(stars)} ⭐`;
 /** A micro-USD amount (charge, refund, credit) as users see it: Stars, rounded up */
 export const amountText = (micro: number, s: Settings) => starsText(shownStars(micro, s.stars_per_usd));
 /** A micro-USD balance as users see it: Stars, rounded down */

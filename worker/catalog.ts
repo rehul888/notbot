@@ -1,5 +1,6 @@
 import { NP_LANGS, type CategoryItem, type DripFeed, type Lang, type PlatformItem, type ServiceDetail, type ServiceField, type ServiceItem } from "../shared/types";
 import { PLATFORM_ORDER, platformName } from "../shared/platforms";
+import { linkNeed } from "../shared/links";
 import type { Env } from "./env";
 import { npCall } from "./notpanel";
 import { linesField, quantityMode, sellRate } from "./pricing";
@@ -211,6 +212,7 @@ export async function getService(env: Env, s: Settings, lang: Lang, id: number):
     ...toItem(r),
     cost: r.rate,
     typeKey: r.type_key,
+    linkNeed: linkNeed(r.platform, r.category_slug),
     quantityMode: quantityMode(r.type_key),
     linesField: linesField(r.type_key),
     step: r.step || 1,

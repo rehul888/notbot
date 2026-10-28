@@ -7,10 +7,11 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { OrderView, ServiceDetail, ServiceField } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
+import { linkExample, linkProblem, normalizeLink } from "../../shared/links";
 import { api, ApiError, cachedApi } from "../api";
 import { starsToCover } from "../../shared/stars";
 import { amount, balance, duration, iso, lower, lrm, num, short, stars } from "../format";
-import { t } from "../i18n";
+import { t, tErr } from "../i18n";
 import { Icon, StarIcon } from "../icons";
 import { refreshMe } from "../me";
 import { reducedMotion } from "../motion";
@@ -86,6 +87,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [linkLeft, setLinkLeft] = useState(false); // left the link field once: check it from then on
   const [sheet, setSheet] = useState<"platform" | "category" | "service" | null>(null);
   const [pickPlatform, setPickPlatform] = useState<string | null>(null);
   const [descOpen, setDescOpen] = useState(false);
@@ -147,8 +149,13 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
   const needRaw = Math.max(starsToCover(total - me.balance, me.starsPerUsd), me.minTopup);
   const need = me.maxTopup > 0 ? Math.min(needRaw, me.maxTopup) : needRaw;
 
+  // Same rules as the server (shared/links.ts), so a link NotPanel would reject is caught before paying
+  const linkNeed = svc.linkNeed ?? "any";
+  const sendLink = normalizeLink(svc.platform, link);
+  const linkBad = link.trim().length < 2 ? { code: "INVALID_LINK" } : linkProblem(svc.platform, linkNeed, sendLink);
+  const example = linkExample(svc.platform, linkNeed);
   const missing: string[] = [];
-  if (link.trim().length < 2) missing.push("link");
+  if (linkBad) missing.push("link");
   for (const f of svc.fields) if (f.required && !(fields[f.key] ?? "").trim()) missing.push(f.key);
   if (svc.quantityMode === "lines" && (quantity < svc.min || quantity > svc.max)) missing.push(linesKey ?? "lines");
 
@@ -202,7 +209,8 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
     try {
       const text = await navigator.clipboard.readText();
       if (text.trim()) {
-        setLink(text.trim());
+        setLink(normalizeLink(svc.platform, text));
+        setLinkLeft(true);
         setError(null);
         haptic.select();
       }
@@ -235,7 +243,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
     haptic.press();
     const body = {
       serviceId: svc.id,
-      link: link.trim(),
+      link: sendLink,
       quantity,
       fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim())),
       dripMinutes: drip || undefined,
@@ -358,8 +366,17 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
           setLink(v);
           if (error) setError(null);
         }}
-        help={t("form.linkHelp")}
-        error={showErrors && missing.includes("link") ? t("err.INVALID_LINK") : null}
+        onBlur={() => {
+          if (!link.trim()) return;
+          if (sendLink !== link) setLink(sendLink);
+          setLinkLeft(true);
+        }}
+        help={
+          example
+            ? t(linkNeed === "post" ? "form.linkHelpPost" : linkNeed === "bot" ? "form.linkHelpBot" : "form.linkHelpChat", { example })
+            : t("form.linkHelp")
+        }
+        error={linkBad && (showErrors || (linkLeft && link.trim())) ? tErr(linkBad.code, { platform: platformName(svc.platform) }) : null}
         trailing={
           !link && canPaste ? (
             <button type="button" class="textbtn" onClick={paste}>

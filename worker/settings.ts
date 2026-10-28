@@ -69,10 +69,12 @@ export type SettingKey = keyof Settings;
 
 let memo: { at: number; value: Settings } | null = null;
 const MEMO_MS = 15_000;
+// "Fresh" still reuses a read this young: the cron loads settings once and its jobs (started together) share it
+const FRESH_MS = 2_000;
 
-/** Settings, cached per isolate for 15 s. Pass fresh for anything that coordinates work (the price sync). */
+/** Settings, cached per isolate for 15 s. Pass fresh for anything that coordinates work (the price sync): at most 2 s old. */
 export async function getSettings(env: Env, opts: { fresh?: boolean } = {}): Promise<Settings> {
-  if (!opts.fresh && memo && Date.now() - memo.at < MEMO_MS) return memo.value;
+  if (memo && Date.now() - memo.at < (opts.fresh ? FRESH_MS : MEMO_MS)) return memo.value;
   const value = await loadSettings(env);
   memo = { at: Date.now(), value };
   applyBranding(value);
