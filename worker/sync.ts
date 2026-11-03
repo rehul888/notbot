@@ -62,6 +62,7 @@ interface SyncState {
   strict: boolean; // remove services missing from this run right away (after the filter setting changed)
   seen: number[];
   stats: SyncStats;
+  lastError?: string; // the latest NotPanel error while retrying, shown if the run is stopped
 }
 
 /** FNV-1a — only used to detect changed rows */
@@ -126,7 +127,10 @@ export async function syncTick(env: Env): Promise<void> {
     state = JSON.parse((await getSettings(env, { fresh: true })).sync_state) as SyncState;
   }
   if (now - state.startedAt > MAX_RUN_SECONDS) {
-    await finish(env, s, { ...state.stats, error: "Sync took too long and was stopped" }, null);
+    const error = state.lastError
+      ? `NotPanel didn't answer for 2 hours, so this run was stopped (last error: ${state.lastError})`
+      : "Sync took too long and was stopped";
+    await finish(env, s, { ...state.stats, error }, null);
     return;
   }
 
@@ -136,10 +140,13 @@ export async function syncTick(env: Env): Promise<void> {
   try {
     pages = await Promise.all(nums.map((page) => npCall<CatalogPage>(env, "catalog", { page, limit: PAGE_SIZE })));
   } catch (e) {
-    console.warn("sync: catalog fetch failed, will retry", (e as Error).message);
-    if (e instanceof NotPanelError && !e.retryable && e.code !== "API_RATE_LIMITED") await finish(env, s, { ...state.stats, error: e.message }, null);
+    const msg = (e as Error).message;
+    console.warn("sync: catalog fetch failed, will retry", msg);
+    if (e instanceof NotPanelError && !e.retryable && e.code !== "API_RATE_LIMITED") await finish(env, s, { ...state.stats, error: msg }, null);
+    else if (state.lastError !== msg) await setSettings(env, { sync_state: JSON.stringify({ ...state, lastError: msg }) });
     return;
   }
+  delete state.lastError; // NotPanel answers again
   if (state.page === 1) {
     state.catalogAt = pages[0].catalog_updated_at;
     state.totalPages = pages[0].total_pages;

@@ -60,7 +60,13 @@ async function call<T>(token: string, method: string, params: Record<string, unk
     headers: { "content-type": "application/json" },
     body: JSON.stringify(params),
   });
-  return (await res.json()) as { ok: boolean; result: T; description?: string; error_code?: number };
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as { ok: boolean; result: T; description?: string; error_code?: number };
+  } catch {
+    // Not Telegram's own answer, e.g. a gateway page "error code: 520": a temporary outage, reported as its HTTP status
+    return { ok: false, result: undefined as T, error_code: res.status, description: `no answer from Telegram (HTTP ${res.status})` };
+  }
 }
 
 export async function tg<T = any>(token: string, method: string, params: Record<string, unknown> = {}): Promise<T> {

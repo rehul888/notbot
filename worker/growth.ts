@@ -27,6 +27,11 @@ export async function checkChannel(env: Env, s: Settings, userId: number): Promi
     // "user not found" / "PARTICIPANT_ID_INVALID" means the user simply isn't in the channel
     if (/user not found|participant/i.test(msg)) return "not_member";
     if (/\b429\b|too many requests/i.test(msg)) throw new RetryLater(msg);
+    // Telegram down or unreachable (5xx, network error): not a setup problem, so no alert; held rewards are re-checked later
+    if (!msg.startsWith("Telegram ") || /^Telegram \w+: 5\d\d\b/.test(msg)) {
+      console.warn("channel check: Telegram unavailable for now", msg);
+      return "unavailable";
+    }
     console.error("channel check unavailable", msg);
     await alertAdmins(
       env,
