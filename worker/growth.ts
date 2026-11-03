@@ -150,7 +150,10 @@ export function rewardMicro(s: Settings): number {
 export async function onHomeReached(env: Env, s: Settings, waitUntil: (p: Promise<unknown>) => void, userId: number): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare("UPDATE users SET home_at = ?2 WHERE id = ?1 AND home_at IS NULL").bind(userId, now).run();
-  await payReferral(env, s, waitUntil, userId);
+  const r = await payReferral(env, s, waitUntil, userId);
+  // Membership not confirmed yet: queue the referral for the cron re-check (retryReferrals), first run due at once
+  if (r === "not_member" || r === "unavailable")
+    await env.DB.prepare("UPDATE referrals SET checked_at = 0 WHERE referred_id = ?1 AND status = 'pending' AND checked_at IS NULL").bind(userId).run();
 }
 
 /**
@@ -215,20 +218,26 @@ const RETRY_FOR = 30 * DAY; // stop asking after a month
  * Cron: referrals whose friend reached the home screen but whose channel membership couldn't be confirmed then (for
  * example the bot wasn't a channel admin yet). Checks a few per run and pays as soon as Telegram confirms the membership,
  * so a reward is never stuck. Stops early if Telegram can't answer (the admins are alerted by checkChannel).
+ * Only queued referrals (checked_at set, see onHomeReached) are read, oldest check first, straight from the
+ * referrals_pending index: friends who never reached the home screen are never scanned.
  */
 export async function retryReferrals(env: Env): Promise<void> {
   const s = await getSettings(env);
   if (!s.referral_enabled || !s.channel_id || s.sync_state) return;
   const now = Math.floor(Date.now() / 1000);
   const { results } = await env.DB.prepare(
-    `SELECT r.referred_id FROM referrals r JOIN users u ON u.id = r.referred_id
-     WHERE r.status = 'pending' AND u.home_at IS NOT NULL AND u.home_at > ?1 AND u.banned = 0 AND COALESCE(r.checked_at, 0) < ?2
-     ORDER BY COALESCE(r.checked_at, 0), r.created_at LIMIT ${RETRY_BATCH}`,
+    `SELECT r.referred_id, u.home_at FROM referrals r JOIN users u ON u.id = r.referred_id
+     WHERE r.status = 'pending' AND r.checked_at < ?1 ORDER BY r.checked_at LIMIT ${RETRY_BATCH}`,
   )
-    .bind(now - RETRY_FOR, now - RETRY_EVERY)
-    .all<{ referred_id: number }>();
+    .bind(now - RETRY_EVERY)
+    .all<{ referred_id: number; home_at: number | null }>();
   const later: Promise<unknown>[] = [];
-  for (const { referred_id } of results) {
+  for (const { referred_id, home_at } of results) {
+    if (!home_at || home_at <= now - RETRY_FOR) {
+      // Gave up after a month: leaves the queue
+      await env.DB.prepare("UPDATE referrals SET checked_at = NULL WHERE referred_id = ?1").bind(referred_id).run();
+      continue;
+    }
     const r = await payReferral(env, s, (p) => later.push(p), referred_id);
     if (r === "unavailable") break; // Telegram can't check the channel: try again next hour
     await env.DB.prepare("UPDATE referrals SET checked_at = ?2 WHERE referred_id = ?1").bind(referred_id, now).run();
