@@ -51,6 +51,16 @@ const en = {
     "  ┣ 📦 {service}\n" +
     "  ┗ 💸 Refunded: <b>{refund}</b>\n\n" +
     "<i>Please check the link is public and correct, then try again.</i>",
+  orderRefunded:
+    "💸 <b>ORDER REFUNDED</b>\n\n" +
+    "  ┣ 🧾 Order: <b>#{id}</b>\n" +
+    "  ┣ 📦 {service}\n" +
+    "  ┗ 💸 Refunded: <b>{refund}</b>\n\n" +
+    "<i>The refund is already in your balance.</i>",
+  starsRefunded:
+    "⭐️ <b>STARS REFUNDED</b>\n\n" +
+    "  ┗ 💸 Refunded: <b>{amount}</b>\n\n" +
+    "<i>The Stars are back in your Telegram account.</i>",
   topupDone:
     "⭐️ <b>BALANCE TOPPED UP</b>\n\n" +
     "  ┣ 💰 Added: <b>{amount}</b>\n" +

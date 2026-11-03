@@ -101,5 +101,6 @@ export async function sendPreviews(env: Env, chatId: number, lang: Lang, name: s
   for (const key of ["orderPlaced", "orderCompleted", "orderPartial", "orderCancelled", "orderFailed"] as const) await send(botText(lang, key, sample), view), n++;
   await send(botText(lang, "topupDone", sample), open ? { inline_keyboard: [[open]] } : undefined), n++;
   await send(botText(lang, "orderNotPlaced", sample), open ? { inline_keyboard: [[open]] } : undefined), n++;
+  for (const key of ["orderRefunded", "starsRefunded"] as const) await send(botText(lang, key, sample)), n++;
   return n;
 }

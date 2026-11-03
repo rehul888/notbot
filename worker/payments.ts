@@ -3,10 +3,10 @@ import { type Lang, type OrderDraft, pickLang } from "../shared/types";
 import { getService } from "./catalog";
 import type { Env } from "./env";
 import { botPlain, botText } from "./i18n";
-import { balanceText, linkText, starsText } from "./botMessages";
+import { amountText, balanceText, linkText, starsText } from "./botMessages";
 import { OrderError, placeOrder } from "./orders";
 import { checkDraft } from "./pricing";
-import { getSettings } from "./settings";
+import { getSettings, type Settings } from "./settings";
 import { tg, webAppButton } from "./telegram";
 import { groupInt } from "../shared/num";
 
@@ -186,27 +186,47 @@ export async function onSuccessfulPayment(
   }
 }
 
-/** Admin: give the Stars back. Only possible while the user still has that much unspent balance. */
-export async function refundPayment(env: Env, paymentId: number): Promise<{ ok: boolean; error?: string }> {
+type RefundResult = { ok: boolean; error?: string; details?: Record<string, unknown> };
+
+/**
+ * Admin: give the Stars of one payment back (Telegram only refunds a whole payment). If the payment bought an order,
+ * that order is refunded with it; the rest must still be unspent balance. With `force` the admin refunds anyway and
+ * takes only what is left of the balance (never below 0).
+ */
+export async function refundPayment(env: Env, paymentId: number, force = false): Promise<RefundResult> {
   const p = await env.DB.prepare("SELECT * FROM payments WHERE id = ?1").bind(paymentId).first<PaymentRow>();
   if (!p || p.status !== "paid" || !p.charge_id) return { ok: false, error: "NOT_REFUNDABLE" };
+  const [order, user] = await env.DB.batch<{ charge?: number; refund?: number; refunded?: number; balance?: number }>([
+    env.DB.prepare("SELECT charge, refund, refunded FROM orders WHERE id = ?1 AND user_id = ?2").bind(p.order_id ?? 0, p.user_id),
+    env.DB.prepare("SELECT balance FROM users WHERE id = ?1").bind(p.user_id),
+  ]);
+  const o = order.results[0] as { charge: number; refund: number; refunded: number } | undefined;
+  const balance = Math.max(0, (user.results[0] as { balance: number } | undefined)?.balance ?? 0);
+  // The part still spent on its order comes back by refunding that order; the rest has to come from the balance
+  const fromBalance = Math.max(0, p.amount - (o ? Math.max(0, o.charge - o.refund) : 0));
+  if (balance < fromBalance && !force) return { ok: false, error: "BALANCE_ALREADY_SPENT", details: { spent: fromBalance - balance } };
+  const take = Math.min(fromBalance, balance);
   const now = Math.floor(Date.now() / 1000);
+  // One guarded batch: the payment flips to refunded only if the balance and the order haven't changed since the reads
   const [reserve] = await env.DB.batch([
     env.DB.prepare(
-      "UPDATE payments SET status = 'refunded' WHERE id = ?1 AND status = 'paid' AND (SELECT balance FROM users WHERE id = ?2) >= ?3",
-    ).bind(p.id, p.user_id, p.amount),
-    env.DB.prepare("UPDATE users SET balance = balance - ?2 WHERE id = ?1 AND changes() = 1").bind(p.user_id, p.amount),
-    env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, created_at) SELECT ?1, ?2, 'stars_refund', ?3, ?4 WHERE changes() = 1").bind(
+      `UPDATE payments SET status = 'refunded' WHERE id = ?1 AND status = 'paid' AND (SELECT balance FROM users WHERE id = ?2) >= ?3
+         AND (?4 = 0 OR (SELECT refund FROM orders WHERE id = ?4) = ?5)`,
+    ).bind(p.id, p.user_id, take, o ? p.order_id : 0, o?.refund ?? 0),
+    env.DB.prepare("UPDATE users SET balance = balance - ?2 WHERE id = ?1 AND changes() = 1").bind(p.user_id, take),
+    env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, created_at) SELECT ?1, ?2, 'stars_refund', ?3, ?4 WHERE changes() = 1 AND ?2 < 0").bind(
       p.user_id,
-      -p.amount,
+      -take,
       p.id,
       now,
     ),
+    env.DB.prepare(
+      "UPDATE orders SET refund = charge, refunded = 1 WHERE id = ?1 AND refund = ?2 AND (SELECT status FROM payments WHERE id = ?3) = 'refunded'",
+    ).bind(o ? p.order_id : 0, o?.refund ?? 0, p.id),
   ]);
-  if (!reserve.meta.changes) return { ok: false, error: "BALANCE_ALREADY_SPENT" };
+  if (!reserve.meta.changes) return { ok: false, error: "TRY_AGAIN" };
   try {
     await tg(env.BOT_TOKEN, "refundStarPayment", { user_id: p.user_id, telegram_payment_charge_id: p.charge_id });
-    return { ok: true };
   } catch (e) {
     const msg = (e as Error).message ?? "";
     const rejected = /^Telegram refundStarPayment: 400 (.*)$/s.exec(msg);
@@ -216,17 +236,63 @@ export async function refundPayment(env: Env, paymentId: number): Promise<{ ok: 
       console.error("refund uncertain, balance stays reserved", p.id, msg);
       return { ok: false, error: "REFUND_UNCERTAIN" };
     }
-    // Telegram definitely refused: give the balance back (once, guarded by the status change)
+    // Telegram definitely refused: undo (once, guarded by the status change)
     await env.DB.batch([
       env.DB.prepare("UPDATE payments SET status = 'paid' WHERE id = ?1 AND status = 'refunded'").bind(p.id),
-      env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) SELECT ?1, ?2, 'admin', ?3, 'refund failed', ?4 WHERE changes() = 1").bind(
+      env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND changes() = 1").bind(p.user_id, take),
+      env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) SELECT ?1, ?2, 'admin', ?3, 'refund failed', ?4 WHERE changes() = 1 AND ?2 > 0").bind(
         p.user_id,
-        p.amount,
+        take,
         p.id,
         now,
       ),
-      env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND changes() = 1").bind(p.user_id, p.amount),
+      env.DB.prepare(
+        "UPDATE orders SET refund = ?2, refunded = ?3 WHERE id = ?1 AND refund = charge AND (SELECT status FROM payments WHERE id = ?4) = 'paid'",
+      ).bind(o ? p.order_id : 0, o?.refund ?? 0, o?.refunded ?? 0, p.id),
     ]);
-    return { ok: false, error: msg };
+    return { ok: false, error: "TELEGRAM_REFUSED", details: { reason: rejected[1] } };
+  }
+  await notifyRefund(env, p.user_id, (_s, lang) => botText(lang, "starsRefunded", { amount: starsText(p.stars) }));
+  return { ok: true };
+}
+
+/** Admin: refund what is still charged for an order (all of it, minus any earlier refund) to the user's balance. */
+export async function refundOrderToBalance(env: Env, orderId: number): Promise<RefundResult> {
+  const o = await env.DB.prepare("SELECT id, user_id, np_order_id, service_name, charge, refund FROM orders WHERE id = ?1")
+    .bind(orderId)
+    .first<{ id: number; user_id: number; np_order_id: number | null; service_name: string; charge: number; refund: number }>();
+  if (!o) return { ok: false, error: "NOT_FOUND" };
+  const amount = o.charge - o.refund;
+  if (amount <= 0) return { ok: false, error: "ALREADY_REFUNDED" };
+  const now = Math.floor(Date.now() / 1000);
+  // refunded = 1 also stops a later NotPanel cancel/partial from refunding the same order again (applyStatus)
+  const [mark] = await env.DB.batch([
+    env.DB.prepare("UPDATE orders SET refund = charge, refunded = 1 WHERE id = ?1 AND refund = ?2").bind(o.id, o.refund),
+    env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) SELECT ?1, ?2, 'refund', ?3, 'admin', ?4 WHERE changes() = 1").bind(
+      o.user_id,
+      amount,
+      o.id,
+      now,
+    ),
+    env.DB.prepare("UPDATE users SET balance = balance + ?2 WHERE id = ?1 AND changes() = 1").bind(o.user_id, amount),
+  ]);
+  if (!mark.meta.changes) return { ok: false, error: "TRY_AGAIN" };
+  await notifyRefund(env, o.user_id, (s, lang) =>
+    botText(lang, "orderRefunded", { id: String(o.np_order_id ?? o.id), service: o.service_name, refund: amountText(amount, s) }),
+  );
+  return { ok: true };
+}
+
+/** Tells the user about an admin refund (best effort: a failed message never undoes the refund). */
+async function notifyRefund(env: Env, userId: number, text: (s: Settings, lang: Lang) => string): Promise<void> {
+  try {
+    const u = await env.DB.prepare("SELECT lang, language_code, can_message FROM users WHERE id = ?1")
+      .bind(userId)
+      .first<{ lang: string | null; language_code: string | null; can_message: number }>();
+    if (!u?.can_message) return;
+    const s = await getSettings(env);
+    await tg(env.BOT_TOKEN, "sendMessage", { chat_id: userId, text: text(s, pickLang(u.lang ?? u.language_code)), parse_mode: "HTML" });
+  } catch (e) {
+    console.warn("refund notice failed", userId, (e as Error).message);
   }
 }

@@ -133,6 +133,20 @@ export function confirmDialog(message: string, ok: string, cancel: string, destr
   );
 }
 
+/** Telegram popup with up to 3 buttons (message up to 256 characters); resolves with the chosen id, or null if closed. */
+export function choiceDialog(message: string, buttons: { id: string; text: string; destructive?: boolean }[]): Promise<string | null> {
+  if (!webApp || !atLeast("6.2")) {
+    for (const b of buttons) if (b.id !== "cancel" && window.confirm(`${message}\n\n${b.text}?`)) return Promise.resolve(b.id);
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) =>
+    webApp.showPopup(
+      { message: message.slice(0, 256), buttons: buttons.map((b) => ({ id: b.id, type: b.destructive ? "destructive" : "default", text: b.text })) },
+      (id) => resolve(id && id !== "cancel" ? id : null),
+    ),
+  );
+}
+
 export function alertDialog(message: string): Promise<void> {
   if (!webApp || !atLeast("6.2")) {
     window.alert(message);

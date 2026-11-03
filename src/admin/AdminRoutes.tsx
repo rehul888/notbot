@@ -11,7 +11,7 @@ import { dateTime, num } from "../format";
 import { Icon, type IconName } from "../icons";
 import { refreshMe } from "../me";
 import { back as goBack, enc, navigate } from "../router";
-import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
+import { choiceDialog, confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
 import { AdminBranding } from "./Branding";
 import { balStars, money, starsText, usdStars } from "./fmt";
 import { LEGEND, MoneyCells, MoneyTotalsBar, orderCells, ProfitReport, rateCells, type Report } from "./Money";
@@ -968,6 +968,41 @@ const PAY_FILTERS: [string, string][] = [
   ["refunded", "Refunded"],
 ];
 
+/** Why a refund didn't go through, in plain words */
+const REFUND_ERRORS: Record<string, string> = {
+  NOT_REFUNDABLE: "This payment can't be refunded: it is already refunded or wasn't paid with Stars.",
+  NO_STARS_PAYMENT: "This order was paid from the balance, not with its own Stars payment. Refund it to the balance instead.",
+  ALREADY_REFUNDED: "This order is already fully refunded.",
+  TRY_AGAIN: "Something changed while refunding. Refresh and try again.",
+  REFUND_UNCERTAIN: "Telegram didn't answer. The refund may still go through, so check the payment in a few minutes before trying again.",
+  TELEGRAM_REFUSED: "Telegram refused the refund: {reason}",
+};
+
+/** Runs a refund; if the user already spent part of the payment, asks whether to refund all the Stars anyway. */
+async function runRefund(url: string, body: Record<string, unknown>): Promise<boolean> {
+  try {
+    await api(url, { method: "POST", body });
+  } catch (e) {
+    if (e instanceof ApiError && e.code === "BALANCE_ALREADY_SPENT" && !body.force) {
+      const spent = Number(e.details?.spent ?? 0);
+      const again = await confirmDialog(
+        `They already spent ${money(spent)} (${usdStars(spent)}) of this payment. Refund all the Stars anyway? Their balance only goes down to 0.`,
+        "Refund anyway",
+        "Cancel",
+        true,
+      );
+      return again ? runRefund(url, { ...body, force: true }) : false;
+    }
+    const known = e instanceof ApiError ? REFUND_ERRORS[e.code] : undefined;
+    toast(known ? known.replace("{reason}", String((e as ApiError).details?.reason ?? "")) : errText(e), "error");
+    haptic.error();
+    return false;
+  }
+  toast("Refunded", "ok");
+  haptic.success();
+  return true;
+}
+
 function AdminPayments() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
@@ -977,16 +1012,11 @@ function AdminPayments() {
   const [refunding, setRefunding] = useState<number | null>(null);
   const refund = async (p: PaymentRow) => {
     haptic.warn();
-    const ok = await confirmDialog(`Refund ${starsText(p.stars)} to ${p.first_name ?? p.user_id}? ${money(p.amount)} (${usdStars(p.amount)}) is taken from their balance.`, "Refund", "Cancel", true);
+    const what = p.order_id ? `Order #${p.order_id} is refunded with it; the rest is taken from their balance.` : `${money(p.amount)} (${usdStars(p.amount)}) is taken from their balance.`;
+    const ok = await confirmDialog(`Refund ${starsText(p.stars)} to ${p.first_name ?? p.user_id}? ${what}`, "Refund", "Cancel", true);
     if (!ok) return;
     setRefunding(p.id);
-    try {
-      await api(`/admin/payments/${p.id}/refund`, { method: "POST" });
-      toast("Refunded", "ok");
-      pg.reload();
-    } catch (e) {
-      fail(e);
-    }
+    if (await runRefund(`/admin/payments/${p.id}/refund`, {})) pg.reload();
     setRefunding(null);
   };
   return (
@@ -1404,7 +1434,19 @@ function UserSheet({ u, onClose, onSaved, onChanged }: { u: UserRow; onClose: ()
 
 // ---------------- Orders ----------------
 
-type AdminOrder = OrderView & { npOrderId: number | null; cost: number | null; rate: number | null; userId: number; userName: string; username: string | null; error: string | null };
+type AdminOrder = OrderView & {
+  npOrderId: number | null;
+  cost: number | null;
+  rate: number | null;
+  userId: number;
+  userName: string;
+  username: string | null;
+  error: string | null;
+  /** Stars of the payment that bought this order, if it is still refundable to Telegram */
+  paidStars: number | null;
+  /** micro-USD still charged (not refunded yet) */
+  refundable: number;
+};
 
 const ORDER_FILTERS: [string, string][] = [
   ["", "All"],
@@ -1420,6 +1462,25 @@ function AdminOrders() {
   const [q, setQ] = useState("");
   const pg = usePaged<AdminOrder, { starsPerUsd: number; totals?: MoneyTotals }>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
   const list = pg.items;
+  const [refunding, setRefunding] = useState<number | null>(null);
+  const refund = async (o: AdminOrder) => {
+    haptic.warn();
+    const open = ["submitting", "pending", "processing", "in_progress"].includes(o.status) ? " It keeps running on NotPanel." : "";
+    const to = await choiceDialog(
+      o.paidStars
+        ? `Refund order #${o.id} for ${o.userName.slice(0, 24)}?${open} Stars: all ${starsText(o.paidStars)} of its payment go back to Telegram. Balance: ${money(o.refundable)} (${usdStars(o.refundable)}) is added to their balance.`
+        : `Refund order #${o.id} for ${o.userName.slice(0, 24)}?${open} ${money(o.refundable)} (${usdStars(o.refundable)}) is added to their balance. It was paid from the balance, so no Stars can go back.`,
+      [
+        ...(o.paidStars ? [{ id: "stars", text: "Stars to Telegram", destructive: true }] : []),
+        { id: "balance", text: "To balance", destructive: !o.paidStars },
+        { id: "cancel", text: "Cancel" },
+      ],
+    );
+    if (!to) return;
+    setRefunding(o.id);
+    if (await runRefund(`/admin/orders/${o.id}/refund`, { to })) pg.reload();
+    setRefunding(null);
+  };
   return (
     <Page back="/admin" title="All orders">
       <div class="chips scroll" role="group" aria-label="Filter by status">
@@ -1469,6 +1530,13 @@ function AdminOrders() {
                   control={<StatusPill status={o.status} />}
                 />
                 <MoneyCells cells={orderCells(o)} />
+                {o.refundable > 0 && o.status !== "submitting" ? (
+                  <div class="chips">
+                    <Chip label={`Refund order #${o.id}`} disabled={refunding === o.id} onClick={() => refund(o)}>
+                      Refund
+                    </Chip>
+                  </div>
+                ) : null}
               </div>
             ))}
           </List>

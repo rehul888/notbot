@@ -12,7 +12,7 @@ import { connectAll, registerNotPanelWebhook, syncBotTexts } from "../connect";
 import { addedOwners, envOwners, isOwner } from "../env";
 import { npCall, npKey, usdToMicro, verifyNotPanelKey } from "../notpanel";
 import { orderView, type OrderRow } from "../orders";
-import { refundPayment } from "../payments";
+import { refundOrderToBalance, refundPayment } from "../payments";
 import { sellRate } from "../pricing";
 import { bumpCatalogStmt, DEFAULTS, getSettings, setSettings, setSettingsStmts, type Settings } from "../settings";
 import { startSync, syncProgress } from "../sync";
@@ -471,8 +471,23 @@ admin.get("/payments", async (c) => {
 });
 
 admin.post("/payments/:id/refund", async (c) => {
-  const r = await refundPayment(c.env, Number(c.req.param("id")));
-  return r.ok ? c.json(r) : err(c, 400, r.error ?? "REFUND_FAILED");
+  const b = (await readBody<{ force?: boolean }>(c)) ?? {};
+  const r = await refundPayment(c.env, Number(c.req.param("id")), b.force === true);
+  return r.ok ? c.json(r) : err(c, 400, r.error ?? "REFUND_FAILED", r.details);
+});
+
+/** Refunds an order: "stars" sends back the Stars payment that bought it, "balance" credits the user's balance. */
+admin.post("/orders/:id/refund", async (c) => {
+  const b = (await readBody<{ to?: string; force?: boolean }>(c)) ?? {};
+  const id = Number(c.req.param("id"));
+  let r;
+  if (b.to === "stars") {
+    const p = await c.env.DB.prepare("SELECT id FROM payments WHERE order_id = ?1 AND status = 'paid' ORDER BY id DESC LIMIT 1").bind(id).first<{ id: number }>();
+    if (!p) return err(c, 400, "NO_STARS_PAYMENT");
+    r = await refundPayment(c.env, p.id, b.force === true);
+  } else if (b.to === "balance") r = await refundOrderToBalance(c.env, id);
+  else return err(c, 400, "BAD_REQUEST");
+  return r.ok ? c.json(r) : err(c, 400, r.error ?? "REFUND_FAILED", r.details);
 });
 
 // ---- Referrals ----
@@ -660,21 +675,23 @@ admin.get("/orders", async (c) => {
     where.push(`o.id < ?${vals.length}`);
   }
   const listStmt = c.env.DB.prepare(
-    `SELECT o.*, u.first_name, u.username FROM orders o LEFT JOIN users u ON u.id = o.user_id
+    `SELECT o.*, u.first_name, u.username,
+       (SELECT p.stars FROM payments p WHERE p.order_id = o.id AND p.status = 'paid' ORDER BY p.id DESC LIMIT 1) AS paid_stars
+     FROM orders o LEFT JOIN users u ON u.id = o.user_id
      ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT ${PAGE + 1}`,
   ).bind(...vals);
   const totalsStmt = before
     ? null
     : c.env.DB.prepare(`SELECT ${MONEY_SUMS_SQL} FROM orders o WHERE ${[...filterWhere, "o.status != 'failed'"].join(" AND ")}`).bind(...filterVals);
   const [list, totals] = await c.env.DB.batch(totalsStmt ? [listStmt, totalsStmt] : [listStmt]);
-  const pg = page(list.results as (OrderRow & { rate: number | null; first_name: string; username: string | null })[], (o) => o.id);
+  const pg = page(list.results as (OrderRow & { rate: number | null; first_name: string; username: string | null; paid_stars: number | null })[], (o) => o.id);
   return c.json({
     next: pg.next,
     // Sale, cost, profit and margin of every non-failed order in this filter (shared/profit.ts); only on the first page
     totals: totals ? totalsFrom(totals.results[0] as MoneySums) : undefined,
     // charge/refund/cost are micro-USD; rate is Stars per $1 when the order was placed (null on very old rows)
     starsPerUsd: c.get("settings").stars_per_usd,
-    items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, rate: o.rate, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error })),
+    items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, rate: o.rate, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error, paidStars: o.paid_stars, refundable: Math.max(0, o.charge - o.refund) })),
   });
 });
 
