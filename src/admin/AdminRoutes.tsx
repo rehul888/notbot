@@ -5,13 +5,13 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { platformName } from "../../shared/platforms";
 import type { OrderView } from "../../shared/types";
 import { api, ApiError, clearApiCache } from "../api";
-import { MAX_STARS_PER_PAYMENT, shownStars } from "../../shared/stars";
+import { balanceStars, MAX_STARS_PER_PAYMENT, shownStars, starsCredit } from "../../shared/stars";
 import type { MoneyTotals } from "../../shared/profit";
-import { dateTime, num } from "../format";
+import { dateTime, num, starsRate } from "../format";
 import { Icon, type IconName } from "../icons";
 import { refreshMe } from "../me";
 import { back as goBack, enc, navigate } from "../router";
-import { choiceDialog, confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
+import { confirmDialog, haptic, openLink, type ButtonSpec } from "../tg";
 import { AdminBranding } from "./Branding";
 import { balStars, money, starsText, usdStars } from "./fmt";
 import { LEGEND, MoneyCells, MoneyTotalsBar, orderCells, ProfitReport, rateCells, type Report } from "./Money";
@@ -52,10 +52,11 @@ export function AdminRoutes({ parts, query }: { parts: string[]; query: URLSearc
   if (a === "prices" && b) return <AdminPlatform platform={b} />;
   if (a === "prices") return <AdminPrices q={query.get("q") ?? ""} />;
   if (a === "changes") return <AdminChanges />;
-  if (a === "payments") return <AdminPayments />;
+  if (a === "payments") return <AdminPayments user={query.get("user")} q0={query.get("q") ?? ""} />;
+  if (a === "users" && b) return <AdminUser id={b} />;
   if (a === "users") return <AdminUsers />;
   if (a === "referrals") return <AdminReferrals />;
-  if (a === "orders") return <AdminOrders />;
+  if (a === "orders") return <AdminOrders user={query.get("user")} q0={query.get("q") ?? ""} />;
   if (a === "branding") return <AdminBranding />;
   if (a === "settings") return <AdminSettings />;
   return <AdminHome />;
@@ -1003,12 +1004,8 @@ async function runRefund(url: string, body: Record<string, unknown>): Promise<bo
   return true;
 }
 
-function AdminPayments() {
-  const [status, setStatus] = useState("");
-  const [q, setQ] = useState("");
-  const pg = usePaged<PaymentRow, { totals: { stars: number; amount: number }; starsPerUsd: number }>(`/admin/payments?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
-  const list = pg.items;
-  const totals = pg.extra?.totals;
+/** Refund button logic for Stars payments, shared by the Payments list and the user profile */
+function usePaymentRefund(onDone: () => void) {
   const [refunding, setRefunding] = useState<number | null>(null);
   const refund = async (p: PaymentRow) => {
     haptic.warn();
@@ -1016,11 +1013,69 @@ function AdminPayments() {
     const ok = await confirmDialog(`Refund ${starsText(p.stars)} to ${p.first_name ?? p.user_id}? ${what}`, "Refund", "Cancel", true);
     if (!ok) return;
     setRefunding(p.id);
-    if (await runRefund(`/admin/payments/${p.id}/refund`, {})) pg.reload();
+    if (await runRefund(`/admin/payments/${p.id}/refund`, {})) onDone();
     setRefunding(null);
   };
+  return { refund, refunding };
+}
+
+/** One Stars payment; tapping it opens the user (unless we're already on their profile) */
+function PaymentItem({ p, refunding, onRefund, openUser = true }: { p: PaymentRow; refunding: boolean; onRefund: () => void; openUser?: boolean }) {
   return (
-    <Page back="/admin" title="Payments" sub="Telegram Stars">
+    <Row
+      icon="star"
+      plate="var(--cream)"
+      title={openUser ? `${p.first_name ?? p.user_id}${p.username ? ` @${p.username}` : ""}` : `Payment #${p.id}`}
+      meta={
+        <>
+          <Num>{starsText(p.stars)}</Num> · <Num>{money(p.amount)}</Num>
+          {p.order_id ? (
+            <>
+              {" "}
+              · order <Num>#{p.order_id}</Num>
+            </>
+          ) : null}
+          {p.paid_at ? ` · ${dateTime(p.paid_at)}` : ""}
+        </>
+      }
+      onClick={openUser ? () => navigate(`/admin/users/${p.user_id}`) : undefined}
+      chevron={false}
+      control={
+        p.status === "paid" ? (
+          <Chip label={`Refund payment #${p.id}`} disabled={refunding} onClick={onRefund}>
+            Refund
+          </Chip>
+        ) : (
+          <span class="status st-cancel">Refunded</span>
+        )
+      }
+    />
+  );
+}
+
+/** "Only this user" chip with a way back to everyone */
+function UserFilterChip({ user, name, base }: { user: string; name?: string; base: string }) {
+  return (
+    <div class="chips">
+      <Chip selected label="Show everyone" onClick={() => navigate(base, { replace: true })}>
+        {name ? `${name} · ` : ""}ID {user} ✕
+      </Chip>
+    </div>
+  );
+}
+
+function AdminPayments({ user, q0 }: { user: string | null; q0: string }) {
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState(q0);
+  const pg = usePaged<PaymentRow, { totals: { stars: number; amount: number }; starsPerUsd: number }>(
+    `/admin/payments?status=${enc(status)}&q=${enc(q.trim())}${user ? `&user=${enc(user)}` : ""}`,
+    q ? 300 : 0,
+  );
+  const list = pg.items;
+  const totals = pg.extra?.totals;
+  const { refund, refunding } = usePaymentRefund(pg.reload);
+  return (
+    <Page back={user ? `/admin/users/${user}` : "/admin"} title="Payments" sub="Telegram Stars">
       {totals ? (
         <div class="grid2 stagger">
           <Stat label="Stars received">
@@ -1048,44 +1103,19 @@ function AdminPayments() {
           </Chip>
         ))}
       </div>
+      {user ? <UserFilterChip user={user} name={list?.[0]?.first_name ?? undefined} base="/admin/payments" /> : null}
       <SearchField value={q} onInput={setQ} placeholder="Payment ID, user ID, @username or charge ID" />
       {pg.err && !list ? (
         <ErrorState error={pg.err} onRetry={pg.reload} />
       ) : !list ? (
         <SkeletonList rows={5} />
       ) : (
-        <Section footer={list.length ? "A refund is possible while the user still has that much unspent balance." : undefined}>
+        <Section footer={list.length ? "Tap a payment to open the user. A Stars refund sends the whole payment back to their Telegram account." : undefined}>
           {list.length ? (
             <>
               <List stagger>
                 {list.map((p) => (
-                  <Row
-                    key={p.id}
-                    icon="star"
-                    plate="var(--cream)"
-                    title={`${p.first_name ?? p.user_id}${p.username ? ` @${p.username}` : ""}`}
-                    meta={
-                      <>
-                        <Num>{starsText(p.stars)}</Num> · <Num>{money(p.amount)}</Num>
-                        {p.order_id ? (
-                          <>
-                            {" "}
-                            · order <Num>#{p.order_id}</Num>
-                          </>
-                        ) : null}
-                        {p.paid_at ? ` · ${dateTime(p.paid_at)}` : ""}
-                      </>
-                    }
-                    control={
-                      p.status === "paid" ? (
-                        <Chip label={`Refund ${p.first_name ?? p.user_id}`} disabled={refunding === p.id} onClick={() => refund(p)}>
-                          Refund
-                        </Chip>
-                      ) : (
-                        <span class="status st-cancel">Refunded</span>
-                      )
-                    }
-                  />
+                  <PaymentItem key={p.id} p={p} refunding={refunding === p.id} onRefund={() => refund(p)} />
                 ))}
               </List>
               <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
@@ -1312,15 +1342,14 @@ interface UserRow {
   last_seen_at: number;
 }
 
-const fullName = (u: UserRow) => `${u.first_name} ${u.last_name}`.trim() || `User ${u.id}`;
+const fullName = (u: { id: number; first_name: string; last_name: string }) => `${u.first_name} ${u.last_name}`.trim() || `User ${u.id}`;
 
 function AdminUsers() {
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState<UserRow | null>(null);
   const pg = usePaged<UserRow>(`/admin/users?q=${enc(q.trim())}`, q ? 300 : 0);
   const list = pg.items;
   return (
-    <Page back="/admin" title="Users" overlay={sel ? <UserSheet u={sel} onClose={() => setSel(null)} onSaved={() => (setSel(null), pg.reload())} onChanged={pg.reload} /> : null}>
+    <Page back="/admin" title="Users">
       <SearchField value={q} onInput={setQ} placeholder="Name, @username or Telegram ID" />
       {pg.err && !list ? (
         <ErrorState error={pg.err} onRetry={pg.reload} />
@@ -1335,7 +1364,7 @@ function AdminUsers() {
                 title={fullName(u)}
                 meta={`${u.username ? `@${u.username} · ` : ""}ID ${u.id} · ${plural(u.orders, "order")} · paid ${balStars(u.paid)}${u.banned ? " · blocked" : ""}`}
                 value={<Num>{balStars(u.balance)}</Num>}
-                onClick={() => setSel(u)}
+                onClick={() => navigate(`/admin/users/${u.id}`)}
               />
             ))}
           </List>
@@ -1348,86 +1377,386 @@ function AdminUsers() {
   );
 }
 
-function UserSheet({ u, onClose, onSaved, onChanged }: { u: UserRow; onClose: () => void; onSaved: () => void; onChanged: () => void }) {
+interface UserProfile {
+  user: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    username: string | null;
+    language_code: string | null;
+    lang: string | null;
+    balance: number;
+    banned: number;
+    can_message: number;
+    channel_ok: number;
+    created_at: number;
+    last_seen_at: number;
+    home_at: number | null;
+  };
+  stats: { orders: number; openOrders: number; spent: number; refunded: number; paid: number; paidStars: number; invited: number; joined: number; earned: number };
+  invitedBy: { id: number; status: string; first_name: string | null; last_name: string | null; username: string | null } | null;
+  orders: AdminOrder[];
+  payments: PaymentRow[];
+}
+
+interface LedgerRow {
+  id: number;
+  delta: number;
+  kind: string;
+  ref: number | null;
+  note: string | null;
+  created_at: number;
+}
+
+/** A balance change in plain words, and where tapping it goes */
+function ledgerLine(r: LedgerRow): { title: string; href?: string } {
+  const ref = r.ref ? ` #${r.ref}` : "";
+  switch (r.kind) {
+    case "topup":
+      return { title: `Top-up with Stars · payment${ref}`, href: r.ref ? `/admin/payments?q=${r.ref}` : undefined };
+    case "order":
+      return { title: `Order${ref}`, href: r.ref ? `/admin/orders?q=${r.ref}` : undefined };
+    case "refund":
+      return { title: `${r.note === "admin" ? "Refund by admin" : "Refund"} · order${ref}`, href: r.ref ? `/admin/orders?q=${r.ref}` : undefined };
+    case "stars_refund":
+      return { title: `Stars sent back to Telegram · payment${ref}`, href: r.ref ? `/admin/payments?q=${r.ref}` : undefined };
+    case "referral":
+      return { title: "Referral reward", href: r.ref ? `/admin/users/${r.ref}` : undefined };
+    case "admin":
+      return { title: r.note && r.note !== "admin" ? `By admin: ${r.note}` : "Changed by admin" };
+    default:
+      return { title: r.note ? `${cap(r.kind)}: ${r.note}` : cap(r.kind) };
+  }
+}
+
+const LANG_NAMES = new Intl.DisplayNames(["en"], { type: "language" });
+const langName = (code: string | null) => {
+  if (!code) return "Unknown";
+  try {
+    return LANG_NAMES.of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
+const CHANNEL: Record<number, string> = { 0: "Not confirmed", 1: "Member", 2: "Let in (Telegram didn't answer)" };
+
+function AdminUser({ id }: { id: string }) {
+  const res = useAsync(() => api<UserProfile>(`/admin/users/${enc(id)}`), [id]);
+  const ledger = usePaged<LedgerRow>(`/admin/users/${enc(id)}/ledger`);
+  const [sheet, setSheet] = useState<"balance" | "message" | null>(null);
+  const reload = () => {
+    res.reload();
+    ledger.reload();
+  };
+  const orderRefund = useOrderRefund(reload);
+  const { refund: refundPayment, refunding } = usePaymentRefund(reload);
+  const p = res.data;
+  const name = p ? fullName(p.user) : "User";
+  const block = async (v: boolean) => {
+    if (!p) return;
+    if (v) {
+      haptic.warn();
+      if (!(await confirmDialog(`Block ${name}? They won't be able to open the app.`, "Block", "Cancel", true))) return;
+    }
+    try {
+      await api(`/admin/users/${p.user.id}/ban`, { body: { banned: v } });
+      res.reload();
+    } catch (e) {
+      fail(e);
+    }
+  };
+  return (
+    <Page
+      back="/admin/users"
+      title={name}
+      sub={p ? `${p.user.username ? `@${p.user.username} · ` : ""}ID ${p.user.id}` : undefined}
+      overlay={
+        p ? (
+          <>
+            {sheet === "balance" ? <BalanceSheet u={p.user} onClose={() => setSheet(null)} onSaved={() => (setSheet(null), reload())} /> : null}
+            {sheet === "message" ? <MessageSheet u={p.user} onClose={() => setSheet(null)} onSent={() => (setSheet(null), res.reload())} /> : null}
+            {orderRefund.sheet}
+          </>
+        ) : null
+      }
+    >
+      <Loader
+        res={res}
+        skeleton={
+          <>
+            <Skeleton h={152} radius={16} />
+            <SkeletonList rows={5} lead="none" />
+          </>
+        }
+      >
+        {({ user: u, stats: s, invitedBy, orders, payments }) => (
+          <>
+            {u.banned ? <Notice tone="warn">Blocked: this user can't open the app.</Notice> : null}
+            <div class="grid2 stagger">
+              <Stat label="Balance" ok sub={<Num>{money(u.balance)}</Num>}>
+                <Num>{balStars(u.balance)}</Num>
+              </Stat>
+              <Stat label="Paid with Stars" sub={<Num>{money(s.paid)}</Num>}>
+                <Num>{starsText(s.paidStars)}</Num>
+              </Stat>
+              <Stat label="Spent on orders" sub={s.refunded ? <>refunded <Num>{money(s.refunded)}</Num></> : undefined}>
+                <Num>{money(s.spent)}</Num>
+              </Stat>
+              <Stat label="Orders" sub={s.openOrders ? `${num(s.openOrders)} running` : undefined}>
+                <Num>{num(s.orders)}</Num>
+              </Stat>
+            </div>
+
+            <Section header="Actions">
+              <List>
+                <Row icon="wallet" plate="var(--lime)" title="Add or remove balance" meta="For mistakes, compensation or bonuses; the reason is saved" onClick={() => setSheet("balance")} />
+                <Row
+                  icon="chat"
+                  plate="var(--sky)"
+                  title="Send a message"
+                  meta={u.can_message ? "From the bot, in their Telegram chat" : "They may have blocked the bot or never started it"}
+                  onClick={() => setSheet("message")}
+                />
+                <Row toggle={{ on: !!u.banned, onChange: block }} title="Block this user" meta="Blocked users can't open the app" />
+              </List>
+            </Section>
+
+            <Section header="Details">
+              <dl class="card">
+                <Kv label="Telegram ID">{u.id}</Kv>
+                <Kv label="Joined">{dateTime(u.created_at)}</Kv>
+                <Kv label="Last seen">{dateTime(u.last_seen_at)}</Kv>
+                <Kv label="Language">{langName(u.lang ?? u.language_code)}</Kv>
+                <Kv label="Update channel">{CHANNEL[u.channel_ok] ?? "Unknown"}</Kv>
+                <Kv label="Bot can message">{u.can_message ? "Yes" : "No"}</Kv>
+                <Kv label="Invited by">
+                  {invitedBy ? (
+                    <a
+                      href={`#/admin/users/${invitedBy.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(`/admin/users/${invitedBy.id}`);
+                      }}
+                    >
+                      {`${invitedBy.first_name ?? ""} ${invitedBy.last_name ?? ""}`.trim() || `User ${invitedBy.id}`}
+                    </a>
+                  ) : (
+                    "Nobody"
+                  )}
+                </Kv>
+                <Kv label="Friends invited">
+                  {num(s.invited)} invited · {num(s.joined)} joined · earned <Num>{balStars(s.earned)}</Num>
+                </Kv>
+              </dl>
+            </Section>
+
+            <Section header="Orders" action={s.orders > orders.length ? { label: `All ${num(s.orders)}`, onClick: () => navigate(`/admin/orders?user=${u.id}`) } : undefined}>
+              {orders.length ? (
+                <List>
+                  {orders.map((o) => (
+                    <OrderItem key={o.id} o={o} refunding={orderRefund.busy === o.id} onRefund={() => orderRefund.open(o)} showUser={false} />
+                  ))}
+                </List>
+              ) : (
+                <EmptyState compact art="orders" title="No orders yet" />
+              )}
+            </Section>
+
+            <Section header="Stars payments" action={payments.length >= 5 ? { label: "All", onClick: () => navigate(`/admin/payments?user=${u.id}`) } : undefined}>
+              {payments.length ? (
+                <List>
+                  {payments.map((pay) => (
+                    <PaymentItem key={pay.id} p={pay} openUser={false} refunding={refunding === pay.id} onRefund={() => refundPayment(pay)} />
+                  ))}
+                </List>
+              ) : (
+                <EmptyState compact art="wallet" title="No Stars payments yet" />
+              )}
+            </Section>
+          </>
+        )}
+      </Loader>
+
+      {p ? (
+        <Section header="Balance history" footer="Every change to their balance, newest first.">
+          {ledger.err && !ledger.items ? (
+            <ErrorState error={ledger.err} onRetry={ledger.reload} />
+          ) : !ledger.items ? (
+            <SkeletonList rows={4} lead="none" />
+          ) : ledger.items.length ? (
+            <>
+              <List>
+                {ledger.items.map((r) => {
+                  const l = ledgerLine(r);
+                  return (
+                    <Row
+                      key={r.id}
+                      title={l.title}
+                      meta={dateTime(r.created_at)}
+                      value={
+                        <span class={r.delta > 0 ? "ok-text" : undefined}>
+                          {r.delta > 0 ? "+" : ""}
+                          <Num>{money(r.delta)}</Num>
+                        </span>
+                      }
+                      chevron={!!l.href}
+                      onClick={l.href ? () => navigate(l.href!) : undefined}
+                    />
+                  );
+                })}
+              </List>
+              <ShowMore next={ledger.next} busy={ledger.busy} onClick={ledger.more} />
+            </>
+          ) : (
+            <EmptyState compact art="wallet" title="No balance changes yet" />
+          )}
+        </Section>
+      ) : null}
+    </Page>
+  );
+}
+
+const REASONS = ["Wrong refund", "Compensation", "Bonus", "Correction"];
+
+function BalanceSheet({ u, onClose, onSaved }: { u: UserProfile["user"]; onClose: () => void; onSaved: () => void }) {
   const name = fullName(u);
+  const [mode, setMode] = useState<"add" | "remove">("add");
   const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
   const [amountErr, setAmountErr] = useState<string | null>(null);
+  const [reasonErr, setReasonErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [blocked, setBlocked] = useState(!!u.banned);
-  const adjust = async (sign: 1 | -1) => {
-    const v = Number(amount);
+  const have = balanceStars(u.balance, starsRate());
+  const v = Number(amount);
+  const save = async () => {
     if (!Number.isInteger(v) || !(v > 0)) {
       haptic.error();
-      setAmountErr("Enter a whole number of Stars above 0");
-      return;
+      return setAmountErr("Enter a whole number of Stars above 0");
+    }
+    if (mode === "remove" && v > have) {
+      haptic.error();
+      return setAmountErr(`They only have ${starsText(have)}`);
+    }
+    if (!reason.trim()) {
+      haptic.error();
+      return setReasonErr("Write why, so you can see it later in their balance history");
     }
     setBusy(true);
     try {
-      await api(`/admin/users/${u.id}/balance`, { body: { amount: sign * v, note: "admin" } });
-      const stars = starsText(v);
-      toast(sign > 0 ? `Added ${stars} to ${name}` : `Removed ${stars} from ${name}`, "ok");
+      await api(`/admin/users/${u.id}/balance`, { body: { amount: mode === "add" ? v : -v, note: reason.trim() } });
+      toast(mode === "add" ? `Added ${starsText(v)} to ${name}` : `Removed ${starsText(v)} from ${name}`, "ok");
+      haptic.success();
       onSaved();
     } catch (e) {
       fail(e);
       setBusy(false);
     }
   };
-  const block = async (v: boolean) => {
-    if (v) {
-      haptic.warn();
-      if (!(await confirmDialog(`Block ${name}? They won't be able to open the app.`, "Block", "Cancel", true))) return;
-    }
-    setBlocked(v);
-    try {
-      await api(`/admin/users/${u.id}/ban`, { body: { banned: v } });
-      onChanged();
-    } catch (e) {
-      setBlocked(!v);
-      fail(e);
-    }
-  };
   return (
-    <Sheet title={name} sub={`${u.username ? `@${u.username} · ` : ""}ID ${u.id}`} onClose={onClose}>
-      <dl class="card">
-        <Kv label="Balance">
-          <b>
-            <Num>{balStars(u.balance)}</Num>
-          </b>
-          {" · "}
-          <Num>{money(u.balance)}</Num>
-        </Kv>
-        <Kv label="Orders">{num(u.orders)}</Kv>
-        <Kv label="Paid with Stars">
-          <Num>{money(u.paid)}</Num>
-        </Kv>
-        <Kv label="Last seen">{dateTime(u.last_seen_at)}</Kv>
-      </dl>
+    <Sheet
+      title="Change balance"
+      sub={`${name} has ${starsText(have)} · ${money(u.balance)}`}
+      onClose={onClose}
+      footer={
+        <button type="button" class={`btn${mode === "remove" ? " danger" : ""}`} disabled={busy} onClick={save}>
+          {busy ? "Saving…" : mode === "add" ? `Add${v > 0 ? ` ${starsText(v)}` : ""}` : `Remove${v > 0 ? ` ${starsText(v)}` : ""}`}
+        </button>
+      }
+    >
+      <Seg
+        label="Add or remove"
+        value={mode}
+        options={[
+          ["add", "Add"],
+          ["remove", "Remove"],
+        ]}
+        onChange={(m) => {
+          setMode(m);
+          setAmountErr(null);
+        }}
+      />
       <Field
-        id="user-adjust"
-        label="Adjust balance (Stars)"
+        id="balance-amount"
+        label="Amount (Stars)"
         lead="⭐"
         inputMode="numeric"
-        enterKeyHint="done"
+        enterKeyHint="next"
         dir="ltr"
         placeholder="0"
         value={amount}
         error={amountErr}
-        onInput={(v) => {
-          setAmount(v.replace(/\D/g, ""));
+        help={v > 0 ? `≈ ${money(starsCredit(v, starsRate()))}` : mode === "remove" ? `Up to ${starsText(have)}` : undefined}
+        onInput={(x) => {
+          setAmount(x.replace(/\D/g, "").slice(0, 7));
           setAmountErr(null);
         }}
       />
-      <div class="grid2">
-        <button type="button" class="btn sm danger" disabled={busy} onClick={() => adjust(-1)}>
-          Remove
-        </button>
-        <button type="button" class="btn sm" disabled={busy} onClick={() => adjust(1)}>
-          Add
-        </button>
+      {mode === "remove" && have > 0 ? (
+        <div class="chips">
+          <Chip label="Remove all" onClick={() => (setAmount(String(have)), setAmountErr(null))}>
+            All {starsText(have)}
+          </Chip>
+        </div>
+      ) : null}
+      <Field
+        id="balance-reason"
+        label="Reason"
+        placeholder="e.g. refunded order #123 by mistake"
+        value={reason}
+        maxLength={200}
+        error={reasonErr}
+        onInput={(x) => {
+          setReason(x);
+          setReasonErr(null);
+        }}
+      />
+      <div class="chips">
+        {REASONS.map((r) => (
+          <Chip key={r} selected={reason === r} onClick={() => (setReason(r), setReasonErr(null))}>
+            {r}
+          </Chip>
+        ))}
       </div>
-      <List>
-        <Row toggle={{ on: blocked, onChange: block }} title="Block this user" meta="Blocked users can't open the app" />
-      </List>
+      <p class="note">The user isn't messaged about this. Use “Send a message” to tell them.</p>
+    </Sheet>
+  );
+}
+
+const MESSAGE_ERRORS: Record<string, string> = {
+  CANT_MESSAGE: "Telegram won't deliver it: they blocked the bot or never started it.",
+  INVALID_TEXT: "Write a message first (up to 4,000 characters).",
+};
+
+function MessageSheet({ u, onClose, onSent }: { u: UserProfile["user"]; onClose: () => void; onSent: () => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (!text.trim()) return haptic.error();
+    setBusy(true);
+    try {
+      await api(`/admin/users/${u.id}/message`, { body: { text } });
+      toast("Message sent", "ok");
+      haptic.success();
+      onSent();
+    } catch (e) {
+      const known = e instanceof ApiError ? MESSAGE_ERRORS[e.code] : undefined;
+      toast(known ?? errText(e), "error");
+      haptic.error();
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet
+      title="Send a message"
+      sub={`To ${fullName(u)}, from the bot`}
+      onClose={onClose}
+      footer={
+        <button type="button" class="btn" disabled={busy || !text.trim()} onClick={send}>
+          {busy ? "Sending…" : "Send"}
+        </button>
+      }
+    >
+      <Field id="user-message" label="Message" multiline rows={5} maxLength={4000} placeholder="Hi! About your order…" value={text} onInput={setText} help="Sent as plain text, exactly as written." />
     </Sheet>
   );
 }
@@ -1457,32 +1786,182 @@ const ORDER_FILTERS: [string, string][] = [
   ["failed", "Failed"],
 ];
 
-function AdminOrders() {
-  const [status, setStatus] = useState("");
-  const [q, setQ] = useState("");
-  const pg = usePaged<AdminOrder, { starsPerUsd: number; totals?: MoneyTotals }>(`/admin/orders?status=${enc(status)}&q=${enc(q.trim())}`, q ? 300 : 0);
-  const list = pg.items;
-  const [refunding, setRefunding] = useState<number | null>(null);
-  const refund = async (o: AdminOrder) => {
-    haptic.warn();
-    const open = ["submitting", "pending", "processing", "in_progress"].includes(o.status) ? " It keeps running on NotPanel." : "";
-    const to = await choiceDialog(
-      o.paidStars
-        ? `Refund order #${o.id} for ${o.userName.slice(0, 24)}?${open} Stars: all ${starsText(o.paidStars)} of its payment go back to Telegram. Balance: ${money(o.refundable)} (${usdStars(o.refundable)}) is added to their balance.`
-        : `Refund order #${o.id} for ${o.userName.slice(0, 24)}?${open} ${money(o.refundable)} (${usdStars(o.refundable)}) is added to their balance. It was paid from the balance, so no Stars can go back.`,
-      [
-        ...(o.paidStars ? [{ id: "stars", text: "Stars to Telegram", destructive: true }] : []),
-        { id: "balance", text: "To balance", destructive: !o.paidStars },
-        { id: "cancel", text: "Cancel" },
-      ],
-    );
-    if (!to) return;
-    setRefunding(o.id);
-    if (await runRefund(`/admin/orders/${o.id}/refund`, { to })) pg.reload();
-    setRefunding(null);
+const isOpen = (o: AdminOrder) => ["submitting", "pending", "processing", "in_progress"].includes(o.status);
+
+/** Refund sheet for orders, shared by All orders and the user profile */
+function useOrderRefund(onDone: () => void) {
+  const [order, setOrder] = useState<AdminOrder | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const sheet = order ? (
+    <OrderRefundSheet
+      o={order}
+      busy={busy === order.id}
+      onClose={() => setOrder(null)}
+      onRefund={async (body) => {
+        setBusy(order.id);
+        const ok = await runRefund(`/admin/orders/${order.id}/refund`, body);
+        setBusy(null);
+        if (ok) {
+          setOrder(null);
+          onDone();
+        }
+      }}
+    />
+  ) : null;
+  return { sheet, busy, open: (o: AdminOrder) => (haptic.warn(), setOrder(o)) };
+}
+
+function OrderRefundSheet({ o, busy, onClose, onRefund }: { o: AdminOrder; busy: boolean; onClose: () => void; onRefund: (body: Record<string, unknown>) => void }) {
+  const [to, setTo] = useState<"balance" | "stars">("balance");
+  const full = shownStars(o.refundable, starsRate());
+  const [amount, setAmount] = useState(String(full));
+  const [amountErr, setAmountErr] = useState<string | null>(null);
+  const v = Number(amount);
+  const submit = () => {
+    if (to === "stars") return onRefund({ to });
+    if (!Number.isInteger(v) || v < 1) {
+      haptic.error();
+      return setAmountErr("Enter a whole number of Stars above 0");
+    }
+    if (v > full) {
+      haptic.error();
+      return setAmountErr(`At most ${starsText(full)} (what is left of this order)`);
+    }
+    onRefund({ to, stars: v });
   };
   return (
-    <Page back="/admin" title="All orders">
+    <Sheet
+      title={`Refund order #${o.id}`}
+      sub={`${o.userName.slice(0, 32)} · ${o.serviceName.slice(0, 40)}`}
+      onClose={onClose}
+      footer={
+        <button type="button" class="btn danger" disabled={busy} onClick={submit}>
+          {busy ? "Refunding…" : to === "stars" ? `Send ${starsText(o.paidStars ?? 0)} back` : `Refund ${v > 0 ? starsText(Math.min(v, full)) : ""} to balance`}
+        </button>
+      }
+    >
+      <dl class="card">
+        <Kv label="Paid">
+          <Num>{money(o.charge)}</Num> · <Num>{usdStars(o.charge)}</Num>
+        </Kv>
+        {o.refund ? (
+          <Kv label="Already refunded">
+            <Num>{money(o.refund)}</Num>
+          </Kv>
+        ) : null}
+        <Kv label="Can still refund">
+          <b>
+            <Num>{money(o.refundable)}</Num> · <Num>{starsText(full)}</Num>
+          </b>
+        </Kv>
+      </dl>
+      {o.paidStars ? (
+        <Seg
+          label="Refund to"
+          value={to}
+          options={[
+            ["balance", "Their balance"],
+            ["stars", "Stars to Telegram"],
+          ]}
+          onChange={setTo}
+        />
+      ) : null}
+      {to === "balance" ? (
+        <>
+          <Field
+            id="refund-amount"
+            label="Amount (Stars)"
+            lead="⭐"
+            inputMode="numeric"
+            enterKeyHint="done"
+            dir="ltr"
+            value={amount}
+            error={amountErr}
+            help={v > 0 && v < full ? `≈ ${money(starsCredit(v, starsRate()))}, part of the order` : "The whole amount that is left"}
+            onInput={(x) => {
+              setAmount(x.replace(/\D/g, "").slice(0, 7));
+              setAmountErr(null);
+            }}
+          />
+          {v !== full ? (
+            <div class="chips">
+              <Chip label="Refund all" onClick={() => (setAmount(String(full)), setAmountErr(null))}>
+                All {starsText(full)}
+              </Chip>
+            </div>
+          ) : null}
+          <p class="note">
+            Added to their balance in the bot and they get a message.
+            {o.paidStars ? " Their Stars payment stays as it is." : " This order was paid from the balance, so Stars can't go back to Telegram."}
+            {isOpen(o) ? " The order keeps running on NotPanel, and NotPanel's own refund won't be added on top later." : ""}
+          </p>
+        </>
+      ) : (
+        <p class="note">
+          All {starsText(o.paidStars ?? 0)} of the payment go back to their Telegram account and the order counts as fully refunded. Any part of that payment left in their balance is taken back.
+          {isOpen(o) ? " The order keeps running on NotPanel." : ""}
+        </p>
+      )}
+    </Sheet>
+  );
+}
+
+/** One order with its money and actions */
+function OrderItem({ o, refunding, onRefund, showUser = true }: { o: AdminOrder; refunding: boolean; onRefund: () => void; showUser?: boolean }) {
+  return (
+    <div class="ord">
+      <Row
+        wrap
+        lead={<PlatformLogo slug={o.platform} size={36} radius={10} />}
+        title={o.serviceName}
+        meta={
+          <>
+            internal <Num>#{o.id}</Num>
+            {o.npOrderId ? (
+              <>
+                {" "}
+                · NotPanel <Num>#{o.npOrderId}</Num>
+              </>
+            ) : null}
+            {showUser ? ` · ${o.userName}${o.username ? ` @${o.username}` : ""}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
+            {o.error ? ` · ${o.error}` : ""}
+          </>
+        }
+        control={<StatusPill status={o.status} />}
+      />
+      <MoneyCells cells={orderCells(o)} />
+      <div class="chips">
+        {o.refundable > 0 && o.status !== "submitting" ? (
+          <Chip label={`Refund order #${o.id}`} disabled={refunding} onClick={onRefund}>
+            Refund
+          </Chip>
+        ) : null}
+        {o.link ? (
+          <Chip label={`Open the link of order #${o.id}`} onClick={() => openLink(o.link)}>
+            Open link
+          </Chip>
+        ) : null}
+        {showUser ? (
+          <Chip label={`Open user ${o.userName}`} onClick={() => navigate(`/admin/users/${o.userId}`)}>
+            {o.userName.slice(0, 20) || `User ${o.userId}`}
+          </Chip>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AdminOrders({ user, q0 }: { user: string | null; q0: string }) {
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState(q0);
+  const pg = usePaged<AdminOrder, { starsPerUsd: number; totals?: MoneyTotals }>(
+    `/admin/orders?status=${enc(status)}&q=${enc(q.trim())}${user ? `&user=${enc(user)}` : ""}`,
+    q ? 300 : 0,
+  );
+  const list = pg.items;
+  const refund = useOrderRefund(pg.reload);
+  return (
+    <Page back={user ? `/admin/users/${user}` : "/admin"} title="All orders" overlay={refund.sheet}>
       <div class="chips scroll" role="group" aria-label="Filter by status">
         {ORDER_FILTERS.map(([v, l]) => (
           <Chip
@@ -1498,7 +1977,8 @@ function AdminOrders() {
           </Chip>
         ))}
       </div>
-      <SearchField value={q} onInput={setQ} placeholder="Order #, NotPanel #, user ID or link" />
+      {user ? <UserFilterChip user={user} name={list?.[0]?.userName} base="/admin/orders" /> : null}
+      <SearchField value={q} onInput={setQ} placeholder="Order #, NotPanel #, name, @username, user ID or link" />
       {pg.err ? (
         <ErrorState error={pg.err} onRetry={pg.reload} />
       ) : !list ? (
@@ -1508,43 +1988,14 @@ function AdminOrders() {
           {pg.extra?.totals ? <MoneyTotalsBar totals={pg.extra.totals} /> : null}
           <List stagger>
             {list.map((o) => (
-              <div class="ord" key={o.id}>
-                <Row
-                  wrap
-                  lead={<PlatformLogo slug={o.platform} size={36} radius={10} />}
-                  title={o.serviceName}
-                  meta={
-                    <>
-                      internal <Num>#{o.id}</Num>
-                      {o.npOrderId ? (
-                        <>
-                          {" "}
-                          · NotPanel <Num>#{o.npOrderId}</Num>
-                        </>
-                      ) : null}{" "}
-                      · {o.userName}
-                      {o.username ? ` @${o.username}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
-                      {o.error ? ` · ${o.error}` : ""}
-                    </>
-                  }
-                  control={<StatusPill status={o.status} />}
-                />
-                <MoneyCells cells={orderCells(o)} />
-                {o.refundable > 0 && o.status !== "submitting" ? (
-                  <div class="chips">
-                    <Chip label={`Refund order #${o.id}`} disabled={refunding === o.id} onClick={() => refund(o)}>
-                      Refund
-                    </Chip>
-                  </div>
-                ) : null}
-              </div>
+              <OrderItem key={o.id} o={o} refunding={refund.busy === o.id} onRefund={() => refund.open(o)} />
             ))}
           </List>
           <p class="note">{LEGEND}</p>
           <ShowMore next={pg.next} busy={pg.busy} onClick={pg.more} />
         </>
       ) : (
-        <EmptyState compact art="orders" title="No orders" body={q.trim() || status ? "Try another filter or search." : undefined} />
+        <EmptyState compact art="orders" title="No orders" body={q.trim() || status || user ? "Try another filter or search." : undefined} />
       )}
     </Page>
   );

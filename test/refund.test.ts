@@ -113,4 +113,26 @@ describe("admin refunds", () => {
     expect(vi.mocked(tg).mock.calls.at(-1)?.[1]).toBe("sendMessage");
     expect(row(db, "SELECT status FROM payments").status).toBe("paid");
   });
+
+  it("refunds part of an order to the balance, then the rest, and never more than is left", async () => {
+    const { env, db } = d1();
+    seed(db, { balance: 0, charge: 24000, amount: 25975 });
+    expect((await refundOrderToBalance(env, 1, 10000)).ok).toBe(true);
+    expect(row(db, "SELECT refund, refunded FROM orders")).toEqual({ refund: 10000, refunded: 1 });
+    expect(row(db, "SELECT balance FROM users").balance).toBe(10000);
+    expect((await refundOrderToBalance(env, 1, 50000)).ok).toBe(true);
+    expect(row(db, "SELECT refund FROM orders").refund).toBe(24000);
+    expect(row(db, "SELECT balance FROM users").balance).toBe(24000);
+    expect(row(db, "SELECT SUM(delta) d FROM ledger").d).toBe(24000);
+    expect(await refundOrderToBalance(env, 1, 1)).toEqual({ ok: false, error: "ALREADY_REFUNDED" });
+  });
+
+  it("a Stars refund after a partial balance refund takes that part back from the balance", async () => {
+    const { env, db } = d1();
+    seed(db, { balance: 1975, charge: 24000, amount: 25975 });
+    expect((await refundOrderToBalance(env, 1, 4000)).ok).toBe(true);
+    expect((await refundPayment(env, 1)).ok).toBe(true);
+    expect(row(db, "SELECT balance FROM users").balance).toBe(0);
+    expect(row(db, "SELECT SUM(delta) d FROM ledger").d).toBe(-1975);
+  });
 });

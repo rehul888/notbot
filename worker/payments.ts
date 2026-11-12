@@ -256,18 +256,23 @@ export async function refundPayment(env: Env, paymentId: number, force = false):
   return { ok: true };
 }
 
-/** Admin: refund what is still charged for an order (all of it, minus any earlier refund) to the user's balance. */
-export async function refundOrderToBalance(env: Env, orderId: number): Promise<RefundResult> {
+/**
+ * Admin: refund an order to the user's balance: what is still charged (charge minus any earlier refund), or only
+ * `upTo` micro-USD of it when given.
+ */
+export async function refundOrderToBalance(env: Env, orderId: number, upTo?: number): Promise<RefundResult> {
   const o = await env.DB.prepare("SELECT id, user_id, np_order_id, service_name, charge, refund FROM orders WHERE id = ?1")
     .bind(orderId)
     .first<{ id: number; user_id: number; np_order_id: number | null; service_name: string; charge: number; refund: number }>();
   if (!o) return { ok: false, error: "NOT_FOUND" };
-  const amount = o.charge - o.refund;
-  if (amount <= 0) return { ok: false, error: "ALREADY_REFUNDED" };
+  const left = o.charge - o.refund;
+  if (left <= 0) return { ok: false, error: "ALREADY_REFUNDED" };
+  const amount = upTo === undefined ? left : Math.min(left, Math.floor(upTo));
+  if (!(amount > 0)) return { ok: false, error: "INVALID_AMOUNT" };
   const now = Math.floor(Date.now() / 1000);
-  // refunded = 1 also stops a later NotPanel cancel/partial from refunding the same order again (applyStatus)
+  // refunded = 1 (even for part of it) stops a later NotPanel cancel/partial from refunding the order on top (applyStatus)
   const [mark] = await env.DB.batch([
-    env.DB.prepare("UPDATE orders SET refund = charge, refunded = 1 WHERE id = ?1 AND refund = ?2").bind(o.id, o.refund),
+    env.DB.prepare("UPDATE orders SET refund = refund + ?3, refunded = 1 WHERE id = ?1 AND refund = ?2").bind(o.id, o.refund, amount),
     env.DB.prepare("INSERT INTO ledger (user_id, delta, kind, ref, note, created_at) SELECT ?1, ?2, 'refund', ?3, 'admin', ?4 WHERE changes() = 1").bind(
       o.user_id,
       amount,

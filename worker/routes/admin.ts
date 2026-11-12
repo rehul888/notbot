@@ -16,6 +16,8 @@ import { refundOrderToBalance, refundPayment } from "../payments";
 import { sellRate } from "../pricing";
 import { bumpCatalogStmt, DEFAULTS, getSettings, setSettings, setSettingsStmts, type Settings } from "../settings";
 import { startSync, syncProgress } from "../sync";
+import { isBlocked } from "../broadcastCore";
+import { tg } from "../telegram";
 import { type AppEnv, err, readBody } from "./app";
 
 export const admin = new Hono<AppEnv>();
@@ -440,6 +442,10 @@ async function paymentTotals(env: AppEnv["Bindings"]): Promise<unknown> {
   return value;
 }
 
+const ADMIN_PAYMENTS_SQL = (where: string[], limit: number) =>
+  `SELECT p.id, p.user_id, p.stars, p.amount, p.status, p.order_id, p.paid_at, p.created_at, u.first_name, u.last_name, u.username
+   FROM payments p LEFT JOIN users u ON u.id = p.user_id WHERE ${where.join(" AND ")} ORDER BY p.id DESC LIMIT ${limit}`;
+
 admin.get("/payments", async (c) => {
   const q = (c.req.query("q") ?? "").trim().replace(/^[@#]/, "").slice(0, 100);
   const status = c.req.query("status");
@@ -450,6 +456,11 @@ admin.get("/payments", async (c) => {
     vals.push(status);
     where.push(`p.status = ?${vals.length}`);
   } else where.push("p.status != 'pending'");
+  const user = intParam(c.req.query("user"));
+  if (user) {
+    vals.push(user);
+    where.push(`p.user_id = ?${vals.length}`);
+  }
   if (before) {
     vals.push(before);
     where.push(`p.id < ?${vals.length}`);
@@ -460,10 +471,7 @@ admin.get("/payments", async (c) => {
       `(CAST(p.id AS TEXT) = ?${vals.length - 1} OR CAST(p.user_id AS TEXT) = ?${vals.length - 1} OR p.charge_id = ?${vals.length - 1} OR u.username LIKE ?${vals.length} OR u.first_name LIKE ?${vals.length})`,
     );
   }
-  const { results } = await c.env.DB.prepare(
-    `SELECT p.id, p.user_id, p.stars, p.amount, p.status, p.order_id, p.paid_at, p.created_at, u.first_name, u.last_name, u.username
-     FROM payments p LEFT JOIN users u ON u.id = p.user_id WHERE ${where.join(" AND ")} ORDER BY p.id DESC LIMIT ${PAGE + 1}`,
-  )
+  const { results } = await c.env.DB.prepare(ADMIN_PAYMENTS_SQL(where, PAGE + 1))
     .bind(...vals)
     .all<{ id: number }>();
   // stars = Stars paid; amount = micro-USD credited for them
@@ -476,17 +484,30 @@ admin.post("/payments/:id/refund", async (c) => {
   return r.ok ? c.json(r) : err(c, 400, r.error ?? "REFUND_FAILED", r.details);
 });
 
-/** Refunds an order: "stars" sends back the Stars payment that bought it, "balance" credits the user's balance. */
+/**
+ * Refunds an order: "stars" sends back the Stars payment that bought it, "balance" credits the user's balance (all
+ * that is still charged, or `stars` worth of it).
+ */
 admin.post("/orders/:id/refund", async (c) => {
-  const b = (await readBody<{ to?: string; force?: boolean }>(c)) ?? {};
+  const b = (await readBody<{ to?: string; force?: boolean; stars?: number }>(c)) ?? {};
   const id = Number(c.req.param("id"));
   let r;
   if (b.to === "stars") {
     const p = await c.env.DB.prepare("SELECT id FROM payments WHERE order_id = ?1 AND status = 'paid' ORDER BY id DESC LIMIT 1").bind(id).first<{ id: number }>();
     if (!p) return err(c, 400, "NO_STARS_PAYMENT");
     r = await refundPayment(c.env, p.id, b.force === true);
-  } else if (b.to === "balance") r = await refundOrderToBalance(c.env, id);
-  else return err(c, 400, "BAD_REQUEST");
+  } else if (b.to === "balance") {
+    let upTo: number | undefined;
+    if (b.stars !== undefined) {
+      const stars = Number(b.stars);
+      if (!Number.isInteger(stars) || stars < 1 || stars > 1_000_000) return err(c, 400, "INVALID_AMOUNT");
+      const o = await c.env.DB.prepare("SELECT charge - refund AS left FROM orders WHERE id = ?1").bind(id).first<{ left: number }>();
+      const rate = c.get("settings").stars_per_usd;
+      // The full amount as shown in Stars (rounded up) refunds exactly what is left, without a stray fraction
+      if (o && stars < shownStars(o.left, rate)) upTo = starsCredit(stars, rate);
+    }
+    r = await refundOrderToBalance(c.env, id, upTo);
+  } else return err(c, 400, "BAD_REQUEST");
   return r.ok ? c.json(r) : err(c, 400, r.error ?? "REFUND_FAILED", r.details);
 });
 
@@ -642,6 +663,76 @@ admin.post("/users/:id/balance", async (c) => {
   return c.json({ ok: true });
 });
 
+/** One user's profile: details, totals, who invited them, and their latest orders and payments */
+admin.get("/users/:id", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return err(c, 404, "NOT_FOUND");
+  const [user, stats, invitedBy, orders, payments] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT id, first_name, last_name, username, language_code, lang, balance, banned, can_message, channel_ok, created_at, last_seen_at, home_at
+       FROM users WHERE id = ?1`,
+    ).bind(id),
+    c.env.DB.prepare(
+      `SELECT (SELECT COUNT(*) FROM orders WHERE user_id = ?1) AS orders,
+         (SELECT COUNT(*) FROM orders WHERE user_id = ?1 AND status IN ('submitting','pending','processing','in_progress')) AS openOrders,
+         (SELECT COALESCE(SUM(charge - refund), 0) FROM orders WHERE user_id = ?1 AND status != 'failed') AS spent,
+         (SELECT COALESCE(SUM(refund), 0) FROM orders WHERE user_id = ?1 AND status != 'failed') AS refunded,
+         (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE user_id = ?1 AND status = 'paid') AS paid,
+         (SELECT COALESCE(SUM(stars), 0) FROM payments WHERE user_id = ?1 AND status = 'paid') AS paidStars,
+         (SELECT COUNT(*) FROM referrals WHERE referrer_id = ?1) AS invited,
+         (SELECT COUNT(*) FROM referrals WHERE referrer_id = ?1 AND status != 'pending') AS joined,
+         (SELECT COALESCE(SUM(CASE WHEN status = 'rewarded' THEN reward END), 0) FROM referrals WHERE referrer_id = ?1) AS earned`,
+    ).bind(id),
+    c.env.DB.prepare(
+      `SELECT r.referrer_id AS id, r.status, u.first_name, u.last_name, u.username
+       FROM referrals r LEFT JOIN users u ON u.id = r.referrer_id WHERE r.referred_id = ?1`,
+    ).bind(id),
+    c.env.DB.prepare(ADMIN_ORDERS_SQL(["o.user_id = ?1"], 5)).bind(id),
+    c.env.DB.prepare(ADMIN_PAYMENTS_SQL(["p.user_id = ?1", "p.status != 'pending'"], 5)).bind(id),
+  ]);
+  if (!user.results[0]) return err(c, 404, "NOT_FOUND");
+  return c.json({
+    user: user.results[0],
+    stats: stats.results[0],
+    invitedBy: invitedBy.results[0] ?? null,
+    orders: (orders.results as AdminOrderRow[]).map(adminOrderItem),
+    payments: payments.results,
+    starsPerUsd: c.get("settings").stars_per_usd,
+  });
+});
+
+/** Every balance change of one user, newest first: top-ups, orders, refunds, admin changes, referral rewards */
+admin.get("/users/:id/ledger", async (c) => {
+  const id = intParam(c.req.param("id"));
+  const before = intParam(c.req.query("before"));
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, delta, kind, ref, note, created_at FROM ledger WHERE user_id = ?1 ${before ? "AND id < ?2" : ""} ORDER BY id DESC LIMIT ${PAGE + 1}`,
+  )
+    .bind(...(before ? [id, before] : [id]))
+    .all<{ id: number }>();
+  return c.json(page(results, (r) => r.id));
+});
+
+/** Sends the user a plain-text message from the bot (support replies) */
+admin.post("/users/:id/message", async (c) => {
+  const text = ((await readBody<{ text?: string }>(c))?.text ?? "").trim();
+  if (!text || text.length > 4000) return err(c, 400, "INVALID_TEXT");
+  const id = intParam(c.req.param("id"));
+  const u = id ? await c.env.DB.prepare("SELECT id FROM users WHERE id = ?1").bind(id).first() : null;
+  if (!u) return err(c, 404, "NOT_FOUND");
+  try {
+    await tg(c.env.BOT_TOKEN, "sendMessage", { chat_id: id, text });
+  } catch (e) {
+    const m = (e as Error).message;
+    if (isBlocked(m)) {
+      await c.env.DB.prepare("UPDATE users SET can_message = 0 WHERE id = ?1").bind(id).run();
+      return err(c, 400, "CANT_MESSAGE");
+    }
+    return err(c, 400, "SEND_FAILED", { message: m.replace(/^Telegram \w+: /, "").slice(0, 160) });
+  }
+  return c.json({ ok: true });
+});
+
 admin.post("/users/:id/ban", async (c) => {
   const b = await readBody<{ banned: boolean }>(c);
   if (!b) return err(c, 400, "INVALID_BODY");
@@ -652,9 +743,32 @@ admin.post("/users/:id/ban", async (c) => {
 
 // ---- Orders ----
 
+type AdminOrderRow = OrderRow & { rate: number | null; first_name: string; username: string | null; paid_stars: number | null };
+
+/** Orders with their user's name and the Stars of the payment that bought them (if still paid) */
+const ADMIN_ORDERS_SQL = (where: string[], limit: number) =>
+  `SELECT o.*, u.first_name, u.username,
+     (SELECT p.stars FROM payments p WHERE p.order_id = o.id AND p.status = 'paid' ORDER BY p.id DESC LIMIT 1) AS paid_stars
+   FROM orders o LEFT JOIN users u ON u.id = o.user_id
+   ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT ${limit}`;
+
+const adminOrderItem = (o: AdminOrderRow) => ({
+  ...orderView(o),
+  npOrderId: o.np_order_id,
+  cost: o.cost,
+  rate: o.rate,
+  userId: o.user_id,
+  userName: o.first_name,
+  username: o.username,
+  error: o.error,
+  paidStars: o.paid_stars,
+  refundable: Math.max(0, o.charge - o.refund),
+});
+
 admin.get("/orders", async (c) => {
   const status = c.req.query("status");
   const q = (c.req.query("q") ?? "").trim().replace(/^#/, "");
+  const user = intParam(c.req.query("user"));
   const before = intParam(c.req.query("before"));
   const where: string[] = [];
   const vals: unknown[] = [];
@@ -663,9 +777,18 @@ admin.get("/orders", async (c) => {
     vals.push(status);
     where.push(`o.status = ?${vals.length}`);
   }
+  if (user) {
+    vals.push(user);
+    where.push(`o.user_id = ?${vals.length}`);
+  }
   if (q) {
-    vals.push(q.slice(0, 200), likeOf(q.slice(0, 200)));
-    where.push(`(CAST(o.id AS TEXT) = ?${vals.length - 1} OR CAST(o.np_order_id AS TEXT) = ?${vals.length - 1} OR CAST(o.user_id AS TEXT) = ?${vals.length - 1} OR o.link LIKE ?${vals.length})`);
+    const name = q.replace(/^@/, "").slice(0, 100);
+    vals.push(q.slice(0, 200), likeOf(q.slice(0, 200)), likeOf(name));
+    const [eq, like, nameLike] = [vals.length - 2, vals.length - 1, vals.length];
+    where.push(
+      `(CAST(o.id AS TEXT) = ?${eq} OR CAST(o.np_order_id AS TEXT) = ?${eq} OR CAST(o.user_id AS TEXT) = ?${eq} OR o.link LIKE ?${like}
+        OR o.user_id IN (SELECT id FROM users WHERE username LIKE ?${nameLike} OR first_name LIKE ?${nameLike} OR last_name LIKE ?${nameLike} LIMIT 50))`,
+    );
   }
   // The totals cover the whole filter (not just this page) and are only needed with the first page
   const filterVals = [...vals];
@@ -674,24 +797,19 @@ admin.get("/orders", async (c) => {
     vals.push(before);
     where.push(`o.id < ?${vals.length}`);
   }
-  const listStmt = c.env.DB.prepare(
-    `SELECT o.*, u.first_name, u.username,
-       (SELECT p.stars FROM payments p WHERE p.order_id = o.id AND p.status = 'paid' ORDER BY p.id DESC LIMIT 1) AS paid_stars
-     FROM orders o LEFT JOIN users u ON u.id = o.user_id
-     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY o.id DESC LIMIT ${PAGE + 1}`,
-  ).bind(...vals);
+  const listStmt = c.env.DB.prepare(ADMIN_ORDERS_SQL(where, PAGE + 1)).bind(...vals);
   const totalsStmt = before
     ? null
     : c.env.DB.prepare(`SELECT ${MONEY_SUMS_SQL} FROM orders o WHERE ${[...filterWhere, "o.status != 'failed'"].join(" AND ")}`).bind(...filterVals);
   const [list, totals] = await c.env.DB.batch(totalsStmt ? [listStmt, totalsStmt] : [listStmt]);
-  const pg = page(list.results as (OrderRow & { rate: number | null; first_name: string; username: string | null; paid_stars: number | null })[], (o) => o.id);
+  const pg = page(list.results as AdminOrderRow[], (o) => o.id);
   return c.json({
     next: pg.next,
     // Sale, cost, profit and margin of every non-failed order in this filter (shared/profit.ts); only on the first page
     totals: totals ? totalsFrom(totals.results[0] as MoneySums) : undefined,
     // charge/refund/cost are micro-USD; rate is Stars per $1 when the order was placed (null on very old rows)
     starsPerUsd: c.get("settings").stars_per_usd,
-    items: pg.items.map((o) => ({ ...orderView(o), npOrderId: o.np_order_id, cost: o.cost, rate: o.rate, userId: o.user_id, userName: o.first_name, username: o.username, error: o.error, paidStars: o.paid_stars, refundable: Math.max(0, o.charge - o.refund) })),
+    items: pg.items.map(adminOrderItem),
   });
 });
 
