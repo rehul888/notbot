@@ -4,7 +4,11 @@ import { createStore } from "./store";
 import { en, type Key } from "./i18n/en";
 
 const loaders = import.meta.glob<{ default: Record<string, string> }>("./i18n/*.json");
-const langStore = createStore<{ lang: Lang; dict: Record<string, string> }>({ lang: "en", dict: en });
+// NotPanel's category names ("Views - Post - Worldwide"): whole names (n, from NotPanel's own translations) and
+// the parts between " - " (p), so a new category made of known parts is translated too.
+type CatDict = { n?: Record<string, string>; p?: Record<string, string> };
+const catLoaders = import.meta.glob<{ default: CatDict }>("./i18n/cat/*.json");
+const langStore = createStore<{ lang: Lang; dict: Record<string, string>; cat: CatDict }>({ lang: "en", dict: en, cat: {} });
 
 export function getLang(): Lang {
   return langStore.get().lang;
@@ -31,15 +35,19 @@ export async function setLang(code: string | null | undefined) {
   }
   const seq = ++langSeq;
   let dict: Record<string, string> = en;
+  let cat: CatDict = {};
   if (lang !== "en") {
     const load = loaders[`./i18n/${lang}.json`];
-    dict = { ...en, ...(load ? (await load()).default : {}) };
+    const loadCat = catLoaders[`./i18n/cat/${lang}.json`];
+    const [d, c] = await Promise.all([load ? load() : null, loadCat ? loadCat().catch(() => null) : null]);
+    dict = { ...en, ...(d?.default ?? {}) };
+    cat = c?.default ?? {};
   }
   if (seq !== langSeq) return; // a newer choice arrived while this one was loading
   const root = document.documentElement;
   root.lang = lang;
   root.dir = RTL_LANGS.includes(lang) ? "rtl" : "ltr";
-  langStore.set({ lang, dict });
+  langStore.set({ lang, dict, cat });
 }
 
 let uiBrand = "NotBot";
@@ -50,6 +58,13 @@ export function setUiBrand(name: string) {
   if (!next || next === uiBrand) return;
   uiBrand = next;
   langStore.set((s) => ({ ...s })); // new object so subscribers re-render
+}
+
+/** A NotPanel category name in the UI language; unknown parts stay in English. */
+export function catName(name: string): string {
+  const { n, p } = langStore.get().cat;
+  if (!name || (!n && !p)) return name;
+  return n?.[name] ?? name.split(" - ").map((part) => p?.[part] ?? part).join(" - ");
 }
 
 export function t(key: Key, vars: Record<string, string | number> = {}): string {

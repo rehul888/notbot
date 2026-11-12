@@ -41,6 +41,10 @@ interface WebApp {
   requestWriteAccess(cb: (ok: boolean) => void): void;
   addToHomeScreen?(): void;
   checkHomeScreenStatus?(cb: (s: string) => void): void;
+  CloudStorage?: {
+    getItem(key: string, cb: (err: string | null, value?: string) => void): void;
+    setItem(key: string, value: string, cb?: (err: string | null, ok?: boolean) => void): void;
+  };
   MainButton: BottomButton;
   SecondaryButton?: BottomButton;
   BackButton: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
@@ -169,6 +173,43 @@ export const homeScreen = {
   add: () => webApp?.addToHomeScreen?.(),
   status: (): Promise<string> =>
     new Promise((r) => (webApp?.checkHomeScreenStatus ? webApp.checkHomeScreenStatus(r) : r("unsupported"))),
+};
+
+/**
+ * Small per-user values kept by Telegram (follow the user to every device), else this browser's localStorage.
+ * Never throws: a missing value or any failure reads as "".
+ */
+export const cloud = {
+  get(key: string): Promise<string> {
+    const local = () => {
+      try {
+        return localStorage.getItem(`np_${key}`) ?? "";
+      } catch {
+        return "";
+      }
+    };
+    const cs = atLeast("6.9") ? webApp?.CloudStorage : undefined;
+    if (!cs) return Promise.resolve(local());
+    return new Promise((r) => {
+      try {
+        cs.getItem(key, (err, v) => r(err ? local() : (v ?? "")));
+      } catch {
+        r(local());
+      }
+    });
+  },
+  set(key: string, value: string): void {
+    try {
+      localStorage.setItem(`np_${key}`, value);
+    } catch {
+      /* storage unavailable */
+    }
+    try {
+      if (atLeast("6.9")) webApp?.CloudStorage?.setItem(key, value);
+    } catch {
+      /* best effort */
+    }
+  },
 };
 
 export function closingConfirmation(on: boolean) {

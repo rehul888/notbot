@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "{min} ile {max} arasında bir tutar gir.",
   "err.BANNED": "Hesabın engellendi.",
   "err.CHANNEL_REQUIRED": "Lütfen önce duyuru kanalımıza katıl.",
-  "err.UNAUTHORIZED": "Lütfen uygulamayı Telegram'dan aç."
+  "err.UNAUTHORIZED": "Lütfen uygulamayı Telegram'dan aç.",
+  "fav.title": "Favoriler",
+  "fav.add": "Favorilere ekle",
+  "fav.remove": "Favorilerden çıkar",
+  "fav.added": "Favorilere eklendi",
+  "fav.removed": "Favorilerden çıkarıldı",
+  "homeAsk.title": "{brand} uygulamasını ana ekrana ekleyin",
+  "homeAsk.body": "Diğer uygulamalar gibi tek dokunuşla açın.",
+  "homeAsk.add": "Ekle",
+  "homeAsk.later": "Şimdi değil",
+  "orders.refillAvailable": "Telafi mevcut"
 }

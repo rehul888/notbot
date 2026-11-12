@@ -310,6 +310,16 @@ export const en = {
   "err.BANNED": "Your account is blocked.",
   "err.CHANNEL_REQUIRED": "Please join our update channel first.",
   "err.UNAUTHORIZED": "Please open the app from Telegram.",
+  "fav.title": "Favorites",
+  "fav.add": "Add to favorites",
+  "fav.remove": "Remove from favorites",
+  "fav.added": "Added to favorites",
+  "fav.removed": "Removed from favorites",
+  "homeAsk.title": "Add {brand} to your home screen",
+  "homeAsk.body": "Open it in one tap, like any other app.",
+  "homeAsk.add": "Add",
+  "homeAsk.later": "Not now",
+  "orders.refillAvailable": "Refill available",
 };
 
 export type Key = keyof typeof en;

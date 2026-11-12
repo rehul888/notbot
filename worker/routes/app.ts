@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { type LedgerItem, type Me, type OrderDraft, pickLang, type Lang, LANGS } from "../../shared/types";
 import { validateInitData, type TgUser } from "../auth";
-import { getService, listCategories, listPlatforms, listServices, searchServices } from "../catalog";
+import { getService, listCategories, listPlatforms, listServices, searchServices, servicesByIds } from "../catalog";
 import { type Env, isOwner } from "../env";
 import { MAX_STARS_PER_PAYMENT, starsToCover } from "../../shared/stars";
 import { starsText } from "../botMessages";
@@ -236,6 +236,12 @@ app.get("/catalog/services", async (c) => {
 app.get("/catalog/search", async (c) => {
   c.header("cache-control", "private, max-age=120");
   return c.json(await searchServices(c.env, c.get("settings"), c.get("lang"), c.req.query("q") ?? ""));
+});
+
+/** The user's favorite services (IDs from Telegram cloud storage), at most 60 */
+app.get("/catalog/favorites", async (c) => {
+  const ids = [...new Set((c.req.query("ids") ?? "").split(",").map(Number))].filter((n) => Number.isSafeInteger(n) && n > 0).slice(0, 60);
+  return c.json(await servicesByIds(c.env, c.get("settings"), c.get("lang"), ids));
 });
 
 app.get("/catalog/service/:id", async (c) => {

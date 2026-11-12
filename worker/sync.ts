@@ -176,9 +176,9 @@ export async function syncTick(env: Env): Promise<void> {
 
   if (items.length) {
     const ids = items.map((i) => Number(i.item.service));
-    const { results } = await env.DB.prepare("SELECT id, hash, rate, name, present FROM services WHERE id IN (SELECT value FROM json_each(?1))")
+    const { results } = await env.DB.prepare("SELECT id, hash, rate, name, description, present FROM services WHERE id IN (SELECT value FROM json_each(?1))")
       .bind(JSON.stringify(ids))
-      .all<{ id: number; hash: string; rate: number; name: string; present: number }>();
+      .all<{ id: number; hash: string; rate: number; name: string; description: string | null; present: number }>();
     const have = new Map(results.map((r) => [r.id, r]));
     const changed = items.filter((i) => {
       const e = have.get(Number(i.item.service));
@@ -216,7 +216,7 @@ export async function syncTick(env: Env): Promise<void> {
           if (rate > e.rate) state.stats.priceUp++;
           else state.stats.priceDown++;
         }
-        if (e.name !== item.name) renamed.push(id);
+        if (e.name !== item.name || (e.description ?? null) !== (item.description?.trim() || null)) renamed.push(id);
       }
       rows.push([
         id,
@@ -250,7 +250,7 @@ export async function syncTick(env: Env): Promise<void> {
           `INSERT INTO price_changes (service_id, old_rate, new_rate, changed_at) SELECT value->>'$[0]', value->>'$[1]', value->>'$[2]', ?2 FROM json_each(?1)`,
         ).bind(JSON.stringify(prices), now),
       );
-    // Translated names are fetched lazily; drop them when the English name changes
+    // Translated names and descriptions are fetched lazily; drop them when the English ones change
     if (renamed.length) stmts.push(env.DB.prepare("DELETE FROM service_names WHERE service_id IN (SELECT value FROM json_each(?1))").bind(JSON.stringify(renamed)));
     if (stmts.length) await env.DB.batch(stmts);
 

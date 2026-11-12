@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "请输入 {min} 到 {max} 之间的金额。",
   "err.BANNED": "你的账号已被封禁。",
   "err.CHANNEL_REQUIRED": "请先加入我们的更新频道。",
-  "err.UNAUTHORIZED": "请从 Telegram 中打开应用。"
+  "err.UNAUTHORIZED": "请从 Telegram 中打开应用。",
+  "fav.title": "收藏",
+  "fav.add": "加入收藏",
+  "fav.remove": "取消收藏",
+  "fav.added": "已加入收藏",
+  "fav.removed": "已取消收藏",
+  "homeAsk.title": "将 {brand} 添加到主屏幕",
+  "homeAsk.body": "像其他应用一样一键打开。",
+  "homeAsk.add": "添加",
+  "homeAsk.later": "以后再说",
+  "orders.refillAvailable": "可补量"
 }

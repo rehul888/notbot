@@ -11,7 +11,7 @@ import { linkExample, linkProblem, normalizeLink } from "../../shared/links";
 import { api, ApiError, cachedApi } from "../api";
 import { starsToCover } from "../../shared/stars";
 import { amount, balance, duration, iso, lower, lrm, num, short, stars } from "../format";
-import { t, tErr } from "../i18n";
+import { catName, t, tErr } from "../i18n";
 import { Icon, StarIcon } from "../icons";
 import { refreshMe } from "../me";
 import { reducedMotion } from "../motion";
@@ -39,6 +39,7 @@ import {
   useAsync,
 } from "../ui";
 import { primePlaced } from "./OrderPlaced";
+import { FavButton } from "./Favorites";
 import { CategorySheet, PlatformSheet, ServiceSheet } from "./Pickers";
 
 type PayWith = "balance" | "stars";
@@ -313,10 +314,11 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
               </b>
               <span>
                 <bdi>
-                  {platformName(svc.platform)} · {svc.category} · ID {svc.id}
+                  {platformName(svc.platform)} · {catName(svc.category)} · ID {svc.id}
                 </bdi>
               </span>
             </div>
+            <FavButton id={svc.id} />
           </div>
           <div class="chips">
             {/* One span per chip: the chip is a flex row, and loose text + <bdi> would each become a spaced item. */}
@@ -424,7 +426,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
                   onBlur={(e) => commitQty(e.currentTarget.value)}
                   onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                 />
-                <span class="qty-unit">{lower(svc.category)}</span>
+                <span class="qty-unit">{lower(catName(svc.category).split(" - ")[0])}</span>
               </div>
               <button type="button" class="iconbtn lg qty-btn press" aria-label={t("form.more")} onClick={() => bump(1)}>
                 <Icon name="plus" size={20} stroke={2.4} />
@@ -438,7 +440,7 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
           <div class="card qty-card">
             <div class="qty-mid">
               <b class="num-l">{num(svc.min)}</b>
-              <span class="qty-unit">{lower(svc.category)}</span>
+              <span class="qty-unit">{lower(catName(svc.category).split(" - ")[0])}</span>
             </div>
           </div>
           <Notice tone="info">{t("form.packageNote")}</Notice>
@@ -496,8 +498,8 @@ export function OrderForm({ serviceId, query }: { serviceId: number; query: URLS
           <QuickChip lead={<PlatformLogo slug={svc.platform} size={28} radius={14} />} label={`${t("sheet.platform")}: ${platformName(svc.platform)}`} onClick={() => setSheet("platform")}>
             {platformName(svc.platform)}
           </QuickChip>
-          <QuickChip label={`${t("sheet.category")}: ${svc.category}`} onClick={() => setSheet("category")}>
-            {svc.category}
+          <QuickChip label={`${t("sheet.category")}: ${catName(svc.category)}`} onClick={() => setSheet("category")}>
+            {catName(svc.category)}
           </QuickChip>
           <QuickChip label={t("sheet.service")} onClick={() => setSheet("service")}>
             {t("form.service")}

@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "Gib einen Betrag von {min} bis {max} ein.",
   "err.BANNED": "Dein Konto ist gesperrt.",
   "err.CHANNEL_REQUIRED": "Bitte tritt zuerst unserem Update-Kanal bei.",
-  "err.UNAUTHORIZED": "Bitte öffne die App über Telegram."
+  "err.UNAUTHORIZED": "Bitte öffne die App über Telegram.",
+  "fav.title": "Favoriten",
+  "fav.add": "Zu Favoriten hinzufügen",
+  "fav.remove": "Aus Favoriten entfernen",
+  "fav.added": "Zu Favoriten hinzugefügt",
+  "fav.removed": "Aus Favoriten entfernt",
+  "homeAsk.title": "{brand} zum Startbildschirm hinzufügen",
+  "homeAsk.body": "Mit einem Tippen öffnen, wie jede andere App.",
+  "homeAsk.add": "Hinzufügen",
+  "homeAsk.later": "Nicht jetzt",
+  "orders.refillAvailable": "Nachfüllung verfügbar"
 }

@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "أدخل مبلغًا من {min} إلى {max}.",
   "err.BANNED": "حسابك محظور.",
   "err.CHANNEL_REQUIRED": "يرجى الانضمام إلى قناة التحديثات أولاً.",
-  "err.UNAUTHORIZED": "يرجى فتح التطبيق من تيليجرام."
+  "err.UNAUTHORIZED": "يرجى فتح التطبيق من تيليجرام.",
+  "fav.title": "المفضلة",
+  "fav.add": "أضف إلى المفضلة",
+  "fav.remove": "أزل من المفضلة",
+  "fav.added": "أُضيف إلى المفضلة",
+  "fav.removed": "أُزيل من المفضلة",
+  "homeAsk.title": "أضف {brand} إلى الشاشة الرئيسية",
+  "homeAsk.body": "افتحه بلمسة واحدة مثل أي تطبيق آخر.",
+  "homeAsk.add": "إضافة",
+  "homeAsk.later": "ليس الآن",
+  "orders.refillAvailable": "التعويض متاح"
 }

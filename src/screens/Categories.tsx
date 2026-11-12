@@ -4,7 +4,7 @@ import type { CategoryItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
 import { amount } from "../format";
-import { t } from "../i18n";
+import { catName, t } from "../i18n";
 import { categoryLook, Icon } from "../icons";
 import { back, enc, navigate } from "../router";
 import { haptic } from "../tg";
@@ -40,7 +40,7 @@ export function Categories({ platform }: { platform: string }) {
               size="lg"
               icon={look.icon}
               plate={look.plate}
-              title={c.name}
+              title={catName(c.name)}
               meta={
                 <>
                   {t("cat.services", { n: c.count })} · {fromPrice(c.fromRate)}

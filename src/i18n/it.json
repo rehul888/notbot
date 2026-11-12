@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "Inserisci un importo da {min} a {max}.",
   "err.BANNED": "Il tuo account è bloccato.",
   "err.CHANNEL_REQUIRED": "Unisciti prima al nostro canale di aggiornamenti.",
-  "err.UNAUTHORIZED": "Apri l'app da Telegram."
+  "err.UNAUTHORIZED": "Apri l'app da Telegram.",
+  "fav.title": "Preferiti",
+  "fav.add": "Aggiungi ai preferiti",
+  "fav.remove": "Rimuovi dai preferiti",
+  "fav.added": "Aggiunto ai preferiti",
+  "fav.removed": "Rimosso dai preferiti",
+  "homeAsk.title": "Aggiungi {brand} alla schermata Home",
+  "homeAsk.body": "Aprilo con un tocco, come qualsiasi altra app.",
+  "homeAsk.add": "Aggiungi",
+  "homeAsk.later": "Non ora",
+  "orders.refillAvailable": "Ricarica disponibile"
 }

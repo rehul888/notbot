@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "Nhập số tiền từ {min} đến {max}.",
   "err.BANNED": "Tài khoản của bạn đã bị chặn.",
   "err.CHANNEL_REQUIRED": "Vui lòng tham gia kênh cập nhật của chúng tôi trước.",
-  "err.UNAUTHORIZED": "Vui lòng mở ứng dụng từ Telegram."
+  "err.UNAUTHORIZED": "Vui lòng mở ứng dụng từ Telegram.",
+  "fav.title": "Yêu thích",
+  "fav.add": "Thêm vào yêu thích",
+  "fav.remove": "Xóa khỏi yêu thích",
+  "fav.added": "Đã thêm vào yêu thích",
+  "fav.removed": "Đã xóa khỏi yêu thích",
+  "homeAsk.title": "Thêm {brand} vào màn hình chính",
+  "homeAsk.body": "Mở bằng một chạm, như mọi ứng dụng khác.",
+  "homeAsk.add": "Thêm",
+  "homeAsk.later": "Để sau",
+  "orders.refillAvailable": "Có thể bù"
 }

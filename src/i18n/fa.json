@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "مبلغی از {min} تا {max} وارد کنید.",
   "err.BANNED": "حساب شما مسدود شده است.",
   "err.CHANNEL_REQUIRED": "لطفاً ابتدا به کانال اخبار بپیوندید.",
-  "err.UNAUTHORIZED": "لطفاً برنامه را از داخل Telegram باز کنید."
+  "err.UNAUTHORIZED": "لطفاً برنامه را از داخل Telegram باز کنید.",
+  "fav.title": "علاقه‌مندی‌ها",
+  "fav.add": "افزودن به علاقه‌مندی‌ها",
+  "fav.remove": "حذف از علاقه‌مندی‌ها",
+  "fav.added": "به علاقه‌مندی‌ها اضافه شد",
+  "fav.removed": "از علاقه‌مندی‌ها حذف شد",
+  "homeAsk.title": "{brand} را به صفحهٔ اصلی اضافه کنید",
+  "homeAsk.body": "مثل هر برنامهٔ دیگری با یک لمس باز کنید.",
+  "homeAsk.add": "افزودن",
+  "homeAsk.later": "حالا نه",
+  "orders.refillAvailable": "جبران ریزش در دسترس است"
 }

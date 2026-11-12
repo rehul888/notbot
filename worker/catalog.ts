@@ -45,6 +45,8 @@ interface Row {
   refill: number;
   cancel: number;
   avg_minutes: number | null;
+  /** Only on detail rows */
+  description?: string | null;
 }
 
 const ROW_COLS = `s.id, ${NAME_SQL} AS name, s.custom_name IS NOT NULL OR sn.name IS NOT NULL AS name_found, s.platform, s.category,
@@ -112,24 +114,26 @@ async function fillNames(env: Env, lang: Lang, rows: Row[], page: number): Promi
   if (lang === "en" || !NP_LANGS.includes(lang) || !missing.length) return;
   const first = missing[0];
   try {
-    const res = await npCall<{ items: { service: string; name: string; name_language?: string }[] }>(env, "catalog", {
+    const res = await npCall<{ items: { service: string; name: string; name_language?: string; description?: string | null }[] }>(env, "catalog", {
       language: lang,
       limit: 100,
       ...(first.category_slug ? { platform: first.platform, category: first.category_slug, page: Math.floor((page * PAGE) / 100) + 1 } : { search: first.id }),
     });
-    const got = new Map(res.items.map((i) => [Number(i.service), i.name_language === lang ? i.name : null]));
-    const pairs: [number, string][] = [];
+    const got = new Map(res.items.map((i) => [Number(i.service), i.name_language === lang ? i : null]));
+    const rows: [number, string, string | null][] = [];
     for (const r of missing) {
-      const name = got.get(r.id);
-      // Not returned or not translated: store the English name so we don't ask again until it changes
-      pairs.push([r.id, name || r.name]);
-      if (name) r.name = name;
+      const t = got.get(r.id);
+      // Not returned or not translated: store the English name so we don't ask again until it changes; no
+      // description, so the English one is shown
+      rows.push([r.id, t?.name || r.name, t?.description?.trim() || null]);
+      if (t?.name) r.name = t.name;
+      if (t?.description?.trim()) r.description = t.description.trim();
     }
     await env.DB.prepare(
-      `INSERT INTO service_names (service_id, lang, name) SELECT value->>'$[0]', ?2, value->>'$[1]' FROM json_each(?1) WHERE 1
-       ON CONFLICT(service_id, lang) DO UPDATE SET name = excluded.name`,
+      `INSERT INTO service_names (service_id, lang, name, description) SELECT value->>'$[0]', ?2, value->>'$[1]', value->>'$[2]' FROM json_each(?1) WHERE 1
+       ON CONFLICT(service_id, lang) DO UPDATE SET name = excluded.name, description = excluded.description`,
     )
-      .bind(JSON.stringify(pairs), lang)
+      .bind(JSON.stringify(rows), lang)
       .run();
   } catch (e) {
     console.warn("names fetch failed", (e as Error).message);
@@ -188,6 +192,19 @@ async function runSearch(env: Env, s: Settings, lang: Lang, term: string): Promi
   return results.map((r) => toItem(r));
 }
 
+/** Visible services among `ids` (a user's favorites), in the given order; hidden or removed ones are left out. */
+export async function servicesByIds(env: Env, s: Settings, lang: Lang, ids: number[]): Promise<ServiceItem[]> {
+  if (!ids.length) return [];
+  const { results } = await env.DB.prepare(
+    `SELECT ${ROW_COLS} FROM services s ${RULE_JOINS} ${NAME_JOIN}
+     WHERE ${VISIBLE_SQL} AND s.id IN (SELECT value FROM json_each(?3))`,
+  )
+    .bind(s.default_markup_pct, lang, JSON.stringify(ids))
+    .all<Row>();
+  const pos = new Map(ids.map((id, i) => [id, i]));
+  return results.sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0)).map((r) => toItem(r));
+}
+
 interface DetailRow extends Row {
   type_key: string;
   step: number;
@@ -200,7 +217,7 @@ interface DetailRow extends Row {
 /** Visible service with pricing, or null. Also used by order placement. */
 export async function getService(env: Env, s: Settings, lang: Lang, id: number): Promise<(ServiceDetail & { cost: number }) | null> {
   const r = await env.DB.prepare(
-    `SELECT ${ROW_COLS}, s.type_key, s.step, s.fields, s.drip_feed, s.dripfeed, s.description
+    `SELECT ${ROW_COLS}, s.type_key, s.step, s.fields, s.drip_feed, s.dripfeed, COALESCE(sn.description, s.description) AS description
      FROM services s ${RULE_JOINS} ${NAME_JOIN} WHERE ${VISIBLE_SQL} AND s.id = ?3`,
   )
     .bind(s.default_markup_pct, lang, id)

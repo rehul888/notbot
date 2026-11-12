@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "Podaj kwotę od {min} do {max}.",
   "err.BANNED": "Twoje konto jest zablokowane.",
   "err.CHANNEL_REQUIRED": "Najpierw dołącz do naszego kanału.",
-  "err.UNAUTHORIZED": "Otwórz aplikację z poziomu Telegrama."
+  "err.UNAUTHORIZED": "Otwórz aplikację z poziomu Telegrama.",
+  "fav.title": "Ulubione",
+  "fav.add": "Dodaj do ulubionych",
+  "fav.remove": "Usuń z ulubionych",
+  "fav.added": "Dodano do ulubionych",
+  "fav.removed": "Usunięto z ulubionych",
+  "homeAsk.title": "Dodaj {brand} do ekranu głównego",
+  "homeAsk.body": "Otwieraj jednym dotknięciem, jak każdą inną aplikację.",
+  "homeAsk.add": "Dodaj",
+  "homeAsk.later": "Nie teraz",
+  "orders.refillAvailable": "Uzupełnienie dostępne"
 }

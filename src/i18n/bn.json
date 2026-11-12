@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "{min} থেকে {max}-এর মধ্যে একটি পরিমাণ দিন।",
   "err.BANNED": "আপনার অ্যাকাউন্ট ব্লক করা হয়েছে।",
   "err.CHANNEL_REQUIRED": "অনুগ্রহ করে আগে আমাদের আপডেট চ্যানেলে যোগ দিন।",
-  "err.UNAUTHORIZED": "অনুগ্রহ করে Telegram থেকে অ্যাপটি খুলুন।"
+  "err.UNAUTHORIZED": "অনুগ্রহ করে Telegram থেকে অ্যাপটি খুলুন।",
+  "fav.title": "প্রিয়",
+  "fav.add": "প্রিয়তে যোগ করুন",
+  "fav.remove": "প্রিয় থেকে সরান",
+  "fav.added": "প্রিয়তে যোগ হয়েছে",
+  "fav.removed": "প্রিয় থেকে সরানো হয়েছে",
+  "homeAsk.title": "{brand} হোম স্ক্রিনে যোগ করুন",
+  "homeAsk.body": "অন্য যেকোনো অ্যাপের মতো এক ট্যাপে খুলুন।",
+  "homeAsk.add": "যোগ করুন",
+  "homeAsk.later": "এখন না",
+  "orders.refillAvailable": "রিফিল পাওয়া যাচ্ছে"
 }

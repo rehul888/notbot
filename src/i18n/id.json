@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "Masukkan jumlah dari {min} hingga {max}.",
   "err.BANNED": "Akunmu diblokir.",
   "err.CHANNEL_REQUIRED": "Gabung dulu ke kanal pembaruan kami.",
-  "err.UNAUTHORIZED": "Silakan buka aplikasi dari Telegram."
+  "err.UNAUTHORIZED": "Silakan buka aplikasi dari Telegram.",
+  "fav.title": "Favorit",
+  "fav.add": "Tambah ke favorit",
+  "fav.remove": "Hapus dari favorit",
+  "fav.added": "Ditambahkan ke favorit",
+  "fav.removed": "Dihapus dari favorit",
+  "homeAsk.title": "Tambahkan {brand} ke layar utama",
+  "homeAsk.body": "Buka dengan satu ketukan, seperti aplikasi lain.",
+  "homeAsk.add": "Tambah",
+  "homeAsk.later": "Nanti saja",
+  "orders.refillAvailable": "Refill tersedia"
 }

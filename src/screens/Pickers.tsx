@@ -5,7 +5,7 @@ import type { CategoryItem, PlatformItem, ServiceItem } from "../../shared/types
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
 import { amount, num, short } from "../format";
-import { t } from "../i18n";
+import { catName, t } from "../i18n";
 import { categoryLook } from "../icons";
 import { enc } from "../router";
 import { EmptyState, ErrorState, List, Row, Sheet, SkeletonGrid, SkeletonList, useAsync } from "../ui";
@@ -57,7 +57,7 @@ export function CategorySheet({ platform, current, onPick, onClose }: { platform
         <List role="radiogroup" label={t("sheet.category")} stagger={at < STAGGER_MAX}>
           {items.map((c) => {
             const look = categoryLook(c.name);
-            return <Row key={c.name} radio wrap checked={c.name === current} icon={look.icon} plate={look.plate} title={c.name} meta={t("cat.services", { n: num(c.count) })} onClick={() => onPick(c.name)} />;
+            return <Row key={c.name} radio wrap checked={c.name === current} icon={look.icon} plate={look.plate} title={catName(c.name)} meta={t("cat.services", { n: num(c.count) })} onClick={() => onPick(c.name)} />;
           })}
         </List>
       )}
@@ -71,7 +71,7 @@ export function ServiceSheet({ platform, category, current, onPick, onClose }: {
   useRevealChecked(items);
   const at = items ? items.findIndex((s) => s.id === current) : -1;
   return (
-    <Sheet title={t("sheet.service")} sub={`${platformName(platform)} · ${category}`} size="large" onClose={onClose}>
+    <Sheet title={t("sheet.service")} sub={`${platformName(platform)} · ${catName(category)}`} size="large" onClose={onClose}>
       {list.error ? (
         <ErrorState compact error={list.error} onRetry={list.reload} />
       ) : !items ? (

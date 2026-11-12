@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "{min}에서 {max} 사이의 금액을 입력하세요.",
   "err.BANNED": "계정이 차단되었어요.",
   "err.CHANNEL_REQUIRED": "먼저 소식 채널에 참여해 주세요.",
-  "err.UNAUTHORIZED": "Telegram에서 앱을 열어 주세요."
+  "err.UNAUTHORIZED": "Telegram에서 앱을 열어 주세요.",
+  "fav.title": "즐겨찾기",
+  "fav.add": "즐겨찾기에 추가",
+  "fav.remove": "즐겨찾기에서 삭제",
+  "fav.added": "즐겨찾기에 추가했어요",
+  "fav.removed": "즐겨찾기에서 삭제했어요",
+  "homeAsk.title": "{brand}을(를) 홈 화면에 추가하세요",
+  "homeAsk.body": "다른 앱처럼 한 번에 열 수 있어요.",
+  "homeAsk.add": "추가",
+  "homeAsk.later": "나중에",
+  "orders.refillAvailable": "리필 가능"
 }

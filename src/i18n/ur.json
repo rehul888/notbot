@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "{min} سے {max} تک کی رقم درج کریں۔",
   "err.BANNED": "آپ کا اکاؤنٹ بلاک ہے۔",
   "err.CHANNEL_REQUIRED": "براہِ کرم پہلے ہمارے اپ ڈیٹ چینل سے جڑیں۔",
-  "err.UNAUTHORIZED": "براہِ کرم ایپ Telegram سے کھولیں۔"
+  "err.UNAUTHORIZED": "براہِ کرم ایپ Telegram سے کھولیں۔",
+  "fav.title": "پسندیدہ",
+  "fav.add": "پسندیدہ میں شامل کریں",
+  "fav.remove": "پسندیدہ سے ہٹائیں",
+  "fav.added": "پسندیدہ میں شامل ہو گیا",
+  "fav.removed": "پسندیدہ سے ہٹا دیا گیا",
+  "homeAsk.title": "{brand} کو ہوم اسکرین پر شامل کریں",
+  "homeAsk.body": "کسی بھی دوسری ایپ کی طرح ایک ٹیپ میں کھولیں۔",
+  "homeAsk.add": "شامل کریں",
+  "homeAsk.later": "ابھی نہیں",
+  "orders.refillAvailable": "ری فِل دستیاب ہے"
 }

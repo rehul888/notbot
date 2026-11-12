@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "{min}〜{max}の金額を入力してください。",
   "err.BANNED": "アカウントが停止されています。",
   "err.CHANNEL_REQUIRED": "先にお知らせチャンネルに参加してください。",
-  "err.UNAUTHORIZED": "Telegramからアプリを開いてください。"
+  "err.UNAUTHORIZED": "Telegramからアプリを開いてください。",
+  "fav.title": "お気に入り",
+  "fav.add": "お気に入りに追加",
+  "fav.remove": "お気に入りから削除",
+  "fav.added": "お気に入りに追加しました",
+  "fav.removed": "お気に入りから削除しました",
+  "homeAsk.title": "{brand} をホーム画面に追加",
+  "homeAsk.body": "ほかのアプリと同じようにワンタップで開けます。",
+  "homeAsk.add": "追加",
+  "homeAsk.later": "今はしない",
+  "orders.refillAvailable": "リフィル可能"
 }

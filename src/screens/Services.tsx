@@ -4,7 +4,7 @@ import type { ServiceItem } from "../../shared/types";
 import { platformName } from "../../shared/platforms";
 import { cachedApi } from "../api";
 import { amount, duration, short } from "../format";
-import { t, type Key } from "../i18n";
+import { catName, t, type Key } from "../i18n";
 import { categoryLook, Icon } from "../icons";
 import { back, enc, navigate } from "../router";
 import { haptic } from "../tg";
@@ -28,7 +28,7 @@ function tNums(key: Key, vars: Record<string, string | number>) {
 function ServiceMeta({ s, showPlatform }: { s: ServiceItem; showPlatform?: boolean }) {
   return (
     <>
-      {showPlatform ? `${platformName(s.platform)} · ${s.category} · ` : null}
+      {showPlatform ? `${platformName(s.platform)} · ${catName(s.category)} · ` : null}
       {tNums("svc.meta", { id: s.id, min: short(s.min), max: short(s.max) })}
       {/* No-break space keeps "~8 min" together when the line wraps. */}
       {s.avgMinutes ? ` · ~${duration(s.avgMinutes, units()).replace(/ /g, " ")}` : null}
@@ -139,11 +139,11 @@ export function Services({ platform, category }: { platform: string; category: s
           </span>
           <Icon name="down" size={14} stroke={2.4} />
         </button>
-        <button type="button" class="pick press" aria-haspopup="dialog" aria-label={`${t("sheet.category")}: ${category}`} onClick={() => open("category")}>
+        <button type="button" class="pick press" aria-haspopup="dialog" aria-label={`${t("sheet.category")}: ${catName(category)}`} onClick={() => open("category")}>
           <span class="circle tile" aria-hidden="true">
             <Icon name={look.icon} size={18} stroke={1.8} />
           </span>
-          <span class="ellipsis">{category}</span>
+          <span class="ellipsis">{catName(category)}</span>
           <span class="chg">{t("common.change")}</span>
           <Icon name="down" size={14} stroke={2.4} />
         </button>
@@ -182,7 +182,7 @@ export function Services({ platform, category }: { platform: string; category: s
     <>
       <BackNav to={`/p/${enc(platform)}`} />
       <Screen bottom="bar" overlay={overlay}>
-        <LargeTitle size="title" eyebrow={<FlowSteps step={3} />} title={category} sub={t("svc.choose", { platform: pName })} />
+        <LargeTitle size="title" eyebrow={<FlowSteps step={3} />} title={catName(category)} sub={t("svc.choose", { platform: pName })} />
         {content}
       </Screen>
     </>

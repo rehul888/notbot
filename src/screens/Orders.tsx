@@ -42,6 +42,12 @@ export function OrderRow({ o, first }: { o: OrderView; first?: boolean }) {
         <>
           <Num>#{o.number}</Num> · <Num>{num(o.quantity)}</Num>
           {done !== null ? null : <> · {ended ? t("orders.refunded") : <Num>{amount(o.charge - o.refund)}</Num>}</>}
+          {o.canRefill ? (
+            <>
+              {" · "}
+              <span class="ok-text">{t("orders.refillAvailable")}</span>
+            </>
+          ) : null}
           {done !== null ? (
             <span class="order-prog">
               <Progress value={done} max={o.quantity} label={t("orders.progress", { done: num(done), total: num(o.quantity) })} />

@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "Введіть суму від {min} до {max}.",
   "err.BANNED": "Ваш акаунт заблоковано.",
   "err.CHANNEL_REQUIRED": "Спершу підпишіться на наш канал.",
-  "err.UNAUTHORIZED": "Відкрийте застосунок із Telegram."
+  "err.UNAUTHORIZED": "Відкрийте застосунок із Telegram.",
+  "fav.title": "Обране",
+  "fav.add": "Додати в обране",
+  "fav.remove": "Прибрати з обраного",
+  "fav.added": "Додано в обране",
+  "fav.removed": "Прибрано з обраного",
+  "homeAsk.title": "Додайте {brand} на головний екран",
+  "homeAsk.body": "Відкривайте одним дотиком, як звичайний застосунок.",
+  "homeAsk.add": "Додати",
+  "homeAsk.later": "Не зараз",
+  "orders.refillAvailable": "Доступне поповнення"
 }

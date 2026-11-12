@@ -14,6 +14,8 @@ import { meStore } from "../store";
 import { haptic } from "../tg";
 import { brandStore } from "../theme";
 import { BrandMark, Chip, EmptyState, ErrorState, List, Num, PlatformLogo, Row, Screen, SearchField, Section, SkeletonGrid, SkeletonList, useAsync } from "../ui";
+import { FavoritesSection } from "./Favorites";
+import { HomeScreenAsk } from "./HomeAsk";
 import { ServiceRows } from "./Services";
 
 /**
@@ -163,12 +165,15 @@ export function Home() {
             </div>
           </Section>
 
-
           {me.referralEnabled ? (
             <List>
               <Row icon="users" plate="var(--lime)" size="lg" title={t("invite.title")} meta={t("invite.sub", { amount: iso(stars(me.referralReward)) })} onClick={() => navigate("/invite")} />
             </List>
           ) : null}
+
+          <HomeScreenAsk />
+
+          <FavoritesSection />
 
           {recent.length ? (
             <Section variant="title" header={t("home.again")} action={{ label: t("home.allOrders"), href: "/orders", onClick: () => navigate("/orders", { replace: true }) }}>

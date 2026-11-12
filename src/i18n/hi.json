@@ -273,5 +273,15 @@
   "err.INVALID_AMOUNT": "{min} से {max} के बीच की राशि दर्ज करें।",
   "err.BANNED": "आपका अकाउंट ब्लॉक है।",
   "err.CHANNEL_REQUIRED": "कृपया पहले हमारे अपडेट चैनल से जुड़ें।",
-  "err.UNAUTHORIZED": "कृपया ऐप को Telegram से खोलें।"
+  "err.UNAUTHORIZED": "कृपया ऐप को Telegram से खोलें।",
+  "fav.title": "पसंदीदा",
+  "fav.add": "पसंदीदा में जोड़ें",
+  "fav.remove": "पसंदीदा से हटाएं",
+  "fav.added": "पसंदीदा में जोड़ा गया",
+  "fav.removed": "पसंदीदा से हटाया गया",
+  "homeAsk.title": "{brand} को होम स्क्रीन पर जोड़ें",
+  "homeAsk.body": "किसी भी दूसरे ऐप की तरह एक टैप में खोलें।",
+  "homeAsk.add": "जोड़ें",
+  "homeAsk.later": "अभी नहीं",
+  "orders.refillAvailable": "रिफिल उपलब्ध"
 }
