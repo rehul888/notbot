@@ -283,5 +283,6 @@
   "homeAsk.body": "کسی بھی دوسری ایپ کی طرح ایک ٹیپ میں کھولیں۔",
   "homeAsk.add": "شامل کریں",
   "homeAsk.later": "ابھی نہیں",
-  "orders.refillAvailable": "ری فِل دستیاب ہے"
+  "orders.refillAvailable": "ری فِل دستیاب ہے",
+  "detail.refillAt": "اگلا ری فِل ممکن: {time}"
 }

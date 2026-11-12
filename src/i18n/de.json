@@ -283,5 +283,6 @@
   "homeAsk.body": "Mit einem Tippen öffnen, wie jede andere App.",
   "homeAsk.add": "Hinzufügen",
   "homeAsk.later": "Nicht jetzt",
-  "orders.refillAvailable": "Nachfüllung verfügbar"
+  "orders.refillAvailable": "Nachfüllung verfügbar",
+  "detail.refillAt": "Nächste Nachfüllung möglich: {time}"
 }

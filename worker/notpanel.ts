@@ -48,9 +48,14 @@ export interface NpStatus {
   remains?: string | number | null;
   refund?: string;
   reason_code?: string | null;
+  /** A cancel is possible right now, instant or as a request */
   can_cancel?: boolean;
+  /** Only the instant, full-refund cancel (first seconds, or still waiting and never sent) */
   cancel_available?: boolean;
+  cancel_state?: "requested" | "refused" | null;
   can_refill?: boolean;
+  /** When the next refill becomes possible (UTC time), or null */
+  refill_available_at?: string | null;
   error?: string;
   error_code?: string;
 }

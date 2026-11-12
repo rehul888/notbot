@@ -283,5 +283,6 @@
   "homeAsk.body": "افتحه بلمسة واحدة مثل أي تطبيق آخر.",
   "homeAsk.add": "إضافة",
   "homeAsk.later": "ليس الآن",
-  "orders.refillAvailable": "التعويض متاح"
+  "orders.refillAvailable": "التعويض متاح",
+  "detail.refillAt": "التعويض التالي ممكن: {time}"
 }

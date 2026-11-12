@@ -283,5 +283,6 @@
   "homeAsk.body": "Открывайте в одно касание, как обычное приложение.",
   "homeAsk.add": "Добавить",
   "homeAsk.later": "Не сейчас",
-  "orders.refillAvailable": "Доступно восполнение"
+  "orders.refillAvailable": "Доступно восполнение",
+  "detail.refillAt": "Следующее восполнение: {time}"
 }

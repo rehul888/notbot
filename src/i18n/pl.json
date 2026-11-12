@@ -283,5 +283,6 @@
   "homeAsk.body": "Otwieraj jednym dotknięciem, jak każdą inną aplikację.",
   "homeAsk.add": "Dodaj",
   "homeAsk.later": "Nie teraz",
-  "orders.refillAvailable": "Uzupełnienie dostępne"
+  "orders.refillAvailable": "Uzupełnienie dostępne",
+  "detail.refillAt": "Następne uzupełnienie możliwe: {time}"
 }

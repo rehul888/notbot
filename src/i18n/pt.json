@@ -283,5 +283,6 @@
   "homeAsk.body": "Abra com um toque, como qualquer outro app.",
   "homeAsk.add": "Adicionar",
   "homeAsk.later": "Agora não",
-  "orders.refillAvailable": "Reposição disponível"
+  "orders.refillAvailable": "Reposição disponível",
+  "detail.refillAt": "Próxima reposição possível: {time}"
 }

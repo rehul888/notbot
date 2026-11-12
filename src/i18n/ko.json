@@ -283,5 +283,6 @@
   "homeAsk.body": "다른 앱처럼 한 번에 열 수 있어요.",
   "homeAsk.add": "추가",
   "homeAsk.later": "나중에",
-  "orders.refillAvailable": "리필 가능"
+  "orders.refillAvailable": "리필 가능",
+  "detail.refillAt": "다음 리필 가능: {time}"
 }

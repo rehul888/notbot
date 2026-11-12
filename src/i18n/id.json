@@ -283,5 +283,6 @@
   "homeAsk.body": "Buka dengan satu ketukan, seperti aplikasi lain.",
   "homeAsk.add": "Tambah",
   "homeAsk.later": "Nanti saja",
-  "orders.refillAvailable": "Refill tersedia"
+  "orders.refillAvailable": "Refill tersedia",
+  "detail.refillAt": "Refill berikutnya bisa: {time}"
 }

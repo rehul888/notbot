@@ -283,5 +283,6 @@
   "homeAsk.body": "مثل هر برنامهٔ دیگری با یک لمس باز کنید.",
   "homeAsk.add": "افزودن",
   "homeAsk.later": "حالا نه",
-  "orders.refillAvailable": "جبران ریزش در دسترس است"
+  "orders.refillAvailable": "جبران ریزش در دسترس است",
+  "detail.refillAt": "جبران بعدی ممکن است: {time}"
 }

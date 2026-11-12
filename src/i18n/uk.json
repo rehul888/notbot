@@ -283,5 +283,6 @@
   "homeAsk.body": "Відкривайте одним дотиком, як звичайний застосунок.",
   "homeAsk.add": "Додати",
   "homeAsk.later": "Не зараз",
-  "orders.refillAvailable": "Доступне поповнення"
+  "orders.refillAvailable": "Доступне поповнення",
+  "detail.refillAt": "Наступне поповнення: {time}"
 }

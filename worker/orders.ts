@@ -33,6 +33,8 @@ export interface OrderRow {
   can_cancel: number;
   can_refill: number;
   cancel_before: number | null;
+  cancel_state: string | null;
+  refill_at: number | null;
   refill_id: number | null;
   refill_status: string | null;
   error: string | null;
@@ -62,8 +64,10 @@ export function orderView(o: OrderRow, paidWithStars = false): OrderView {
     startCount: o.start_count,
     remains: o.remains,
     reasonCode: o.reason_code ?? (o.status === "failed" ? o.error : null),
-    canCancel: OPEN_STATUSES.includes(o.status) && o.status !== "submitting" && (inGrace || !!o.can_cancel),
+    canCancel: OPEN_STATUSES.includes(o.status) && o.status !== "submitting" && o.cancel_state !== "requested" && (inGrace || !!o.can_cancel),
+    cancelState: OPEN_STATUSES.includes(o.status) && (o.cancel_state === "requested" || o.cancel_state === "refused") ? o.cancel_state : null,
     canRefill: !!o.can_refill && (o.status === "completed" || o.status === "partial") && o.refill_status !== "pending",
+    refillAt: !o.can_refill && o.refill_at && o.refill_at > now && (o.status === "completed" || o.status === "partial") ? o.refill_at : null,
     refillStatus: o.refill_status,
     paidWithStars,
     createdAt: o.created_at,
@@ -275,11 +279,18 @@ export function refundFor(o: OrderRow, status: OrderStatus, remains: number | nu
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
 
+/** NotPanel's refill_available_at as unix seconds */
+const refillAt = (v: string | null | undefined): number | null => {
+  const ms = v ? Date.parse(v) : NaN;
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+};
+
 /** Stores a NotPanel status on the order (updated_at only moves when something changed). */
 function statusStmt(env: Env, id: number, status: OrderStatus, st: NpStatus, now: number): D1PreparedStatement {
   return env.DB.prepare(
     `UPDATE orders SET status = ?2, start_count = ?3, remains = ?4, reason_code = ?5, can_cancel = ?6, can_refill = ?7,
-       cost = COALESCE(?8, cost), updated_at = CASE WHEN status = ?2 AND remains IS ?4 THEN updated_at ELSE ?9 END, checked_at = ?9
+       cost = COALESCE(?8, cost), updated_at = CASE WHEN status = ?2 AND remains IS ?4 THEN updated_at ELSE ?9 END, checked_at = ?9,
+       cancel_state = CASE WHEN ?11 THEN ?10 ELSE cancel_state END, refill_at = CASE WHEN ?13 THEN ?12 ELSE refill_at END
      WHERE id = ?1`,
   ).bind(
     id,
@@ -287,10 +298,15 @@ function statusStmt(env: Env, id: number, status: OrderStatus, st: NpStatus, now
     num(st.start_count),
     num(st.remains),
     st.reason_code ?? null,
-    st.cancel_available ?? st.can_cancel ? 1 : 0,
+    // can_cancel covers both the instant cancel and a cancel request; cancel_available is the instant one only
+    (st.can_cancel ?? st.cancel_available) ? 1 : 0,
     st.can_refill ? 1 : 0,
     st.charge !== undefined ? usdToMicro(st.charge) : null,
     now,
+    st.cancel_state ?? null,
+    st.cancel_state !== undefined ? 1 : 0,
+    refillAt(st.refill_available_at),
+    st.refill_available_at !== undefined ? 1 : 0,
   );
 }
 

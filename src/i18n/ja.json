@@ -283,5 +283,6 @@
   "homeAsk.body": "ほかのアプリと同じようにワンタップで開けます。",
   "homeAsk.add": "追加",
   "homeAsk.later": "今はしない",
-  "orders.refillAvailable": "リフィル可能"
+  "orders.refillAvailable": "リフィル可能",
+  "detail.refillAt": "次のリフィル可能日時：{time}"
 }

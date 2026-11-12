@@ -283,5 +283,6 @@
   "homeAsk.body": "অন্য যেকোনো অ্যাপের মতো এক ট্যাপে খুলুন।",
   "homeAsk.add": "যোগ করুন",
   "homeAsk.later": "এখন না",
-  "orders.refillAvailable": "রিফিল পাওয়া যাচ্ছে"
+  "orders.refillAvailable": "রিফিল পাওয়া যাচ্ছে",
+  "detail.refillAt": "পরের রিফিল সম্ভব: {time}"
 }

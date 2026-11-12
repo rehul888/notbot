@@ -10,6 +10,7 @@ vi.mock("../worker/settings", async (orig) => ({
 const { tg } = await import("../worker/telegram");
 const MIGRATIONS = import.meta.glob("../migrations/*.sql", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const { refundOrderToBalance, refundPayment } = await import("../worker/payments");
+const { applyStatus, orderView } = await import("../worker/orders");
 
 /** A real SQLite database with the project's migrations behind a minimal D1 interface (batch = one transaction). */
 function d1() {
@@ -134,5 +135,34 @@ describe("admin refunds", () => {
     expect((await refundPayment(env, 1)).ok).toBe(true);
     expect(row(db, "SELECT balance FROM users").balance).toBe(0);
     expect(row(db, "SELECT SUM(delta) d FROM ledger").d).toBe(-1975);
+  });
+});
+
+describe("NotPanel cancel and refill flags", () => {
+  const order = (db: DatabaseSync) => db.prepare("SELECT * FROM orders WHERE id = 1").get() as never;
+
+  it("shows Cancel while a cancel request is possible, even after the instant-cancel seconds", async () => {
+    const { env, db } = d1();
+    seed(db, { balance: 0, charge: 24000, amount: 25975 });
+    db.exec("UPDATE orders SET status = 'in_progress', np_order_id = 77, refunded = 0, refund = 0");
+    await applyStatus(env, order(db), { status: "In progress", status_key: "in_progress", can_cancel: true, cancel_available: false, cancel_state: null });
+    expect(orderView(order(db)).canCancel).toBe(true);
+
+    // Once asked, NotPanel handles it: no second Cancel, and the order says so
+    await applyStatus(env, order(db), { status: "In progress", status_key: "in_progress", can_cancel: false, cancel_available: false, cancel_state: "requested" });
+    const v = orderView(order(db));
+    expect(v.canCancel).toBe(false);
+    expect(v.cancelState).toBe("requested");
+  });
+
+  it("keeps the time of the next refill while a refill isn't possible yet", async () => {
+    const { env, db } = d1();
+    seed(db, { balance: 0, charge: 24000, amount: 25975 });
+    db.exec("UPDATE orders SET status = 'in_progress', np_order_id = 77");
+    const at = new Date(Date.now() + 3 * 3600_000).toISOString();
+    await applyStatus(env, order(db), { status: "Completed", status_key: "completed", can_refill: false, refill_available_at: at });
+    const v = orderView(order(db));
+    expect(v.canRefill).toBe(false);
+    expect(v.refillAt).toBe(Math.floor(Date.parse(at) / 1000));
   });
 });

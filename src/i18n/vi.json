@@ -283,5 +283,6 @@
   "homeAsk.body": "Mở bằng một chạm, như mọi ứng dụng khác.",
   "homeAsk.add": "Thêm",
   "homeAsk.later": "Để sau",
-  "orders.refillAvailable": "Có thể bù"
+  "orders.refillAvailable": "Có thể bù",
+  "detail.refillAt": "Có thể bù lần tới: {time}"
 }

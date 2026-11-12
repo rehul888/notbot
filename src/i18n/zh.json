@@ -283,5 +283,6 @@
   "homeAsk.body": "像其他应用一样一键打开。",
   "homeAsk.add": "添加",
   "homeAsk.later": "以后再说",
-  "orders.refillAvailable": "可补量"
+  "orders.refillAvailable": "可补量",
+  "detail.refillAt": "下次可补量：{time}"
 }

@@ -283,5 +283,6 @@
   "homeAsk.body": "Aprilo con un tocco, come qualsiasi altra app.",
   "homeAsk.add": "Aggiungi",
   "homeAsk.later": "Non ora",
-  "orders.refillAvailable": "Ricarica disponibile"
+  "orders.refillAvailable": "Ricarica disponibile",
+  "detail.refillAt": "Prossima ricarica possibile: {time}"
 }

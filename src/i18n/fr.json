@@ -283,5 +283,6 @@
   "homeAsk.body": "Ouvrez-le d’un geste, comme une autre app.",
   "homeAsk.add": "Ajouter",
   "homeAsk.later": "Plus tard",
-  "orders.refillAvailable": "Recharge disponible"
+  "orders.refillAvailable": "Recharge disponible",
+  "detail.refillAt": "Prochaine recharge possible : {time}"
 }

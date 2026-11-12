@@ -283,5 +283,6 @@
   "homeAsk.body": "किसी भी दूसरे ऐप की तरह एक टैप में खोलें।",
   "homeAsk.add": "जोड़ें",
   "homeAsk.later": "अभी नहीं",
-  "orders.refillAvailable": "रिफिल उपलब्ध"
+  "orders.refillAvailable": "रिफिल उपलब्ध",
+  "detail.refillAt": "अगला रिफिल संभव: {time}"
 }

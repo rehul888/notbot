@@ -283,5 +283,6 @@
   "homeAsk.body": "Diğer uygulamalar gibi tek dokunuşla açın.",
   "homeAsk.add": "Ekle",
   "homeAsk.later": "Şimdi değil",
-  "orders.refillAvailable": "Telafi mevcut"
+  "orders.refillAvailable": "Telafi mevcut",
+  "detail.refillAt": "Sonraki telafi: {time}"
 }

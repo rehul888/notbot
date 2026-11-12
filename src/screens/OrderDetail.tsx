@@ -247,9 +247,10 @@ export function OrderDetail({ orderId }: { orderId: number }) {
           </dl>
         </Section>
 
-        {o.canRefill || o.refillStatus || supportUser ? (
+        {o.canRefill || o.refillAt || o.refillStatus || supportUser ? (
           <List stagger>
             {o.canRefill ? <Row icon="refill" plate="var(--lime)" title={t("detail.refill")} onClick={refill} disabled={busy} chevron={false} /> : null}
+            {o.refillAt ? <Row icon="clock" plate="var(--lime)" wrap title={t("detail.refillAt", { time: dateTime(o.refillAt) })} /> : null}
             {o.refillStatus ? (
               <Row
                 icon="refill"
@@ -261,9 +262,11 @@ export function OrderDetail({ orderId }: { orderId: number }) {
           </List>
         ) : null}
 
-        {o.canCancel ? (
+        {o.canCancel || o.cancelState ? (
           <List>
-            <Row icon="cancel" plate="var(--pink)" title={t("detail.cancel")} danger onClick={cancel} disabled={busy} />
+            {o.cancelState === "requested" ? <Row icon="clock" plate="var(--pink)" wrap title={t("detail.cancelRequested")} /> : null}
+            {o.cancelState === "refused" ? <Row icon="alert" plate="var(--pink)" wrap title={t("err.CANCEL_REFUSED")} /> : null}
+            {o.canCancel ? <Row icon="cancel" plate="var(--pink)" title={t("detail.cancel")} danger onClick={cancel} disabled={busy} /> : null}
           </List>
         ) : null}
       </>

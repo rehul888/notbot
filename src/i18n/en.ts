@@ -217,6 +217,7 @@ export const en = {
   "detail.refillPending": "Refill requested",
   "detail.refillDone": "Refill completed",
   "detail.refillRejected": "Refill was rejected",
+  "detail.refillAt": "Next refill possible {time}",
   "detail.again": "Order again",
   "detail.cancelConfirm": "Cancel order #{id}? Anything not delivered is refunded to your balance.",
   "detail.cancelYes": "Cancel order",

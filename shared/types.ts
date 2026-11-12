@@ -188,7 +188,11 @@ export interface OrderView {
   remains: number | null;
   reasonCode: string | null;
   canCancel: boolean;
+  /** After a cancel request on a running order: NotPanel is handling it, or refused it */
+  cancelState: "requested" | "refused" | null;
   canRefill: boolean;
+  /** Unix seconds when the next refill becomes possible, while it isn't yet */
+  refillAt: number | null;
   refillStatus: string | null;
   paidWithStars: boolean;
   createdAt: number;
