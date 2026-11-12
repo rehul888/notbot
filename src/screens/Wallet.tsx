@@ -12,6 +12,9 @@ import { meStore } from "../store";
 import { haptic } from "../tg";
 import { EmptyState, ErrorState, LargeTitle, List, Num, Row, Screen, Section, SkeletonList, errText, toast, useAsync } from "../ui";
 
+/** One-tap top-up amounts on the Wallet (those outside the admin's min/max are left out) */
+const QUICK = [100, 250, 500, 1000];
+
 /** Ledger page size (the API returns 30 per page). */
 const PAGE = 30;
 
@@ -127,9 +130,25 @@ export function Wallet() {
       <BalanceCard balance={balance} />
 
       <Section header={t("wallet.addWith")}>
-        <List>
-          <Row lead={<StarsTile />} title={t("wallet.stars")} meta={t("wallet.starsSub")} href="/topup" />
-        </List>
+        <div class="card pad quick-top">
+          <div class="qt-head">
+            <StarsTile />
+            <div>
+              <b>{t("wallet.stars")}</b>
+              <span>{t("wallet.starsSub")}</span>
+            </div>
+          </div>
+          <div class="qt-grid">
+            {QUICK.filter((n) => n >= me.minTopup && n <= me.maxTopup).map((n) => (
+              <button key={n} type="button" class="qt-amt press" onClick={() => (haptic.tap(), navigate(`/topup?amount=${n}`))}>
+                <Num>{stars(n)}</Num>
+              </button>
+            ))}
+          </div>
+          <button type="button" class="btn sm soft press" onClick={() => (haptic.tap(), navigate("/topup"))}>
+            {t("topup.custom")}
+          </button>
+        </div>
       </Section>
 
       <Section header={t("wallet.history")} class="day">

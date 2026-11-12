@@ -703,6 +703,14 @@ body:has(:is(input, textarea):focus) :is(.tabs, .steps) { transform: translate3d
 .home-ask b { font: 600 16px/21px var(--font); }
 .home-ask > div > span { font: 400 14px/19px var(--font); color: var(--hint); }
 .home-ask .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.quick-top { display: flex; flex-direction: column; gap: 12px; }
+.quick-top .qt-head { display: flex; align-items: center; gap: 12px; }
+.quick-top .qt-head > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.quick-top .qt-head b { font: 600 16px/21px var(--font); }
+.quick-top .qt-head span { font: 400 13px/18px var(--font); color: var(--hint); }
+.quick-top .qt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.quick-top > .btn, .btn.more-btn { flex: none; }
+.qt-amt { height: 52px; border: 0; border-radius: 14px; background: var(--sel); color: var(--sel-fg); font: 700 17px/22px var(--num-font, var(--font)); cursor: pointer; }
 .qty-card { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
 .qty { display: flex; align-items: center; gap: 8px; }
 .qty-btn, .iconbtn.qty-btn { background: var(--fill-2); color: var(--fg); }

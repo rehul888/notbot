@@ -29,49 +29,38 @@ admin.use("*", async (c, next) => {
 
 const dayStart = () => periodStart("today", Date.now());
 
-/** Orders in a UTC-day period with sale, cost, profit and margin (see shared/profit.ts) plus the top services by profit. */
-function reportStmts(env: AppEnv["Bindings"], period: ReportPeriod) {
-  const since = periodStart(period, Date.now());
-  return [
-    // One range scan on orders.created_at; failed orders are fully refunded and left out
-    env.DB.prepare(`SELECT ${MONEY_SUMS_SQL} FROM orders WHERE created_at >= ?1 AND status != 'failed'`).bind(since),
-    env.DB.prepare(
-      `SELECT service_id AS id, MAX(service_name) AS name, COUNT(*) AS orders, SUM(charge - refund) AS sales, SUM(cost) AS cost,
-         SUM(charge - refund - cost) AS profit
-       FROM orders WHERE created_at >= ?1 AND status != 'failed' AND cost IS NOT NULL
-       GROUP BY service_id HAVING SUM(charge - refund) > 0 ORDER BY profit DESC LIMIT 5`,
-    ).bind(since),
-  ];
+/** Orders in a UTC-day period with sale, cost, profit and margin (see shared/profit.ts) */
+function reportStmt(env: AppEnv["Bindings"], period: ReportPeriod) {
+  // One range scan on orders.created_at; failed orders are fully refunded and left out
+  return env.DB.prepare(`SELECT ${MONEY_SUMS_SQL} FROM orders WHERE created_at >= ?1 AND status != 'failed'`).bind(periodStart(period, Date.now()));
 }
 
-function reportJson(s: Settings, period: ReportPeriod, sums: unknown, top: unknown[]) {
+function reportJson(s: Settings, period: ReportPeriod, sums: unknown) {
   const t = totalsFrom(sums as MoneySums);
-  return {
-    period,
-    ...t,
-    salesStars: shownStars(t.sales, s.stars_per_usd),
-    topServices: (top as { id: number; name: string; orders: number; sales: number; cost: number; profit: number }[]).map((r) => ({
-      ...r,
-      margin: r.sales > 0 ? (r.profit / r.sales) * 100 : null,
-    })),
-  };
+  return { period, ...t, salesStars: shownStars(t.sales, s.stars_per_usd) };
 }
 
 admin.get("/report", async (c) => {
   const period = parsePeriod(c.req.query("period"));
-  const [sums, top] = await c.env.DB.batch(reportStmts(c.env, period));
-  return c.json(reportJson(c.get("settings"), period, sums.results[0], top.results));
+  const sums = await reportStmt(c.env, period).first();
+  return c.json(reportJson(c.get("settings"), period, sums));
 });
+
+/** Users and joined referrals only grow; counting them reads every row, so the admin home reuses them for a minute */
+let countsMemo: { at: number; users: number; joined: number } | null = null;
 
 admin.get("/overview", async (c) => {
   const s = c.get("settings");
-  const [today, topToday, users, pending, attention, joined] = await c.env.DB.batch([
-    ...reportStmts(c.env, "today"),
-    c.env.DB.prepare("SELECT COUNT(*) AS n FROM users"),
+  const fresh = countsMemo && Date.now() - countsMemo.at < 60_000 ? countsMemo : null;
+  const [today, pending, attention, users, joined] = await c.env.DB.batch([
+    reportStmt(c.env, "today"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE status IN ('submitting','pending','processing','in_progress')"),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM services WHERE present = 1 AND enabled = 1 AND fixed_rate IS NOT NULL AND fixed_rate < rate"),
-    c.env.DB.prepare("SELECT COUNT(*) AS n FROM referrals WHERE status != 'pending'"),
+    ...(fresh
+      ? []
+      : [c.env.DB.prepare("SELECT COUNT(*) AS n FROM users"), c.env.DB.prepare("SELECT COUNT(*) AS n FROM referrals WHERE status != 'pending'")]),
   ]);
+  if (!fresh) countsMemo = { at: Date.now(), users: (users.results[0] as { n: number }).n, joined: (joined.results[0] as { n: number }).n };
   let npBalance: number | null = null;
   let npError: string | null = null;
   try {
@@ -79,15 +68,14 @@ admin.get("/overview", async (c) => {
   } catch (e) {
     npError = (e as Error).message;
   }
-  // `today` keeps its old fields (orders, sales, salesStars, profit) and adds cost, margin, noCost, topServices
-  const t = reportJson(s, "today", today.results[0], topToday.results);
+  const t = reportJson(s, "today", today.results[0]);
   return c.json({
     npBalance,
     npError,
     lowBalance: s.low_balance,
     today: t,
-    users: (users.results[0] as { n: number }).n,
-    referralsJoined: (joined.results[0] as { n: number }).n,
+    users: countsMemo!.users,
+    referralsJoined: countsMemo!.joined,
     openOrders: (pending.results[0] as { n: number }).n,
     needsAttention: (attention.results[0] as { n: number }).n,
     defaultMarkup: s.default_markup_pct,

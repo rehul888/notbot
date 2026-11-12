@@ -9,6 +9,9 @@
 .mc.neg b, .neg { color: var(--st-cancel); }
 .ord + .ord { border-top: var(--hairline) solid var(--sep); }
 .ord .row:first-child > .body { border-top: 0; }
+.ord .ord-note { padding: 0 var(--row-inset) 8px; }
+.ord .ord-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 var(--row-inset) 12px; }
+.ord .ord-acts:empty { display: none; }
 .mtotals { display: flex; flex-direction: column; gap: 10px; }
 .mtotals .mcells { margin-top: 0; }
 .mtotals .mhead { display: flex; justify-content: space-between; gap: 12px; font: 600 14px/19px var(--font); }

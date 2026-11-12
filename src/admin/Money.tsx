@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { orderMargin, profitOf, rateMargin, saleOf, type MoneyTotals, type OrderMoney, type ReportPeriod } from "../../shared/profit";
 import { api } from "../api";
 import { num } from "../format";
-import { List, Num, Row, Section, Seg, Skeleton, errText, toast } from "../ui";
+import { navigate } from "../router";
+import { Num, Section, Seg, Skeleton, errText, toast } from "../ui";
 import { money, starsText, usdStars } from "./fmt";
 import "./money.css";
 
@@ -104,7 +105,6 @@ export function MoneyTotalsBar({ totals }: { totals: MoneyTotals }) {
 export interface Report extends MoneyTotals {
   period: ReportPeriod;
   salesStars: number;
-  topServices: { id: number; name: string; orders: number; sales: number; cost: number; profit: number; margin: number | null }[];
 }
 
 const PERIODS: [ReportPeriod, string][] = [
@@ -130,7 +130,7 @@ function Tile({ label, sub, wide, tone: t, children }: { label: string; sub?: Co
   );
 }
 
-/** Period switcher with Orders, Sales, Cost, Profit and Margin tiles, plus the top services by profit. */
+/** Period switcher with Orders, Sales, Cost, Profit and Margin tiles, and a way to the orders behind them. */
 export function ProfitReport({ initial }: { initial: Report }) {
   const [period, setPeriod] = useState<ReportPeriod>("today");
   const [reports, setReports] = useState<Partial<Record<ReportPeriod, Report>>>({ today: initial });
@@ -150,7 +150,11 @@ export function ProfitReport({ initial }: { initial: Report }) {
   const r = reports[period];
   return (
     <>
-      <Section header="Sales and profit" footer={`${PERIOD_NOTE[period]}. ${LEGEND} Failed orders are not counted.`}>
+      <Section
+        header="Sales and profit"
+        action={{ label: "See orders", onClick: () => navigate("/admin/orders") }}
+        footer={`${PERIOD_NOTE[period]}. ${LEGEND} Failed orders are not counted.`}
+      >
         <Seg value={period} options={PERIODS} onChange={setPeriod} label="Period" />
         {r ? (
           <div class="grid2" aria-live="polite">
@@ -182,29 +186,6 @@ export function ProfitReport({ initial }: { initial: Report }) {
         )}
         {r && r.noCost > 0 ? <NoCostNote n={r.noCost} /> : null}
       </Section>
-      {r && r.topServices.length ? (
-        <Section header="Top services by profit">
-          <List>
-            {r.topServices.map((s) => (
-              <Row
-                key={s.id}
-                wrap
-                title={s.name}
-                meta={
-                  <>
-                    <Num>{num(s.orders)}</Num> {s.orders === 1 ? "order" : "orders"} · sales <Num>{money(s.sales)}</Num> · margin <Num>{marginText(s.margin)}</Num>
-                  </>
-                }
-                value={
-                  <span class={tone(s.profit)}>
-                    <Num>{money(s.profit)}</Num>
-                  </span>
-                }
-              />
-            ))}
-          </List>
-        </Section>
-      ) : null}
     </>
   );
 }

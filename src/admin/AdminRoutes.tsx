@@ -192,9 +192,9 @@ function usePaged<T, X = unknown>(url: string | null, delay = 0, cursorKey = "be
 
 function ShowMore({ next, busy, onClick }: { next: unknown; busy: boolean; onClick: () => void }) {
   return next !== null && next !== undefined ? (
-    <Chip label="Show more" disabled={busy} onClick={onClick}>
+    <button type="button" class="btn sm soft more-btn" disabled={busy} onClick={onClick}>
       {busy ? "Loading…" : "Show more"}
-    </Chip>
+    </button>
   ) : null;
 }
 
@@ -1550,24 +1550,26 @@ function AdminUser({ id }: { id: string }) {
               </dl>
             </Section>
 
-            <Section header="Orders" action={s.orders > orders.length ? { label: `All ${num(s.orders)}`, onClick: () => navigate(`/admin/orders?user=${u.id}`) } : undefined}>
+            <Section header={`Orders · ${num(s.orders)}`}>
               {orders.length ? (
                 <List>
                   {orders.map((o) => (
                     <OrderItem key={o.id} o={o} refunding={orderRefund.busy === o.id} onRefund={() => orderRefund.open(o)} showUser={false} />
                   ))}
+                  {s.orders > orders.length ? <Row accent title={`See all ${num(s.orders)} orders`} onClick={() => navigate(`/admin/orders?user=${u.id}`)} /> : null}
                 </List>
               ) : (
                 <EmptyState compact art="orders" title="No orders yet" />
               )}
             </Section>
 
-            <Section header="Stars payments" action={payments.length >= 5 ? { label: "All", onClick: () => navigate(`/admin/payments?user=${u.id}`) } : undefined}>
+            <Section header="Stars payments">
               {payments.length ? (
                 <List>
                   {payments.map((pay) => (
                     <PaymentItem key={pay.id} p={pay} openUser={false} refunding={refunding === pay.id} onRefund={() => refundPayment(pay)} />
                   ))}
+                  {payments.length >= 5 ? <Row accent title="See all payments" onClick={() => navigate(`/admin/payments?user=${u.id}`)} /> : null}
                 </List>
               ) : (
                 <EmptyState compact art="wallet" title="No Stars payments yet" />
@@ -1906,8 +1908,23 @@ function OrderRefundSheet({ o, busy, onClose, onRefund }: { o: AdminOrder; busy:
   );
 }
 
+/** Why an order never reached NotPanel, in plain words (orders.error) */
+const FAIL_REASON: Record<string, string> = {
+  INVALID_LINK: "the link was wrong or private",
+  SUBMIT_FAILED: "NotPanel didn't accept it",
+  DRIP_FEED_INVALID: "the drip-feed settings weren't accepted",
+  MINIMUM_QUANTITY: "the amount was below the minimum",
+  MAXIMUM_QUANTITY: "the amount was above the maximum",
+  INSUFFICIENT_BALANCE: "your NotPanel balance was too low",
+  SERVICE_PAUSED: "the service was paused",
+  SERVICE_DISCONTINUED: "the service was discontinued",
+  LINK_BLOCKED: "NotPanel blocks this link",
+};
+const failReason = (code: string | null) => (code ? (FAIL_REASON[code] ?? code.toLowerCase().replace(/_/g, " ")) : "it was refused");
+
 /** One order with its money and actions */
 function OrderItem({ o, refunding, onRefund, showUser = true }: { o: AdminOrder; refunding: boolean; onRefund: () => void; showUser?: boolean }) {
+  const failed = o.status === "failed";
   return (
     <div class="ord">
       <Row
@@ -1916,28 +1933,42 @@ function OrderItem({ o, refunding, onRefund, showUser = true }: { o: AdminOrder;
         title={o.serviceName}
         meta={
           <>
-            internal <Num>#{o.id}</Num>
+            <Num>#{o.id}</Num>
             {o.npOrderId ? (
               <>
                 {" "}
                 · NotPanel <Num>#{o.npOrderId}</Num>
               </>
             ) : null}
-            {showUser ? ` · ${o.userName}${o.username ? ` @${o.username}` : ""}` : ""} · <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
-            {o.error ? ` · ${o.error}` : ""}
+            {showUser ? ` · ${o.userName}${o.username ? ` @${o.username}` : ""}` : ""}
+            <br />
+            <Num>{num(o.quantity)}</Num> · {dateTime(o.createdAt)}
           </>
         }
-        control={<StatusPill status={o.status} />}
+        control={failed ? <span class="status st-cancel">Failed</span> : <StatusPill status={o.status} />}
       />
-      <MoneyCells cells={orderCells(o)} />
-      <div class="chips">
+      {failed ? (
+        <p class="note ord-note">
+          Never started: {failReason(o.error)}. <Num>{money(o.charge)}</Num> went back to their balance automatically.
+        </p>
+      ) : (
+        <>
+          <MoneyCells cells={orderCells(o)} />
+          {o.refund > 0 ? (
+            <p class="note ord-note">
+              <Num>{money(o.refund)}</Num> of <Num>{money(o.charge)}</Num> refunded to their balance.
+            </p>
+          ) : null}
+        </>
+      )}
+      <div class="ord-acts">
         {o.refundable > 0 && o.status !== "submitting" ? (
           <Chip label={`Refund order #${o.id}`} disabled={refunding} onClick={onRefund}>
             Refund
           </Chip>
         ) : null}
         {o.link ? (
-          <Chip label={`Open the link of order #${o.id}`} onClick={() => openLink(o.link)}>
+          <Chip label={`Open the link of order #${o.id}`} onClick={() => openLink(o.link.startsWith("http") ? o.link : `https://${o.link}`)}>
             Open link
           </Chip>
         ) : null}
