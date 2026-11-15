@@ -6,7 +6,7 @@ import { npCall, usdToMicro } from "./notpanel";
 import { getSettings, setSettings } from "./settings";
 import { tg, webAppButton } from "./telegram";
 
-export type AlertKind = "channel" | "notpanel" | "low_balance" | "sync";
+export type AlertKind = "channel" | "notpanel" | "low_balance" | "sync" | "no_answer";
 const EVERY = 6 * 3600;
 
 /** Sends `text` (HTML) to all admins unless the same kind was sent in the last 6 hours. Never throws. */

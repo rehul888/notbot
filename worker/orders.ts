@@ -3,7 +3,7 @@ import type { Env } from "./env";
 import { botText } from "./i18n";
 import { amountText, linkText } from "./botMessages";
 import { NotPanelError, npCall, usdToMicro, type NpAddResult, type NpStatus } from "./notpanel";
-import { orderCharge } from "./pricing";
+import { orderCharge, quantityMode } from "./pricing";
 import { alertAdmins } from "./alerts";
 import { getSettings } from "./settings";
 import { tg, webAppButton } from "./telegram";
@@ -35,6 +35,8 @@ export interface OrderRow {
   cancel_before: number | null;
   cancel_state: string | null;
   refill_at: number | null;
+  error_detail: string | null;
+  resent_at: number | null;
   refill_id: number | null;
   refill_status: string | null;
   error: string | null;
@@ -175,16 +177,51 @@ export async function placeOrder(
   if (!debit.meta.changes) throw new OrderError("INSUFFICIENT_FUNDS", { charge });
   const id = (insert.results[0] as { id: number }).id;
 
+  await submitOrder(env, { id, service_id: svc.id, link, quantity, fields, drip_minutes: dripMinutes ?? null }, svc.quantityMode, charge);
+  return (await getOrderRow(env, id))!;
+}
+
+type QuantityModeName = ReturnType<typeof quantityMode>;
+
+/** NotPanel's own reason for refusing (e.g. which drip-feed limit), kept for the admin */
+function refusalDetail(e: NotPanelError): string | null {
+  const rule = e.details?.rule;
+  const text = typeof rule === "string" && rule.trim() ? rule : e.message;
+  return text ? text.trim().slice(0, 300) : null;
+}
+
+/** Tells the admins (at most every 6 hours) that NotPanel didn't answer an order. */
+function alertNoAnswer(env: Env, id: number, why: string): Promise<void> {
+  return alertAdmins(
+    env,
+    "no_answer",
+    `NotPanel didn't answer when order <b>#${id}</b> was sent (${why.replace(/[<>&]/g, "").slice(0, 120)}). The bot asks NotPanel again and resends it once; if NotPanel still has no such order, the customer is refunded automatically. If this keeps happening, check notpanel.com.`,
+  );
+}
+
+/**
+ * Sends an order to NotPanel with its request_id, so sending the same order again is safe (NotPanel keeps one).
+ * Accepted: stores NotPanel's order. Refused: fails the order and refunds it. No answer: left "submitting" for
+ * recoverSubmitting. Returns whether NotPanel answered.
+ */
+async function submitOrder(
+  env: Env,
+  o: { id: number; service_id: number; link: string; quantity: number; fields: Record<string, string>; drip_minutes: number | null },
+  mode: QuantityModeName,
+  charge: number,
+): Promise<boolean> {
+  const id = o.id;
   // Form fields go first so they can never override the fixed keys below
   const params: Record<string, string | number | undefined> = {};
-  for (const [k, v] of Object.entries(fields)) if (!RESERVED_PARAMS.has(k)) params[k] = v;
+  for (const [k, v] of Object.entries(o.fields)) if (!RESERVED_PARAMS.has(k)) params[k] = v;
   Object.assign(params, {
-    service: svc.id,
-    link,
+    service: o.service_id,
+    link: o.link,
     request_id: requestId(env, id),
-    quantity: svc.quantityMode === "free" ? quantity : undefined,
-    drip_feed_total_minutes: dripMinutes,
+    quantity: mode === "free" ? o.quantity : undefined,
+    drip_feed_total_minutes: o.drip_minutes ?? undefined,
   });
+  const now = Math.floor(Date.now() / 1000);
   try {
     const r = await npCall<NpAddResult>(env, "add", params);
     const addStatus = normStatus(r.status_key) ?? "pending";
@@ -208,10 +245,12 @@ export async function placeOrder(
       const row = await getOrderRow(env, id);
       if (row) await applyStatus(env, row, { ...(r as object), status: r.status_key, status_key: r.status_key } as NpStatus);
     }
+    return true;
   } catch (e) {
     if (e instanceof NotPanelError && !e.retryable) {
       const shop = SHOP_SIDE.has(e.code);
-      await failOrder(env, id, shop ? "SERVICE_UNAVAILABLE" : e.code);
+      // The real code and NotPanel's words stay in error_detail for the admin; users only ever see the public code
+      await failOrder(env, id, shop ? "SERVICE_UNAVAILABLE" : e.code, shop ? `${e.code}: ${refusalDetail(e) ?? ""}` : refusalDetail(e));
       if (shop) {
         console.error("NotPanel shop-side error", e.code, e.message);
         await alertAdmins(env, "notpanel", `NotPanel refused an order: <b>${e.code}</b>${e.code === "INSUFFICIENT_BALANCE" ? " (your NotPanel balance is too low; top it up on notpanel.com)" : ""}. Customers can't order until this is fixed; their money was refunded to their balance.`);
@@ -219,22 +258,24 @@ export async function placeOrder(
       // Supplier details are never shown to users
       throw new OrderError(shop ? "SERVICE_UNAVAILABLE" : e.code, shop ? undefined : e.details);
     }
-    console.warn("order submit pending recovery", id, (e as Error).message);
+    const why = (e as Error).message;
+    console.warn("order submit pending recovery", id, why);
+    await alertNoAnswer(env, id, why);
+    return false;
   }
-  return (await getOrderRow(env, id))!;
 }
 
 export async function getOrderRow(env: Env, id: number): Promise<OrderRow | null> {
   return env.DB.prepare("SELECT * FROM orders WHERE id = ?1").bind(id).first<OrderRow>();
 }
 
-/** Marks an order as failed and refunds the full charge (once). */
-async function failOrder(env: Env, id: number, code: string): Promise<void> {
+/** Marks an order as failed and refunds the full charge (once). `detail` is NotPanel's own reason, for the admin. */
+async function failOrder(env: Env, id: number, code: string, detail: string | null = null): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   await env.DB.batch([
     env.DB.prepare(
-      "UPDATE orders SET status = 'failed', error = ?2, refund = charge, refunded = 1, updated_at = ?3 WHERE id = ?1 AND refunded = 0",
-    ).bind(id, code, now),
+      "UPDATE orders SET status = 'failed', error = ?2, error_detail = ?4, refund = charge, refunded = 1, updated_at = ?3 WHERE id = ?1 AND refunded = 0",
+    ).bind(id, code, now, detail),
     ...creditRefundStmts(env, id, now),
   ]);
 }
@@ -393,19 +434,45 @@ export async function refreshOrder(env: Env, o: OrderRow): Promise<OrderRow> {
   return o;
 }
 
-/** An order whose add call timed out: ask NotPanel by request_id whether it exists. */
+/** How long a never-answered order waits before it is resent, and how long after the resend before it is refunded */
+const RESEND_AFTER = 120;
+const GIVE_UP_AFTER = 600;
+
+/**
+ * An order whose add call got no answer: ask NotPanel by request_id whether it exists. If not, send it once more with
+ * the same request_id (NotPanel never creates it twice); if NotPanel still has no such order 10 minutes later, refund.
+ */
 async function recoverSubmitting(env: Env, o: OrderRow): Promise<OrderRow> {
+  const now = Math.floor(Date.now() / 1000);
   try {
     const d = await npCall<NpStatus & { order: number }>(env, "order_details", { request_id: requestId(env, o.id) });
     await env.DB.prepare("UPDATE orders SET np_order_id = ?2 WHERE id = ?1").bind(o.id, d.order).run();
     return applyStatus(env, { ...o, np_order_id: d.order }, d);
   } catch (e) {
-    const now = Math.floor(Date.now() / 1000);
-    if (e instanceof NotPanelError && e.code === "ORDER_NOT_FOUND" && now - o.created_at > 600) {
-      await failOrder(env, o.id, "SUBMIT_FAILED");
-      const failed = (await getOrderRow(env, o.id))!;
-      await notifyOrder(env, failed);
-      return failed;
+    if (e instanceof NotPanelError && e.code === "ORDER_NOT_FOUND") {
+      // A local dev setup never resends (it would place a real order); it just gives up below
+      const mayResend = !env.DEV_FAKE_USER_ID || (env as Env & { ALLOW_LIVE_ORDERS?: string }).ALLOW_LIVE_ORDERS === "1";
+      if (!o.resent_at && mayResend && now - o.created_at > RESEND_AFTER) {
+        await env.DB.prepare("UPDATE orders SET resent_at = ?2, checked_at = ?2 WHERE id = ?1").bind(o.id, now).run();
+        const svc = await env.DB.prepare("SELECT type_key FROM services WHERE id = ?1").bind(o.service_id).first<{ type_key: string }>();
+        try {
+          const fields = o.fields ? (JSON.parse(o.fields) as Record<string, string>) : {};
+          await submitOrder(env, { ...o, fields }, quantityMode(svc?.type_key ?? "default"), o.charge);
+        } catch (err) {
+          if (!(err instanceof OrderError)) throw err;
+          // NotPanel refused it this time: the order is failed and refunded; tell the user
+          const failed = (await getOrderRow(env, o.id))!;
+          await notifyOrder(env, failed);
+          return failed;
+        }
+        return (await getOrderRow(env, o.id))!;
+      }
+      if (o.resent_at ? now - o.resent_at > GIVE_UP_AFTER : !mayResend && now - o.created_at > GIVE_UP_AFTER) {
+        await failOrder(env, o.id, "SUBMIT_FAILED", "NotPanel never answered, not even when the order was sent a second time");
+        const failed = (await getOrderRow(env, o.id))!;
+        await notifyOrder(env, failed);
+        return failed;
+      }
     }
     await env.DB.prepare("UPDATE orders SET checked_at = ?2 WHERE id = ?1").bind(o.id, now).run();
     return o;

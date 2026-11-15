@@ -1773,6 +1773,8 @@ type AdminOrder = OrderView & {
   userName: string;
   username: string | null;
   error: string | null;
+  /** NotPanel's own words when it refused the order */
+  errorDetail: string | null;
   /** Stars of the payment that bought this order, if it is still refundable to Telegram */
   paidStars: number | null;
   /** micro-USD still charged (not refunded yet) */
@@ -1911,7 +1913,8 @@ function OrderRefundSheet({ o, busy, onClose, onRefund }: { o: AdminOrder; busy:
 /** Why an order never reached NotPanel, in plain words (orders.error) */
 const FAIL_REASON: Record<string, string> = {
   INVALID_LINK: "the link was wrong or private",
-  SUBMIT_FAILED: "NotPanel didn't accept it",
+  SUBMIT_FAILED: "NotPanel didn't answer, even after the order was sent a second time",
+  SERVICE_UNAVAILABLE: "your NotPanel account couldn't take orders",
   DRIP_FEED_INVALID: "the drip-feed settings weren't accepted",
   MINIMUM_QUANTITY: "the amount was below the minimum",
   MAXIMUM_QUANTITY: "the amount was above the maximum",
@@ -1950,6 +1953,7 @@ function OrderItem({ o, refunding, onRefund, showUser = true }: { o: AdminOrder;
       {failed ? (
         <p class="note ord-note">
           Never started: {failReason(o.error)}. <Num>{money(o.charge)}</Num> went back to their balance automatically.
+          {o.errorDetail ? <> NotPanel said: “{o.errorDetail}”</> : null}
         </p>
       ) : (
         <>

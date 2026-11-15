@@ -7,10 +7,12 @@ vi.mock("../worker/settings", async (orig) => ({
   ...(await orig<typeof import("../worker/settings")>()),
   getSettings: vi.fn(async () => (await orig<typeof import("../worker/settings")>()).DEFAULTS),
 }));
+vi.mock("../worker/notpanel", async (orig) => ({ ...(await orig<typeof import("../worker/notpanel")>()), npCall: vi.fn() }));
 const { tg } = await import("../worker/telegram");
+const { npCall, NotPanelError } = await import("../worker/notpanel");
 const MIGRATIONS = import.meta.glob("../migrations/*.sql", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const { refundOrderToBalance, refundPayment } = await import("../worker/payments");
-const { applyStatus, orderView } = await import("../worker/orders");
+const { applyStatus, orderView, refreshOrder } = await import("../worker/orders");
 
 /** A real SQLite database with the project's migrations behind a minimal D1 interface (batch = one transaction). */
 function d1() {
@@ -164,5 +166,49 @@ describe("NotPanel cancel and refill flags", () => {
     const v = orderView(order(db));
     expect(v.canRefill).toBe(false);
     expect(v.refillAt).toBe(Math.floor(Date.parse(at) / 1000));
+  });
+});
+
+describe("orders NotPanel never answered", () => {
+  const notFound = () => new NotPanelError("Order not found", "ORDER_NOT_FOUND", false, 404);
+  const row = (db: DatabaseSync) => db.prepare("SELECT * FROM orders WHERE id = 1").get() as never;
+  const submitting = (db: DatabaseSync, age: number, resentAgo: number | null = null) => {
+    seed(db, { balance: 0, charge: 24000, amount: 25975 });
+    const now = Math.floor(Date.now() / 1000);
+    db.exec(`UPDATE orders SET status = 'submitting', refund = 0, refunded = 0, np_order_id = NULL, created_at = ${now - age},
+      resent_at = ${resentAgo === null ? "NULL" : now - resentAgo}`);
+  };
+  beforeEach(() => vi.mocked(npCall).mockReset());
+
+  it("sends it once more with the same request_id, and keeps NotPanel's order", async () => {
+    const { env, db } = d1();
+    submitting(db, 300);
+    vi.mocked(npCall).mockRejectedValueOnce(notFound()).mockResolvedValueOnce({ order: 555, status_key: "pending", charge: "0.02" });
+    await refreshOrder(env, row(db));
+    const add = vi.mocked(npCall).mock.calls[1];
+    expect(add[1]).toBe("add");
+    expect(add[2]).toMatchObject({ service: 5, request_id: "o1" });
+    expect(row(db)).toMatchObject({ np_order_id: 555, status: "pending", refunded: 0 });
+    expect((row(db) as { resent_at: number | null }).resent_at).not.toBeNull();
+  });
+
+  it("refunds when NotPanel still has no such order 10 minutes after the resend", async () => {
+    const { env, db } = d1();
+    submitting(db, 1500, 700);
+    vi.mocked(npCall).mockRejectedValueOnce(notFound());
+    await refreshOrder(env, row(db));
+    expect(vi.mocked(npCall)).toHaveBeenCalledTimes(1); // no second resend
+    expect(row(db)).toMatchObject({ status: "failed", error: "SUBMIT_FAILED", refunded: 1, refund: 24000 });
+    expect((db.prepare("SELECT balance FROM users").get() as { balance: number }).balance).toBe(24000);
+  });
+
+  it("keeps NotPanel's own reason when the resend is refused", async () => {
+    const { env, db } = d1();
+    submitting(db, 300);
+    vi.mocked(npCall)
+      .mockRejectedValueOnce(notFound())
+      .mockRejectedValueOnce(new NotPanelError("Invalid drip-feed", "DRIP_FEED_INVALID", false, 400, { rule: "Each run must be at least 10" }));
+    await refreshOrder(env, row(db));
+    expect(row(db)).toMatchObject({ status: "failed", error: "DRIP_FEED_INVALID", error_detail: "Each run must be at least 10", refunded: 1 });
   });
 });

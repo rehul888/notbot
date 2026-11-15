@@ -749,6 +749,7 @@ const adminOrderItem = (o: AdminOrderRow) => ({
   userName: o.first_name,
   username: o.username,
   error: o.error,
+  errorDetail: o.error_detail,
   paidStars: o.paid_stars,
   refundable: Math.max(0, o.charge - o.refund),
 });
