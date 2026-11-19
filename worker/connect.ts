@@ -7,7 +7,7 @@ import { userCommands } from "./commands";
 import { brandName } from "./brand";
 import type { Env } from "./env";
 import { botPlain } from "./i18n";
-import { npCall } from "./notpanel";
+import { np, npCall, npKey } from "./notpanel";
 import { getSettings, setSettings, type Settings } from "./settings";
 import { tg } from "./telegram";
 
@@ -35,6 +35,33 @@ export async function registerNotPanelWebhook(env: Env, s: Settings, origin: str
   } catch (e) {
     return { error: (e as Error).message };
   }
+}
+
+/**
+ * Switches to another NotPanel key. A webhook belongs to the account of the key that added it, so the old one is
+ * removed with the OLD key first (the new key may be another account and can't see it), then the new key is saved and
+ * a webhook is added with it. Without this the old account keeps sending events signed with a secret we no longer
+ * have; every one is refused, and NotPanel pauses that webhook and warns the owner.
+ * `register` false (setup before its webhook step ran): only remove the old one and save the key.
+ */
+export async function switchNotPanelKey(
+  env: Env,
+  old: Settings,
+  key: string,
+  origin: string,
+  register = true,
+): Promise<{ webhook: boolean; error?: string }> {
+  if (old.np_webhook_id) {
+    const oldKey = npKey(env, old);
+    const remove = (k: string) => np(k, "webhook.remove", { id: old.np_webhook_id });
+    // The old key may be revoked already; then the new one can still remove it when it is the same account
+    await remove(oldKey).catch(() => (oldKey !== key ? remove(key) : undefined)).catch(() => undefined);
+  }
+  await setSettings(env, { np_api_key: key, np_webhook_id: "", np_webhook_secret: "" });
+  if (!register) return { webhook: false };
+  const wh = await registerNotPanelWebhook(env, { ...old, np_api_key: key, np_webhook_id: "", np_webhook_secret: "" }, origin);
+  if (wh.values) await setSettings(env, wh.values);
+  return { webhook: !wh.error, error: wh.error };
 }
 
 /** Mini App menu button; remembers the app URL and bot username. */

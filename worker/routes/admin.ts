@@ -8,7 +8,7 @@ import { checkImageUpload, deleteAssetStmts, detectImageMime, isAssetKind, putAs
 import { sendPreviews } from "../botMessages";
 import { BRAND_KEYS, normalizeBrandSettings } from "../brandSettings";
 import { MARKUP_SQL, rebuildSummaryStmts, RULE_JOINS } from "../catalog";
-import { connectAll, registerNotPanelWebhook, syncBotTexts } from "../connect";
+import { connectAll, switchNotPanelKey, syncBotTexts } from "../connect";
 import { addedOwners, envOwners, isOwner } from "../env";
 import { npCall, npKey, usdToMicro, verifyNotPanelKey } from "../notpanel";
 import { orderView, type OrderRow } from "../orders";
@@ -196,12 +196,9 @@ admin.put("/notpanel-key", async (c) => {
   const key = b.key.trim();
   const check = await verifyNotPanelKey(key);
   if (!check.ok) return err(c, 400, check.code, { message: check.message });
-  const old = c.get("settings");
-  await setSettings(c.env, { np_api_key: key });
-  // The NotPanel webhook belongs to the account of the key: register it again with the new one
-  const wh = await registerNotPanelWebhook(c.env, { ...old, np_webhook_id: "" }, new URL(c.req.url).origin);
-  if (wh.values) await setSettings(c.env, wh.values);
-  return c.json({ ok: true, key_hint: "…" + key.slice(-4), webhook: !wh.error });
+  // The old webhook is removed with the old key, then the new key gets its own (see switchNotPanelKey)
+  const wh = await switchNotPanelKey(c.env, c.get("settings"), key, new URL(c.req.url).origin);
+  return c.json({ ok: true, key_hint: "…" + key.slice(-4), webhook: wh.webhook });
 });
 
 /** Logo / welcome banner: raw image body (PNG, JPEG or WebP, checked by content, not by name) */

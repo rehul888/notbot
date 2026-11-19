@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Env } from "../worker/env";
+import { d1 } from "./d1";
 
 vi.mock("../worker/telegram", async (orig) => ({ ...(await orig<typeof import("../worker/telegram")>()), tg: vi.fn() }));
 vi.mock("../worker/settings", async (orig) => ({
@@ -10,44 +10,8 @@ vi.mock("../worker/settings", async (orig) => ({
 vi.mock("../worker/notpanel", async (orig) => ({ ...(await orig<typeof import("../worker/notpanel")>()), npCall: vi.fn() }));
 const { tg } = await import("../worker/telegram");
 const { npCall, NotPanelError } = await import("../worker/notpanel");
-const MIGRATIONS = import.meta.glob("../migrations/*.sql", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const { refundOrderToBalance, refundPayment } = await import("../worker/payments");
 const { applyStatus, orderView, refreshOrder } = await import("../worker/orders");
-
-/** A real SQLite database with the project's migrations behind a minimal D1 interface (batch = one transaction). */
-function d1() {
-  const db = new DatabaseSync(":memory:");
-  for (const f of Object.keys(MIGRATIONS).sort()) db.exec(MIGRATIONS[f]);
-  const stmt = (sql: string, args: unknown[] = []) => ({
-    sql,
-    args,
-    bind: (...a: unknown[]) => stmt(sql, a),
-    exec() {
-      const s = db.prepare(sql);
-      if (/^\s*(SELECT|WITH)/i.test(sql) || /RETURNING/i.test(sql)) return { results: s.all(...(args as never[])), meta: { changes: 0 } };
-      const r = s.run(...(args as never[]));
-      return { results: [], meta: { changes: Number(r.changes) } };
-    },
-    first: async () => stmt(sql, args).exec().results[0] ?? null,
-    all: async () => stmt(sql, args).exec(),
-    run: async () => stmt(sql, args).exec(),
-  });
-  const DB = {
-    prepare: (sql: string) => stmt(sql),
-    batch: async (list: ReturnType<typeof stmt>[]) => {
-      db.exec("BEGIN");
-      try {
-        const out = list.map((s) => s.exec());
-        db.exec("COMMIT");
-        return out;
-      } catch (e) {
-        db.exec("ROLLBACK");
-        throw e;
-      }
-    },
-  };
-  return { env: { DB, BOT_TOKEN: "t" } as unknown as Env, db };
-}
 
 const USER = 7;
 const row = (db: DatabaseSync, sql: string) => db.prepare(sql).get() as Record<string, number | string>;

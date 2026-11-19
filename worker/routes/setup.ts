@@ -9,7 +9,7 @@ import { bytesToBase64, detectImageMime } from "../assets";
 import { brandInfo } from "../brand";
 import { claimLink, createClaimCode } from "../claim";
 import { setAllCommands } from "../commands";
-import { registerNotPanelWebhook, setMenuButton, setTelegramWebhook, syncBotTexts } from "../connect";
+import { registerNotPanelWebhook, setMenuButton, setTelegramWebhook, switchNotPanelKey, syncBotTexts } from "../connect";
 import { type Env, ownerIds } from "../env";
 import { npKey, verifyNotPanelKey, type KeyCheck } from "../notpanel";
 import { isLimited, recordFailure } from "../rateLimit";
@@ -133,7 +133,11 @@ setup.post("/notpanel-key", async (c) => {
   const key = b.key.trim();
   const check = await verifyNotPanelKey(key);
   if (!check.ok) return fail(c, 400, check.code, { message: check.message });
-  await setSettings(c.env, { np_api_key: key });
+  if (g.s.np_webhook_id) {
+    // A webhook from an earlier key: removed with that key, and a new one added with this key if the webhook step ran
+    const res = await switchNotPanelKey(c.env, g.s, key, new URL(c.req.url).origin, doneSteps(g.s).has("webhook"));
+    if (res.error) console.warn("setup: NotPanel webhook not registered, the cron job covers order updates", res.error);
+  } else await setSettings(c.env, { np_api_key: key });
   keyMemo = { key, at: Date.now(), result: check };
   return c.json(await buildStatus(c.env, await getSettings(c.env, { fresh: true })));
 });
